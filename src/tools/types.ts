@@ -35,6 +35,8 @@ export interface OracleSearchInput {
   limit?: number;
   offset?: number;
   mode?: 'hybrid' | 'fts' | 'vector';
+  project?: string;
+  cwd?: string;
 }
 
 export interface OracleReflectInput {}

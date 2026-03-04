@@ -7,6 +7,7 @@
  */
 
 import { logSearch } from '../server/logging.ts';
+import { detectProject } from '../server/project-detect.ts';
 import type { ToolContext, ToolResponse, OracleSearchInput } from './types.ts';
 
 export const searchToolDef = {
@@ -40,6 +41,14 @@ export const searchToolDef = {
         enum: ['hybrid', 'fts', 'vector'],
         description: 'Search mode: hybrid (default), fts (keywords only), vector (semantic only)',
         default: 'hybrid'
+      },
+      project: {
+        type: 'string',
+        description: 'Filter by project (e.g., "github.com/owner/repo"). Returns project + universal results.'
+      },
+      cwd: {
+        type: 'string',
+        description: 'Auto-detect project from working directory path (follows symlinks to ghq paths)'
       }
     },
     required: ['query']
@@ -272,13 +281,23 @@ export function combineResults(
 
 export async function handleSearch(ctx: ToolContext, input: OracleSearchInput): Promise<ToolResponse> {
   const startTime = Date.now();
-  const { query, type = 'all', limit = 5, offset = 0, mode = 'hybrid' } = input;
+  const { query, type = 'all', limit = 5, offset = 0, mode = 'hybrid', project, cwd } = input;
 
   if (!query || query.trim().length === 0) {
     throw new Error('Query cannot be empty');
   }
 
   const safeQuery = sanitizeFtsQuery(query);
+
+  // Auto-detect project from cwd if not explicitly specified
+  const resolvedProject = (project ?? detectProject(cwd))?.toLowerCase() ?? null;
+
+  // Project filter: if project specified, include project + universal (NULL)
+  // If no project, return ALL documents (no filter)
+  const projectFilter = resolvedProject
+    ? 'AND (d.project = ? OR d.project IS NULL)'
+    : '';
+  const projectParams = resolvedProject ? [resolvedProject] : [];
 
   let warning: string | undefined;
   let vectorSearchError = false;
@@ -291,21 +310,21 @@ export async function handleSearch(ctx: ToolContext, input: OracleSearchInput): 
         SELECT f.id, f.content, d.type, d.source_file, d.concepts, rank
         FROM oracle_fts f
         JOIN oracle_documents d ON f.id = d.id
-        WHERE oracle_fts MATCH ?
+        WHERE oracle_fts MATCH ? ${projectFilter}
         ORDER BY rank
         LIMIT ?
       `);
-      ftsRawResults = stmt.all(safeQuery, limit * 2);
+      ftsRawResults = stmt.all(safeQuery, ...projectParams, limit * 2);
     } else {
       const stmt = ctx.sqlite.prepare(`
         SELECT f.id, f.content, d.type, d.source_file, d.concepts, rank
         FROM oracle_fts f
         JOIN oracle_documents d ON f.id = d.id
-        WHERE oracle_fts MATCH ? AND d.type = ?
+        WHERE oracle_fts MATCH ? AND d.type = ? ${projectFilter}
         ORDER BY rank
         LIMIT ?
       `);
-      ftsRawResults = stmt.all(safeQuery, type, limit * 2);
+      ftsRawResults = stmt.all(safeQuery, type, ...projectParams, limit * 2);
     }
   }
 

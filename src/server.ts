@@ -495,6 +495,54 @@ app.get('/api/map3d', async (c) => {
   }
 });
 
+// Live Oracle feed (from ~/.oracle/feed.log)
+const FEED_LOG = path.join(process.env.HOME || '/home/nat', '.oracle', 'feed.log');
+app.get('/api/feed', (c) => {
+  try {
+    const limit = Math.min(200, parseInt(c.req.query('limit') || '50'));
+    const oracle = c.req.query('oracle') || undefined;
+    const event = c.req.query('event') || undefined;
+    const since = c.req.query('since') || undefined; // ISO timestamp
+
+    if (!fs.existsSync(FEED_LOG)) return c.json({ events: [], total: 0 });
+
+    const raw = fs.readFileSync(FEED_LOG, 'utf-8').trim().split('\n').filter(Boolean);
+    let events = raw.map(line => {
+      const [ts, oracleName, host, eventType, project, rest] = line.split(' | ').map(s => s.trim());
+      const [sessionId, ...msgParts] = (rest || '').split(' » ');
+      return {
+        timestamp: ts,
+        oracle: oracleName,
+        host,
+        event: eventType,
+        project,
+        session_id: sessionId?.trim(),
+        message: msgParts.join(' » ').trim(),
+      };
+    });
+
+    if (oracle) events = events.filter(e => e.oracle === oracle);
+    if (event) events = events.filter(e => e.event === event);
+    if (since) events = events.filter(e => e.timestamp >= since);
+
+    events.reverse(); // newest first
+    const total = events.length;
+    events = events.slice(0, limit);
+
+    // Derive active oracles (unique oracles from last 5 min)
+    const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString().replace('T', ' ').slice(0, 19);
+    const recentAll = raw.map(line => {
+      const [ts, oracleName] = line.split(' | ').map(s => s.trim());
+      return { timestamp: ts, oracle: oracleName };
+    }).filter(e => e.timestamp >= fiveMinAgo);
+    const activeOracles = [...new Set(recentAll.map(e => e.oracle))];
+
+    return c.json({ events, total, active_oracles: activeOracles });
+  } catch (e: any) {
+    return c.json({ error: e.message, events: [], total: 0 }, 500);
+  }
+});
+
 // Logs
 app.get('/api/logs', (c) => {
   try {

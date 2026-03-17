@@ -298,6 +298,20 @@ export function Forum() {
 
   useWebSocket('new_message', handleWsMessage);
 
+  // Real-time reaction updates
+  const handleWsReaction = useCallback((data: any) => {
+    if (!data.message_id) return;
+    // Refresh reactions for the affected message
+    fetch(`${API_BASE}/message/${data.message_id}/reactions`)
+      .then(r => r.json())
+      .then(d => {
+        setReactions(prev => ({ ...prev, [data.message_id]: d.reactions || [] }));
+      })
+      .catch(() => {});
+  }, []);
+
+  useWebSocket('reaction', handleWsReaction);
+
   // Infinite scroll — load older messages when scrolling up
   const hasMore = selectedThread ? selectedThread.messages.length < totalMessages : false;
 

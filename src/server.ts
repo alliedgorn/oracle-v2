@@ -1975,6 +1975,7 @@ app.post('/api/message/:id/react', async (c) => {
       INSERT OR IGNORE INTO forum_reactions (message_id, beast_name, emoji, created_at)
       VALUES (?, ?, ?, ?)
     `).run(messageId, body.beast.toLowerCase(), body.emoji, now);
+    wsBroadcast('reaction', { message_id: messageId, beast: body.beast, emoji: body.emoji, action: 'add' });
     return c.json({ success: true, message_id: messageId, emoji: body.emoji });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Unknown error' }, 500);
@@ -1991,6 +1992,7 @@ app.delete('/api/message/:id/react', async (c) => {
     }
     sqlite.prepare('DELETE FROM forum_reactions WHERE message_id = ? AND beast_name = ? AND emoji = ?')
       .run(messageId, body.beast.toLowerCase(), body.emoji);
+    wsBroadcast('reaction', { message_id: messageId, beast: body.beast, emoji: body.emoji, action: 'remove' });
     return c.json({ success: true });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Unknown error' }, 500);

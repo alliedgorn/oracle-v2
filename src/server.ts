@@ -2880,7 +2880,16 @@ console.log(`
 
 export default {
   port: Number(PORT),
-  fetch: app.fetch,
+  hostname: '0.0.0.0',
+  fetch(req: Request, server: any) {
+    // Handle WebSocket upgrade
+    if (new URL(req.url).pathname === '/ws') {
+      const success = server.upgrade(req);
+      if (success) return undefined;
+      return new Response('WebSocket upgrade failed', { status: 400 });
+    }
+    return app.fetch(req, { ip: server.requestIP(req)?.address });
+  },
   websocket: {
     open(ws: any) {
       wsClients.add(ws);

@@ -1963,12 +1963,27 @@ app.get('/api/message/:id/history', (c) => {
 });
 
 // Add reaction to message
+// Supported emoji whitelist — request new ones via forum
+const SUPPORTED_EMOJI = new Set([
+  '👍', '👎', '❤️', '🔥', '👀', '✅', '❌',
+  '😂', '😢', '🤔', '💪', '🎉', '🙏',
+  '🐾', '🐴', '🐊', '🐻', '🦘', '🦁', '🦝', '🦦', '🐙', '🐦‍⬛', // beast animals
+]);
+
+// GET /api/reactions/supported — list supported emoji
+app.get('/api/reactions/supported', (c) => {
+  return c.json({ emoji: [...SUPPORTED_EMOJI] });
+});
+
 app.post('/api/message/:id/react', async (c) => {
   const messageId = parseInt(c.req.param('id'), 10);
   try {
     const body = await c.req.json();
     if (!body.beast || !body.emoji) {
       return c.json({ error: 'beast and emoji are required' }, 400);
+    }
+    if (!SUPPORTED_EMOJI.has(body.emoji)) {
+      return c.json({ error: `Unsupported emoji. Supported: ${[...SUPPORTED_EMOJI].join(' ')}` }, 400);
     }
     const now = Date.now();
     sqlite.prepare(`

@@ -150,7 +150,7 @@ export async function handleThreads(input: OracleThreadsInput): Promise<ToolResp
   });
 
   const threadsWithCounts = result.threads.map(thread => {
-    const messages = getMessages(thread.id);
+    const { messages } = getMessages(thread.id);
     const lastMessage = messages[messages.length - 1];
     return {
       id: thread.id,

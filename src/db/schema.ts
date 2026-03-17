@@ -131,6 +131,37 @@ export const forumMessages = sqliteTable('forum_messages', {
 // since Drizzle doesn't natively support FTS5
 
 // ============================================================================
+// DM Tables (private one-on-one messaging between Oracles)
+// ============================================================================
+
+// DM conversations - pair of participants
+export const dmConversations = sqliteTable('dm_conversations', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  participant1: text('participant1').notNull(),  // alphabetically first
+  participant2: text('participant2').notNull(),  // alphabetically second
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+}, (table) => [
+  index('idx_dm_conv_p1').on(table.participant1),
+  index('idx_dm_conv_p2').on(table.participant2),
+  index('idx_dm_conv_updated').on(table.updatedAt),
+]);
+
+// DM messages - individual messages in a conversation
+export const dmMessages = sqliteTable('dm_messages', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  conversationId: integer('conversation_id').notNull().references(() => dmConversations.id),
+  sender: text('sender').notNull(),
+  content: text('content').notNull(),
+  readAt: integer('read_at'),               // null = unread
+  createdAt: integer('created_at').notNull(),
+}, (table) => [
+  index('idx_dm_msg_conv').on(table.conversationId),
+  index('idx_dm_msg_sender').on(table.sender),
+  index('idx_dm_msg_created').on(table.createdAt),
+]);
+
+// ============================================================================
 // Trace Log Tables (discovery tracing with dig points)
 // ============================================================================
 
@@ -263,6 +294,23 @@ export const schedule = sqliteTable('schedule', {
   index('idx_schedule_date').on(table.date),
   index('idx_schedule_status').on(table.status),
 ]);
+
+// ============================================================================
+// Beast Profiles - Pack member identity & avatars
+// ============================================================================
+
+export const beastProfiles = sqliteTable('beast_profiles', {
+  name: text('name').primaryKey(),              // lowercase identifier: karo, zaghnal, gnarl, etc.
+  displayName: text('display_name').notNull(),  // Display name: Karo, Zaghnal, etc.
+  animal: text('animal').notNull(),             // Animal theme: hyena, horse, alligator, etc.
+  avatarUrl: text('avatar_url'),                // URL or data URI for avatar image
+  bio: text('bio'),                             // Short bio / tagline
+  interests: text('interests'),                 // JSON array of interests/tags
+  themeColor: text('theme_color'),              // Hex color for UI accent
+  role: text('role'),                           // Beast role: Software Engineering, PM, etc.
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});
 
 // ============================================================================
 // Settings Table - Key-value store for configuration

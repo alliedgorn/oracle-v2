@@ -104,6 +104,67 @@ export const db = defaultDb;
 // Export schema for use in queries
 export * from './schema.ts';
 
+// ============================================================================
+// Beast Profile helpers
+// ============================================================================
+
+export function getBeastProfile(name: string) {
+  return db.select().from(schema.beastProfiles).where(eq(schema.beastProfiles.name, name.toLowerCase())).get() ?? null;
+}
+
+export function getAllBeastProfiles() {
+  return db.select().from(schema.beastProfiles).all();
+}
+
+export function upsertBeastProfile(profile: {
+  name: string;
+  displayName: string;
+  animal: string;
+  avatarUrl?: string | null;
+  bio?: string | null;
+  interests?: string | null;
+  themeColor?: string | null;
+  role?: string | null;
+}) {
+  const now = Date.now();
+  const name = profile.name.toLowerCase();
+
+  return db.insert(schema.beastProfiles)
+    .values({
+      name,
+      displayName: profile.displayName,
+      animal: profile.animal,
+      avatarUrl: profile.avatarUrl ?? null,
+      bio: profile.bio ?? null,
+      interests: profile.interests ?? null,
+      themeColor: profile.themeColor ?? null,
+      role: profile.role ?? null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: schema.beastProfiles.name,
+      set: {
+        displayName: profile.displayName,
+        animal: profile.animal,
+        avatarUrl: profile.avatarUrl ?? undefined,
+        bio: profile.bio ?? undefined,
+        interests: profile.interests ?? undefined,
+        themeColor: profile.themeColor ?? undefined,
+        role: profile.role ?? undefined,
+        updatedAt: now,
+      },
+    })
+    .run();
+}
+
+export function updateBeastAvatar(name: string, avatarUrl: string) {
+  return db.update(schema.beastProfiles)
+    .set({ avatarUrl, updatedAt: Date.now() })
+    .where(eq(schema.beastProfiles.name, name.toLowerCase()))
+    .run();
+}
+
 /**
  * Close database connection
  */

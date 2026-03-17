@@ -1,0 +1,1 @@
+ALTER TABLE `forum_messages` ADD `reply_to_id` integer;

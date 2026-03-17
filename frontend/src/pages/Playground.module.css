@@ -4,7 +4,7 @@
 
 /* ============ Landing (pre-search) ============ */
 .landing {
-  max-width: 800px;
+  max-width: var(--width-medium);
   margin: 0 auto;
   padding: 80px 24px 48px;
   text-align: center;
@@ -13,7 +13,7 @@
 .landingTitle {
   font-size: 48px;
   font-weight: 800;
-  background: linear-gradient(135deg, #60a5fa, #a78bfa, #4ade80);
+  background: linear-gradient(135deg, #60a5fa, var(--accent), #4ade80);
   background-size: 200% 200%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -63,7 +63,7 @@
 }
 
 .modeCardVector:hover {
-  border-color: rgba(167, 139, 250, 0.4);
+  border-color: rgba(212, 148, 58, 0.4);
   box-shadow: 0 0 24px rgba(167, 139, 250, 0.08);
 }
 
@@ -79,7 +79,7 @@
 }
 
 .modeCardFts .modeIcon { color: #60a5fa; }
-.modeCardVector .modeIcon { color: #a78bfa; }
+.modeCardVector .modeIcon { color: var(--accent); }
 .modeCardHybrid .modeIcon { color: #4ade80; }
 
 .modeDesc {
@@ -92,7 +92,7 @@
 .form {
   display: flex;
   gap: 12px;
-  max-width: 640px;
+  max-width: var(--width-narrow);
   margin: 0 auto 24px;
 }
 
@@ -143,7 +143,7 @@
 
 /* ============ Results view ============ */
 .resultsView {
-  max-width: 1200px;
+  max-width: var(--width-full);
   margin: 0 auto;
   padding: 32px 24px;
 }

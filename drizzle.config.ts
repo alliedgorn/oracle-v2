@@ -29,5 +29,7 @@ export default defineConfig({
     'activity_log',   // User activity tracking
     'settings',       // Auth & app settings
     'schedule',       // Appointments & events
+    'dm_conversations', // DM system
+    'dm_messages',      // DM system
   ],
 });

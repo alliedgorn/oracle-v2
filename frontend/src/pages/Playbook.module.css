@@ -1,0 +1,140 @@
+.container {
+  max-width: var(--width-medium);
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.loading {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 48px 0;
+}
+
+.content {
+  color: var(--text-primary);
+  line-height: 1.7;
+}
+
+.content h1 {
+  font-family: var(--font-heading);
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 24px 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--accent);
+  color: var(--accent);
+}
+
+.content h2 {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 700;
+  margin: 32px 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.content h3 {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 24px 0 12px 0;
+  color: var(--text-secondary);
+}
+
+.content p {
+  margin: 0 0 12px 0;
+}
+
+.content ul, .content ol {
+  margin: 8px 0 16px 0;
+  padding-left: 24px;
+}
+
+.content li {
+  margin-bottom: 6px;
+}
+
+.content strong {
+  color: var(--accent);
+}
+
+.content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0;
+}
+
+.content th, .content td {
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 14px;
+}
+
+.content th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.content td {
+  color: var(--text-secondary);
+}
+
+.content tr:hover td {
+  background: rgba(212, 148, 58, 0.05);
+}
+
+.inlineCode {
+  background: rgba(0, 0, 0, 0.25);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.content blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 16px 0;
+  padding: 8px 16px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 0 6px 6px 0;
+}
+
+.content pre {
+  margin: 12px 0;
+}
+
+.content a {
+  color: var(--accent);
+}
+
+.content a:hover {
+  text-decoration: underline;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .container {
+    padding: 16px 12px;
+  }
+
+  .content h1 {
+    font-size: 22px;
+  }
+
+  .content h2 {
+    font-size: 18px;
+  }
+
+  .content table {
+    font-size: 12px;
+  }
+
+  .content th, .content td {
+    padding: 6px 8px;
+  }
+}

@@ -426,7 +426,7 @@ const server = http.createServer(async (req, res) => {
             id: t.id,
             title: t.title,
             status: t.status,
-            message_count: getMessages(t.id).length,
+            message_count: getMessages(t.id).total,
             created_at: new Date(t.createdAt).toISOString(),
             issue_url: t.issueUrl
           })),

@@ -56,9 +56,9 @@
 }
 
 .hudToggle {
-  background: rgba(167, 139, 250, 0.2);
-  border: 1px solid #a78bfa;
-  color: #a78bfa;
+  background: rgba(212, 148, 58, 0.2);
+  border: 1px solid var(--accent);
+  color: var(--accent);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 12px;
@@ -67,7 +67,7 @@
 }
 
 .hudToggle:hover {
-  background: rgba(167, 139, 250, 0.3);
+  background: rgba(212, 148, 58, 0.3);
 }
 
 .canvas {
@@ -76,7 +76,7 @@
   height: calc(100vh - 200px);
   border-radius: 12px;
   overflow: hidden;
-  background: #0a0a0f;
+  background: var(--bg-primary);
   border: 1px solid #222;
   position: relative;
 }
@@ -102,7 +102,7 @@
 .hudTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #a78bfa;
+  color: var(--accent);
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid #333;
@@ -130,7 +130,7 @@
   -webkit-appearance: none;
   width: 12px;
   height: 12px;
-  background: #a78bfa;
+  background: var(--accent);
   border-radius: 50%;
   cursor: pointer;
 }
@@ -138,7 +138,7 @@
 .hudSlider::-moz-range-thumb {
   width: 12px;
   height: 12px;
-  background: #a78bfa;
+  background: var(--accent);
   border-radius: 50%;
   cursor: pointer;
   border: none;
@@ -186,8 +186,8 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 6px;
-  background: rgba(167, 139, 250, 0.2);
-  color: #a78bfa;
+  background: rgba(212, 148, 58, 0.2);
+  color: var(--accent);
 }
 
 .nodeLabel {

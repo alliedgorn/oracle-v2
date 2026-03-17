@@ -1,15 +1,71 @@
+/* ============================================================================
+   The Den — Design System
+   Dark charcoal base, warm earth-tone accents
+   "Underground den, not corporate dashboard"
+   ============================================================================ */
+
 :root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #0f0f1a;
-  --bg-card: #1a1a2e;
-  --border: #2a2a3a;
-  --text-primary: #e0e0e0;
-  --text-secondary: #888;
-  --text-muted: #666;
-  --accent: #a78bfa;
-  --accent-hover: #6d28d9;
-  --success: #4ade80;
-  --warning: #fbbf24;
+  /* Base — deep charcoal, not blue-black */
+  --bg-primary: #111110;
+  --bg-secondary: #1a1917;
+  --bg-card: #211f1d;
+  --bg-elevated: #2a2825;
+  --border: #3a3632;
+  --border-subtle: #2d2a27;
+
+  /* Text */
+  --text-primary: #e8e2d9;
+  --text-secondary: #a39b8f;
+  --text-muted: #6d6560;
+
+  /* Earth-tone accents */
+  --accent: #d4943a;           /* Warm amber — primary action */
+  --accent-hover: #c07d2a;
+  --accent-glow: rgba(212, 148, 58, 0.1);
+  --success: #5a9a3e;          /* Forest green */
+  --warning: #d4943a;          /* Amber */
+  --danger: #c44b3f;           /* Burnt rust */
+
+  /* Beast colors */
+  --beast-hyena: #d4943a;      /* Amber */
+  --beast-horse: #8b6cc7;      /* Dusty purple */
+  --beast-alligator: #4a8c5c;  /* Swamp green */
+  --beast-bear: #8b5e3c;       /* Brown */
+  --beast-kangaroo: #c44b3f;   /* Rust red */
+  --beast-lion: #c9a227;       /* Gold */
+  --beast-raccoon: #6b7fa3;    /* Steel blue */
+  --beast-otter: #0d9488;      /* Teal */
+  --beast-crow: #475569;       /* Slate */
+  --beast-octopus: #9b59b6;    /* Deep violet */
+
+  /* Status colors */
+  --status-active: #3b82f6;    /* Blue */
+  --status-pending: #eab308;   /* Yellow */
+  --status-answered: #22c55e;  /* Green */
+  --status-closed: #6d6560;    /* Muted */
+
+  /* Layout widths */
+  --width-narrow: 640px;       /* Settings, BeastProfile */
+  --width-medium: 800px;       /* Queue, Playbook, Search, DocDetail */
+  --width-wide: 1000px;        /* Activity, Groups, Overview, Traces */
+  --width-full: 1200px;        /* Forum, DMs, SidebarLayout */
+
+  /* Border radius */
+  --radius-sm: 6px;            /* Buttons, inputs, badges */
+  --radius-md: 10px;           /* Cards, panels */
+  --radius-lg: 16px;           /* Modals, profile cards */
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  /* Typography */
+  --font-heading: 'Bitter', 'Georgia', serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
 * {
@@ -19,11 +75,22 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-body);
   background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
   line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+code, pre, .mono {
+  font-family: var(--font-mono);
 }
 
 a {
@@ -33,4 +100,54 @@ a {
 
 #root {
   min-height: 100vh;
+}
+
+/* App split layout — persistent Remote pane */
+.app-layout {
+  display: flex;
+  height: calc(100vh - 53px);
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .app-layout {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+
+  .app-main {
+    overflow: visible;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Selection */
+::selection {
+  background: rgba(212, 148, 58, 0.3);
+  color: var(--text-primary);
 }

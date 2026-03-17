@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Header } from './components/Header';
 import { QuickLearn } from './components/QuickLearn';
@@ -10,6 +10,7 @@ import { Graph } from './pages/Graph';
 import { Handoff } from './pages/Handoff';
 import { Activity } from './pages/Activity';
 import { Forum } from './pages/Forum';
+import { DirectMessages } from './pages/DirectMessages';
 import { Evolution } from './pages/Evolution';
 import { Traces } from './pages/Traces';
 import { Superseded } from './pages/Superseded';
@@ -17,6 +18,14 @@ import { Login } from './pages/Login';
 import { Settings } from './pages/Settings';
 import { Playground } from './pages/Playground';
 import { Map } from './pages/Map';
+import { PackView } from './pages/PackView';
+import { BeastProfile } from './pages/BeastProfile';
+import { Groups } from './pages/Groups';
+import { Playbook } from './pages/Playbook';
+import { GornQueue } from './pages/GornQueue';
+import { RemoteControl } from './pages/RemoteControl';
+import { RemotePanel } from './components/RemotePanel';
+import { Mindlink } from './pages/Mindlink';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
@@ -40,13 +49,18 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function AppContent() {
   const location = useLocation();
   const isLoginPage = location.pathname === '/login';
+  const [remoteCollapsed, setRemoteCollapsed] = useState(false);
+  const [remoteMobileOpen, setRemoteMobileOpen] = useState(false);
 
   return (
     <>
-      {!isLoginPage && <Header />}
+      {!isLoginPage && <Header onRemoteToggle={() => setRemoteMobileOpen(prev => !prev)} />}
+      <div className={!isLoginPage ? 'app-layout' : undefined}>
+      <div className={!isLoginPage ? 'app-main' : undefined}>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<RequireAuth><Overview /></RequireAuth>} />
+        <Route path="/" element={<RequireAuth><PackView /></RequireAuth>} />
+        <Route path="/overview" element={<RequireAuth><Overview /></RequireAuth>} />
         <Route path="/feed" element={<RequireAuth><Feed /></RequireAuth>} />
         <Route path="/doc/:id" element={<RequireAuth><DocDetail /></RequireAuth>} />
         <Route path="/search" element={<RequireAuth><Search /></RequireAuth>} />
@@ -56,7 +70,15 @@ function AppContent() {
         <Route path="/graph3d" element={<Navigate to="/graph" replace />} />
         <Route path="/handoff" element={<RequireAuth><Handoff /></RequireAuth>} />
         <Route path="/activity" element={<RequireAuth><Activity /></RequireAuth>} />
+        <Route path="/pack" element={<RequireAuth><PackView /></RequireAuth>} />
+        <Route path="/beast/:name" element={<RequireAuth><BeastProfile /></RequireAuth>} />
+        <Route path="/groups" element={<RequireAuth><Groups /></RequireAuth>} />
+        <Route path="/playbook" element={<RequireAuth><Playbook /></RequireAuth>} />
+        <Route path="/queue" element={<RequireAuth><GornQueue /></RequireAuth>} />
+        <Route path="/mindlink" element={<RequireAuth><Mindlink /></RequireAuth>} />
+        <Route path="/remote" element={<RequireAuth><RemoteControl /></RequireAuth>} />
         <Route path="/forum" element={<RequireAuth><Forum /></RequireAuth>} />
+        <Route path="/dms" element={<RequireAuth><DirectMessages /></RequireAuth>} />
         <Route path="/evolution" element={<RequireAuth><Evolution /></RequireAuth>} />
         <Route path="/traces" element={<RequireAuth><Traces /></RequireAuth>} />
         <Route path="/traces/:id" element={<RequireAuth><Traces /></RequireAuth>} />
@@ -64,6 +86,16 @@ function AppContent() {
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       </Routes>
       {!isLoginPage && <QuickLearn />}
+      </div>
+      {!isLoginPage && (
+        <RemotePanel
+          isOpen={remoteMobileOpen}
+          onClose={() => setRemoteMobileOpen(false)}
+          collapsed={remoteCollapsed}
+          onToggleCollapse={() => setRemoteCollapsed(prev => !prev)}
+        />
+      )}
+      </div>
     </>
   );
 }

@@ -12,6 +12,7 @@
 import { eq, desc, and, sql } from 'drizzle-orm';
 import { db, forumThreads, forumMessages } from '../db/index.ts';
 import { getProjectContext } from '../server/context.ts';
+import { parseMentions, notifyMentioned } from './mentions.ts';
 import type {
   ForumThread,
   ForumMessage,
@@ -206,14 +207,31 @@ export function addMessage(
 /**
  * Get messages for a thread
  */
-export function getMessages(threadId: number): ForumMessage[] {
-  const rows = db.select()
+export function getMessages(
+  threadId: number,
+  limit?: number,
+  offset: number = 0,
+  order: 'asc' | 'desc' = 'asc',
+): { messages: ForumMessage[]; total: number } {
+  const countResult = db.select({ count: sql<number>`count(*)` })
     .from(forumMessages)
     .where(eq(forumMessages.threadId, threadId))
-    .orderBy(forumMessages.createdAt)
-    .all();
+    .get();
 
-  return rows.map(row => ({
+  const total = countResult?.count ?? 0;
+
+  let query = db.select()
+    .from(forumMessages)
+    .where(eq(forumMessages.threadId, threadId))
+    .orderBy(order === 'desc' ? desc(forumMessages.createdAt) : forumMessages.createdAt);
+
+  if (limit !== undefined) {
+    query = query.limit(limit).offset(offset) as typeof query;
+  }
+
+  const rows = query.all();
+
+  const messages = rows.map(row => ({
     id: row.id,
     threadId: row.threadId,
     role: row.role as MessageRole,
@@ -225,6 +243,8 @@ export function getMessages(threadId: number): ForumMessage[] {
     commentId: row.commentId || undefined,
     createdAt: row.createdAt,
   }));
+
+  return { messages, total };
 }
 
 // ============================================================================
@@ -237,25 +257,24 @@ export function getMessages(threadId: number): ForumMessage[] {
 export async function handleThreadMessage(
   input: OracleThreadInput
 ): Promise<OracleThreadOutput> {
-  const { message, threadId, title, role = 'human', model } = input;
+  const { message, threadId, title, role = 'human', model, author: authorOverride } = input;
 
   // Get project context
   const project = getProjectContext_();
 
-  // Determine author based on role and model
-  // - role='human' (HTTP) -> author='user'
-  // - role='claude' (MCP) -> author='opus'/'sonnet'/'claude' + project
+  // Determine author: use override if provided, otherwise compute from role/model
   let author: string;
-  if (role === 'human') {
+  if (authorOverride) {
+    author = authorOverride;
+  } else if (role === 'human') {
     author = 'user';
   } else {
     // Use model name if provided (opus, sonnet), else 'claude'
     author = model || 'claude';
-  }
-
-  // Add project context if available
-  if (project) {
-    author = `${author}@${project}`;
+    // Add project context if available
+    if (project) {
+      author = `${author}@${project}`;
+    }
   }
 
   let thread: ForumThread;
@@ -283,6 +302,39 @@ export async function handleThreadMessage(
     updateThreadStatus(thread.id, 'pending');
   }
 
+  // Parse @mentions and notify via tmux
+  const mentions = parseMentions(message, thread.id);
+  const notified = notifyMentioned(mentions, thread.id, thread.title, author, message);
+
+  // Gorn notification rules:
+  // 1. Gorn posts with @mentions → only mentioned beasts notified (already handled above)
+  // 2. Gorn posts without @mentions → notify thread participants (same as @here)
+  if (role === 'human' && mentions.length === 0) {
+    const { getOracleRegistry } = await import('./mentions.ts');
+    const registry = getOracleRegistry();
+    const alreadyNotified = new Set(notified);
+    // Get thread participants using Drizzle
+    try {
+      const rows = db.select({ author: forumMessages.author })
+        .from(forumMessages)
+        .where(eq(forumMessages.threadId, thread.id))
+        .all();
+      const seen = new Set<string>();
+      const participants: string[] = [];
+      for (const r of rows) {
+        const name = r.author?.split('@')[0]?.toLowerCase();
+        if (name && name in registry && name !== 'gorn' && name !== 'human' && name !== 'user' && !alreadyNotified.has(name) && !seen.has(name)) {
+          seen.add(name);
+          participants.push(name);
+        }
+      }
+      if (participants.length > 0) {
+        const extra = notifyMentioned(participants, thread.id, thread.title, 'gorn', message);
+        notified.push(...extra);
+      }
+    } catch { /* ignore */ }
+  }
+
   // Get updated thread status
   const updatedThread = getThread(thread.id)!;
 
@@ -291,19 +343,26 @@ export async function handleThreadMessage(
     messageId: userMessage.id,
     status: updatedThread.status as ThreadStatus,
     issueUrl: updatedThread.issueUrl,
+    notified: notified.length > 0 ? notified : undefined,
   };
 }
 
 /**
- * Get full thread with all messages
+ * Get full thread with messages (supports pagination)
  */
-export function getFullThread(threadId: number): {
+export function getFullThread(
+  threadId: number,
+  limit?: number,
+  offset: number = 0,
+  order: 'asc' | 'desc' = 'asc',
+): {
   thread: ForumThread;
   messages: ForumMessage[];
+  total: number;
 } | null {
   const thread = getThread(threadId);
   if (!thread) return null;
 
-  const messages = getMessages(threadId);
-  return { thread, messages };
+  const { messages, total } = getMessages(threadId, limit, offset, order);
+  return { thread, messages, total };
 }

@@ -98,7 +98,7 @@ export function QuickLearn() {
                   placeholder="Describe the pattern, principle, or lesson..."
                   className={styles.textarea}
                   rows={4}
-                  autoFocus
+                  
                 />
               </div>
 

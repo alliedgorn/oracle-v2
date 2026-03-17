@@ -51,7 +51,7 @@ export function Login() {
               onChange={e => setPassword(e.target.value)}
               placeholder="Enter password"
               className={styles.input}
-              autoFocus
+              
             />
           </div>
 

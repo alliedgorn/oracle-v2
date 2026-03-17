@@ -1,5 +1,5 @@
 .container {
-  max-width: 640px;
+  max-width: var(--width-narrow);
   margin: 0 auto;
   padding: 48px 24px;
 }
@@ -241,6 +241,6 @@
 }
 
 .remote {
-  background: rgba(59, 130, 246, 0.15);
+  background: rgba(212, 148, 58, 0.15);
   color: #60a5fa;
 }

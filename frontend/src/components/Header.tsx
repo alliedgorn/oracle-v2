@@ -3,28 +3,34 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import styles from './Header.module.css';
 
-// Main nav items
-const navItems = [
-  { path: '/', label: 'Overview' },
-  { path: '/feed', label: 'Feed' },
-  { path: '/graph', label: 'Graph' },
-  { divider: true },
-  { path: '/search', label: 'Search' },
-  { path: '/playground', label: 'Playground' },
-  { path: '/map', label: 'Map' },
-  { divider: true },
-  { path: '/activity?tab=searches', label: 'Activity' },
-  { divider: true },
+// Top-level nav items (always visible, not grouped)
+const topNavItems = [
+  { path: '/', label: 'Pack' },
   { path: '/forum', label: 'Forum' },
-] as const;
+  { path: '/dms', label: 'DMs' },
+  { path: '/mindlink', label: 'Mindlink' },
+];
 
-// Dropdown items (Tools)
-const toolsItems = [
-  { path: '/evolution', label: 'Evolution' },
-  { path: '/traces', label: 'Traces' },
-  { path: '/superseded', label: 'Superseded' },
-  { path: '/handoff', label: 'Handoff' },
-] as const;
+// Grouped navigation (dropdowns for secondary items)
+const navGroups = [
+  {
+    label: 'More',
+    items: [
+      { path: '/groups', label: 'Groups' },
+      { path: '/playbook', label: 'Playbook' },
+      { path: '/overview', label: 'Overview' },
+      { path: '/feed', label: 'Feed' },
+      { path: '/search', label: 'Search' },
+      { path: '/graph', label: 'Graph' },
+      { path: '/map', label: 'Map' },
+      { path: '/activity?tab=searches', label: 'Activity' },
+      { path: '/evolution', label: 'Evolution' },
+      { path: '/traces', label: 'Traces' },
+      { path: '/superseded', label: 'Superseded' },
+      { path: '/handoff', label: 'Handoff' },
+    ],
+  },
+];
 
 interface SessionStats {
   searches: number;
@@ -32,13 +38,16 @@ interface SessionStats {
   startTime: number;
 }
 
-export function Header() {
+interface HeaderProps {
+  onRemoteToggle?: () => void;
+}
+
+export function Header({ onRemoteToggle }: HeaderProps) {
   const location = useLocation();
   const { isAuthenticated, authEnabled, logout } = useAuth();
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
-  const [toolsOpen, setToolsOpen] = useState(false);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [sessionStartTime] = useState(() => {
-    // Get or initialize session start time from localStorage
     const stored = localStorage.getItem('oracle_session_start');
     if (stored) return parseInt(stored);
     const now = Date.now();
@@ -48,14 +57,15 @@ export function Header() {
 
   useEffect(() => {
     loadSessionStats();
-    // Refresh stats every 30 seconds from backend
-    const interval = setInterval(loadSessionStats, 30000);
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      loadSessionStats();
+    }, 30000);
     return () => clearInterval(interval);
   }, [sessionStartTime]);
 
   async function loadSessionStats() {
     try {
-      // Fetch real stats from backend (includes MCP usage)
       const response = await fetch(`/api/session/stats?since=${sessionStartTime}`);
       if (response.ok) {
         const data = await response.json();
@@ -67,12 +77,7 @@ export function Header() {
       }
     } catch (e) {
       console.error('Failed to load session stats:', e);
-      // Fallback to zeros on error
-      setSessionStats({
-        searches: 0,
-        learnings: 0,
-        startTime: sessionStartTime
-      });
+      setSessionStats({ searches: 0, learnings: 0, startTime: sessionStartTime });
     }
   }
 
@@ -84,58 +89,60 @@ export function Header() {
     return `${hours}h ${mins}m`;
   }
 
+  function isGroupActive(group: typeof navGroups[number]): boolean {
+    return group.items.some(item => location.pathname === item.path.split('?')[0]);
+  }
+
   const duration = sessionStats
     ? formatDuration(Date.now() - sessionStats.startTime)
     : '0m';
 
   return (
     <header className={styles.header}>
-      <Link to="/" className={styles.logo}>
-        🔮 Oracle
+      <Link to="/pack" className={styles.logo}>
+        🐾 The Den
         <span className={styles.version}>{__APP_VERSION__}</span>
       </Link>
 
       <nav className={styles.nav}>
-        {navItems.map((item, i) =>
-          'divider' in item ? (
-            <span key={i} className={styles.divider} />
-          ) : (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`${styles.navLink} ${location.pathname === item.path.split('?')[0] ? styles.active : ''}`}
-            >
-              {item.label}
-            </Link>
-          )
-        )}
-        <span className={styles.divider} />
-        <div
-          className={styles.dropdown}
-          onMouseEnter={() => setToolsOpen(true)}
-          onMouseLeave={() => setToolsOpen(false)}
-        >
-          <button
-            type="button"
-            className={`${styles.navLink} ${styles.dropdownTrigger} ${toolsItems.some(t => location.pathname === t.path) ? styles.active : ''}`}
+        {topNavItems.map(item => (
+          <Link
+            key={item.path}
+            to={item.path}
+            className={`${styles.navLink} ${location.pathname === item.path ? styles.active : ''}`}
           >
-            Tools ▾
-          </button>
-          {toolsOpen && (
-            <div className={styles.dropdownMenu}>
-              {toolsItems.map(item => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`${styles.dropdownItem} ${location.pathname === item.path ? styles.active : ''}`}
-                  onClick={() => setToolsOpen(false)}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+            {item.label}
+          </Link>
+        ))}
+        {navGroups.map(group => (
+          <div
+            key={group.label}
+            className={styles.dropdown}
+            onMouseEnter={() => setOpenGroup(group.label)}
+            onMouseLeave={() => setOpenGroup(null)}
+          >
+            <button
+              type="button"
+              className={`${styles.navLink} ${styles.dropdownTrigger} ${isGroupActive(group) ? styles.active : ''}`}
+            >
+              {group.label} ▾
+            </button>
+            {openGroup === group.label && (
+              <div className={styles.dropdownMenu}>
+                {group.items.map(item => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`${styles.dropdownItem} ${location.pathname === item.path.split('?')[0] ? styles.active : ''}`}
+                    onClick={() => setOpenGroup(null)}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </nav>
 
       <div className={styles.sessionStats}>
@@ -149,6 +156,22 @@ export function Header() {
           {sessionStats?.learnings || 0} learnings
         </span>
         <span className={styles.dividerSmall} />
+        {onRemoteToggle && (
+          <button onClick={onRemoteToggle} className={styles.settingsLink} title="Remote Control">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+              <polyline points="17 2 12 7 7 2" />
+            </svg>
+          </button>
+        )}
+        <a href="https://github.com/users/alliedgorn/projects/1/views/1" target="_blank" rel="noopener noreferrer" className={styles.settingsLink} title="Project Board">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+          </svg>
+        </a>
         <Link to="/settings" className={styles.settingsLink} title="Settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />

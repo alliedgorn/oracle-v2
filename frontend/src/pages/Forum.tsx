@@ -1,11 +1,77 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useWebSocket } from '../hooks/useWebSocket';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import styles from './Forum.module.css';
+import { ANIMAL_EMOJI } from '../utils/animals';
+import { SearchInput } from '../components/SearchInput';
+import { StatusBadge } from '../components/StatusBadge';
+import { FilterTabs } from '../components/FilterTabs';
+
+interface BeastProfile {
+  name: string;
+  displayName: string;
+  animal: string;
+  avatarUrl: string | null;
+  themeColor: string | null;
+}
+
+const FALLBACK_MAP: Record<string, { name: string; emoji: string }> = {
+  karo: { name: 'Karo', emoji: '🐾' },
+  'gorn-oracle': { name: 'Zaghnal', emoji: '🐴' },
+  zaghnal: { name: 'Zaghnal', emoji: '🐴' },
+  gnarl: { name: 'Gnarl', emoji: '🐊' },
+  bertus: { name: 'Bertus', emoji: '🐻' },
+  mara: { name: 'Mara', emoji: '🦘' },
+  leonard: { name: 'Leonard', emoji: '🦁' },
+  rax: { name: 'Rax', emoji: '🦝' },
+};
+
+function resolveAuthor(
+  role: string,
+  author: string | null,
+  profiles: Map<string, BeastProfile>
+): { name: string; emoji: string; avatarUrl: string | null; themeColor: string | null } {
+  if (role === 'human') return { name: 'Gorn', emoji: '👤', avatarUrl: null, themeColor: null };
+  if (!author) return {
+    name: role === 'oracle' ? 'Oracle' : 'Claude',
+    emoji: role === 'oracle' ? '🔮' : '🤖',
+    avatarUrl: null, themeColor: null,
+  };
+
+  const authorLower = author.toLowerCase();
+
+  // Match against beast profiles from DB
+  for (const [key, profile] of profiles) {
+    if (authorLower.includes(key)) {
+      return {
+        name: profile.displayName,
+        emoji: ANIMAL_EMOJI[profile.animal.toLowerCase()] || '🐾',
+        avatarUrl: profile.avatarUrl,
+        themeColor: profile.themeColor,
+      };
+    }
+  }
+
+  // Fallback to static map
+  for (const [key, identity] of Object.entries(FALLBACK_MAP)) {
+    if (authorLower.includes(key)) return { ...identity, avatarUrl: null, themeColor: null };
+  }
+
+  const shortAuthor = author.split('@')[0] || author;
+  return { name: shortAuthor, emoji: role === 'oracle' ? '🔮' : '🤖', avatarUrl: null, themeColor: null };
+}
 
 interface Thread {
   id: number;
   title: string;
   status: 'active' | 'answered' | 'pending' | 'closed';
+  category: string;
+  pinned: boolean;
   message_count: number;
   created_at: string;
   issue_url: string | null;
@@ -16,6 +82,7 @@ interface Message {
   role: 'human' | 'oracle' | 'claude';
   content: string;
   author: string | null;
+  reply_to_id: number | null;
   principles_found: number | null;
   patterns_found: number | null;
   created_at: string;
@@ -39,16 +106,21 @@ async function fetchThreads(): Promise<{ threads: Thread[]; total: number }> {
   return res.json();
 }
 
-async function fetchThread(id: number): Promise<ThreadDetail> {
-  const res = await fetch(`${API_BASE}/thread/${id}`);
+async function fetchThread(id: number, limit?: number, offset = 0, order: 'asc' | 'desc' = 'asc'): Promise<ThreadDetail & { total: number }> {
+  const params = new URLSearchParams();
+  if (limit !== undefined) params.set('limit', limit.toString());
+  if (offset) params.set('offset', offset.toString());
+  if (order !== 'asc') params.set('order', order);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE}/thread/${id}${qs ? '?' + qs : ''}`);
   return res.json();
 }
 
-async function sendMessage(message: string, threadId?: number, title?: string): Promise<any> {
+async function sendMessage(message: string, threadId?: number, title?: string, replyToId?: number): Promise<any> {
   const res = await fetch(`${API_BASE}/thread`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, thread_id: threadId, title })
+    body: JSON.stringify({ message, thread_id: threadId, title, reply_to_id: replyToId })
   });
   return res.json();
 }
@@ -69,25 +141,187 @@ export function Forum() {
   const [newMessage, setNewMessage] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [loading, setLoading] = useState(false);
+  const [beastProfiles, setBeastProfiles] = useState<Map<string, BeastProfile>>(new Map());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ messages: any[]; threads: any[] } | null>(null);
+  const [reactions, setReactions] = useState<Record<number, { emoji: string; beasts: string[]; count: number }[]>>({});
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [replyTo, setReplyTo] = useState<{ id: number; author: string | null; content: string } | null>(null);
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+  const [totalMessages, setTotalMessages] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const initialScrollDone = useRef(false);
 
+  const PAGE_SIZE = 50;
   const threadIdParam = searchParams.get('thread');
   const showNewThread = searchParams.get('new') === 'true';
 
+  // Load unread counts for gorn
+  async function loadUnreadCounts() {
+    try {
+      const res = await fetch(`${API_BASE}/forum/unread/gorn`);
+      const data = await res.json();
+      const counts: Record<number, number> = {};
+      for (const t of data.threads || []) {
+        counts[t.thread_id] = t.unread_count;
+      }
+      setUnreadCounts(counts);
+    } catch { /* ignore */ }
+  }
+
+  // Mark thread as read for gorn
+  async function markThreadRead(threadId: number, lastMessageId: number) {
+    try {
+      await fetch(`${API_BASE}/forum/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ beast: 'gorn', threadId, messageId: lastMessageId }),
+      });
+      setUnreadCounts(prev => {
+        const next = { ...prev };
+        delete next[threadId];
+        return next;
+      });
+    } catch { /* ignore */ }
+  }
+
+  // Load beast profiles
+  useEffect(() => {
+    fetch(`${API_BASE}/beasts`)
+      .then(res => res.json())
+      .then(data => {
+        const map = new Map<string, BeastProfile>();
+        for (const b of data.beasts || []) {
+          map.set(b.name, b);
+        }
+        setBeastProfiles(map);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     loadThreads();
+    loadUnreadCounts();
   }, []);
 
   // Load thread from URL param or auto-select first
+  // Only react to threadIdParam changes (user navigation), NOT threads polling
+  const threadsLoadedRef = useRef(false);
   useEffect(() => {
     if (threadIdParam) {
-      selectThread(parseInt(threadIdParam, 10));
-    } else if (threads.length > 0 && !showNewThread) {
-      // Auto-select first thread
+      // Only fetch if thread changed (not on every threads poll)
+      if (!selectedThread || selectedThread.thread.id !== parseInt(threadIdParam, 10)) {
+        selectThread(parseInt(threadIdParam, 10));
+      }
+    } else if (threads.length > 0 && !showNewThread && !threadsLoadedRef.current) {
+      // Auto-select first thread only on initial load
+      threadsLoadedRef.current = true;
       setSearchParams({ thread: threads[0].id.toString() });
-    } else {
+    } else if (threads.length === 0) {
       setSelectedThread(null);
     }
   }, [threadIdParam, threads]);
+
+  // Poll for new messages (only fetch latest few, append if new) and threads
+  useEffect(() => {
+    const pollMessages = setInterval(() => {
+      if (document.hidden) return;
+      if (selectedThread) {
+        // Check for new messages by fetching latest 5
+        fetchThread(selectedThread.thread.id, 5, 0, 'desc').then(data => {
+          if (data.total !== totalMessages) {
+            // New messages arrived — append them
+            const existingIds = new Set(selectedThread.messages.map(m => m.id));
+            const newMsgs = data.messages.filter(m => !existingIds.has(m.id)).reverse();
+            if (newMsgs.length > 0) {
+              setSelectedThread(prev => prev ? {
+                ...prev,
+                messages: [...prev.messages, ...newMsgs],
+              } : prev);
+              setTotalMessages(data.total);
+              loadReactionsForThread(newMsgs);
+            }
+          }
+        }).catch(() => {});
+      }
+    }, 3000);
+
+    const pollThreads = setInterval(() => {
+      if (document.hidden) return;
+      loadThreads();
+      loadUnreadCounts();
+    }, 10000);
+
+    return () => {
+      clearInterval(pollMessages);
+      clearInterval(pollThreads);
+    };
+  }, [selectedThread?.thread.id, totalMessages]);
+
+  // Auto-scroll to bottom on initial thread load, or when user is near bottom and new messages arrive
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || !messagesEndRef.current) return;
+
+    if (!initialScrollDone.current) {
+      // First load — jump to bottom immediately
+      messagesEndRef.current.scrollIntoView();
+      initialScrollDone.current = true;
+    } else {
+      // Only auto-scroll if user is near the bottom (within 150px)
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      if (distanceFromBottom < 150) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [selectedThread?.messages.length]);
+
+  // Real-time WebSocket updates — fetch only new messages, append
+  const handleWsMessage = useCallback((data: any) => {
+    if (selectedThread && data.thread_id === selectedThread.thread.id) {
+      fetchThread(selectedThread.thread.id, 5, 0, 'desc').then(d => {
+        const existingIds = new Set(selectedThread.messages.map(m => m.id));
+        const newMsgs = d.messages.filter(m => !existingIds.has(m.id)).reverse();
+        if (newMsgs.length > 0) {
+          setSelectedThread(prev => prev ? {
+            ...prev,
+            messages: [...prev.messages, ...newMsgs],
+          } : prev);
+          setTotalMessages(d.total);
+          loadReactionsForThread(newMsgs);
+        }
+      }).catch(() => {});
+    }
+    fetchThreads().then(d => setThreads(d.threads)).catch(() => {});
+  }, [selectedThread?.thread.id, selectedThread?.messages.length]);
+
+  useWebSocket('new_message', handleWsMessage);
+
+  // Infinite scroll — load older messages when scrolling up
+  const hasMore = selectedThread ? selectedThread.messages.length < totalMessages : false;
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!selectedThread) return;
+    const currentCount = selectedThread.messages.length;
+    const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'desc');
+    if (data.messages.length > 0) {
+      data.messages.reverse();
+      setSelectedThread(prev => prev ? {
+        ...prev,
+        messages: [...data.messages, ...prev.messages],
+      } : prev);
+      loadReactionsForThread(data.messages);
+    }
+  }, [selectedThread?.thread.id, selectedThread?.messages.length]);
+
+  const { isLoadingMore } = useInfiniteScroll({
+    containerRef: messagesContainerRef,
+    hasMore,
+    loading: loading,
+    onLoadMore: loadOlderMessages,
+  });
+
 
   async function loadThreads() {
     const data = await fetchThreads();
@@ -95,9 +329,18 @@ export function Forum() {
   }
 
   async function selectThread(id: number) {
-    const data = await fetchThread(id);
+    initialScrollDone.current = false;
+    // Load latest messages (desc), then reverse for chronological display
+    const data = await fetchThread(id, PAGE_SIZE, 0, 'desc');
+    data.messages.reverse();
     setSelectedThread(data);
+    setTotalMessages(data.total);
     setSearchParams({ thread: id.toString() });
+    loadReactionsForThread(data.messages);
+    // Mark as read for gorn
+    if (data.messages.length > 0) {
+      markThreadRead(id, data.messages[data.messages.length - 1].id);
+    }
   }
 
   function openNewThread() {
@@ -112,11 +355,25 @@ export function Forum() {
     setLoading(true);
     try {
       if (selectedThread) {
-        // Continue existing thread
-        await sendMessage(newMessage, selectedThread.thread.id);
-        // Reload thread to see new messages
-        const data = await fetchThread(selectedThread.thread.id);
-        setSelectedThread(data);
+        const result = await sendMessage(newMessage, selectedThread.thread.id, undefined, replyTo?.id);
+        // Append the new message locally instead of re-fetching (avoids WebSocket duplicate)
+        if (result.message_id) {
+          const newMsg = {
+            id: result.message_id,
+            role: 'human' as const,
+            content: newMessage,
+            author: 'gorn',
+            reply_to_id: replyTo?.id || null,
+            principles_found: null,
+            patterns_found: null,
+            created_at: new Date().toISOString(),
+          };
+          setSelectedThread(prev => prev ? {
+            ...prev,
+            messages: [...prev.messages, newMsg],
+          } : prev);
+          setTotalMessages(prev => prev + 1);
+        }
       } else if (showNewThread) {
         // Create new thread
         const result = await sendMessage(newMessage, undefined, newTitle || undefined);
@@ -125,20 +382,13 @@ export function Forum() {
       }
       setNewMessage('');
       setNewTitle('');
+      setReplyTo(null);
     } finally {
       setLoading(false);
     }
   }
 
-  function getStatusColor(status: string) {
-    switch (status) {
-      case 'answered': return '#22c55e';
-      case 'pending': return '#eab308';
-      case 'active': return '#3b82f6';
-      case 'closed': return '#6b7280';
-      default: return '#6b7280';
-    }
-  }
+  // Status color logic moved to shared StatusBadge component
 
   async function handleToggleThread() {
     if (!selectedThread) return;
@@ -159,6 +409,58 @@ export function Forum() {
     return date.toLocaleString();
   }
 
+  async function loadReactionsForThread(messages: { id: number }[]) {
+    const map: Record<number, any[]> = {};
+    await Promise.all(messages.map(async (m) => {
+      try {
+        const res = await fetch(`${API_BASE}/message/${m.id}/reactions`);
+        const data = await res.json();
+        if (data.reactions?.length > 0) map[m.id] = data.reactions;
+      } catch { /* ignore */ }
+    }));
+    setReactions(map);
+  }
+
+  async function toggleReaction(messageId: number, emoji: string) {
+    const existing = reactions[messageId] || [];
+    const myReaction = existing.find(r => r.emoji === emoji && r.beasts.includes('karo'));
+    if (myReaction) {
+      await fetch(`${API_BASE}/message/${messageId}/react`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ beast: 'karo', emoji }),
+      });
+    } else {
+      await fetch(`${API_BASE}/message/${messageId}/react`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ beast: 'karo', emoji }),
+      });
+    }
+    // Reload reactions for this message
+    try {
+      const res = await fetch(`${API_BASE}/message/${messageId}/reactions`);
+      const data = await res.json();
+      setReactions(prev => ({ ...prev, [messageId]: data.reactions || [] }));
+    } catch { /* ignore */ }
+  }
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    const res = await fetch(`${API_BASE}/forum/search?q=${encodeURIComponent(searchQuery)}`);
+    const data = await res.json();
+    setSearchResults({ messages: data.messages, threads: data.threads });
+  }
+
+  function clearSearch() {
+    setSearchQuery('');
+    setSearchResults(null);
+  }
+
   return (
     <div className={styles.container}>
       {/* Sidebar: Thread List */}
@@ -173,21 +475,76 @@ export function Forum() {
           </button>
         </div>
 
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search forum..."
+          onSubmit={handleSearch}
+          onClear={clearSearch}
+          showClear={!!searchResults}
+        />
+
+        {searchResults && (
+          <div className={styles.searchResults}>
+            <div className={styles.searchCount}>
+              {searchResults.threads.length} threads, {searchResults.messages.length} messages
+            </div>
+            {searchResults.threads.map((t: any) => (
+              <div
+                key={`t-${t.id}`}
+                className={styles.searchItem}
+                onClick={() => { setSearchParams({ thread: t.id.toString() }); clearSearch(); }}
+              >
+                <span className={styles.searchLabel}>Thread</span>
+                <span className={styles.searchTitle}>{t.title}</span>
+              </div>
+            ))}
+            {searchResults.messages.map((m: any) => (
+              <div
+                key={`m-${m.id}`}
+                className={styles.searchItem}
+                onClick={() => { setSearchParams({ thread: m.thread_id.toString() }); clearSearch(); }}
+              >
+                <span className={styles.searchLabel}>Msg</span>
+                <span className={styles.searchTitle}>{m.content.slice(0, 80)}...</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <FilterTabs
+          items={[
+            { id: 'all', label: 'All' },
+            { id: 'announcement', label: 'Announcement' },
+            { id: 'task', label: 'Task' },
+            { id: 'discussion', label: 'Discussion' },
+            { id: 'decision', label: 'Decision' },
+            { id: 'question', label: 'Question' },
+          ]}
+          activeId={categoryFilter}
+          onChange={setCategoryFilter}
+          variant="compact"
+        />
+
         <div className={styles.threadList}>
-          {threads.map(thread => (
+          {threads
+            .filter(t => categoryFilter === 'all' || t.category === categoryFilter)
+            .map(thread => (
             <div
               key={thread.id}
-              className={`${styles.threadItem} ${selectedThread?.thread.id === thread.id ? styles.active : ''}`}
+              className={`${styles.threadItem} ${selectedThread?.thread.id === thread.id ? styles.active : ''} ${thread.pinned ? styles.pinnedThread : ''}`}
               onClick={() => setSearchParams({ thread: thread.id.toString() })}
             >
-              <div className={styles.threadTitle}>{thread.title}</div>
+              <div className={styles.threadTitle}>
+                {thread.pinned && <span className={styles.pinIcon} title="Pinned">📌 </span>}
+                <span className={styles.threadId}>#{thread.id}</span> {thread.title}
+                {unreadCounts[thread.id] > 0 && (
+                  <span className={styles.unreadBadge}>{unreadCounts[thread.id]}</span>
+                )}
+              </div>
               <div className={styles.threadMeta}>
-                <span
-                  className={styles.status}
-                  style={{ backgroundColor: getStatusColor(thread.status) }}
-                >
-                  {thread.status}
-                </span>
+                <span className={styles.categoryBadge}>{thread.category || 'discussion'}</span>
+                <StatusBadge status={thread.status} />
                 <span className={styles.count}>{thread.message_count} msgs</span>
               </div>
             </div>
@@ -203,28 +560,28 @@ export function Forum() {
       <div className={styles.main}>
         {showNewThread && !selectedThread && (
           <div className={styles.newThread}>
-            <h2>Start New Discussion</h2>
+            <h2>New Thread</h2>
             <form onSubmit={handleSendMessage} className={styles.form}>
               <input
                 type="text"
-                placeholder="Thread title (optional)"
+                placeholder="Title"
                 value={newTitle}
                 onChange={e => setNewTitle(e.target.value)}
                 className={styles.input}
               />
               <textarea
-                placeholder="Ask Oracle a question..."
+                placeholder="What's on your mind?"
                 value={newMessage}
                 onChange={e => setNewMessage(e.target.value)}
                 className={styles.textarea}
-                rows={4}
+                rows={8}
               />
               <button
                 type="submit"
                 disabled={loading || !newMessage.trim()}
                 className={styles.submitButton}
               >
-                {loading ? 'Sending...' : 'Ask Oracle'}
+                {loading ? 'Posting...' : 'Post'}
               </button>
             </form>
           </div>
@@ -233,14 +590,9 @@ export function Forum() {
         {selectedThread && (
           <div className={styles.threadDetail}>
             <div className={styles.threadHeader}>
-              <h2>{selectedThread.thread.title}</h2>
+              <h2><span className={styles.threadIdHeader}>#{selectedThread.thread.id}</span> {selectedThread.thread.title}</h2>
               <div className={styles.threadActions}>
-                <span
-                  className={styles.statusBadge}
-                  style={{ backgroundColor: getStatusColor(selectedThread.thread.status) }}
-                >
-                  {selectedThread.thread.status}
-                </span>
+                <StatusBadge status={selectedThread.thread.status} />
                 <button
                   onClick={handleToggleThread}
                   className={styles.closeButton}
@@ -250,49 +602,127 @@ export function Forum() {
               </div>
             </div>
 
-            <div className={styles.messages}>
-              {selectedThread.messages.map(msg => (
+            <div className={styles.messages} ref={messagesContainerRef}>
+              {isLoadingMore && (
+                <div style={{ textAlign: 'center', padding: '8px', opacity: 0.6, fontSize: '0.85em' }}>Loading older messages...</div>
+              )}
+              {hasMore && !isLoadingMore && (
+                <div style={{ textAlign: 'center', padding: '8px', opacity: 0.4, fontSize: '0.8em' }}>↑ Scroll up for older messages</div>
+              )}
+              {selectedThread.messages.map(msg => {
+                const identity = resolveAuthor(msg.role, msg.author, beastProfiles);
+                return (
                 <div
                   key={msg.id}
                   className={`${styles.message} ${styles[msg.role]}`}
+                  style={identity.themeColor ? { borderLeftColor: identity.themeColor } : undefined}
                 >
                   <div className={styles.messageHeader}>
                     <span className={styles.role}>
-                      {msg.role === 'oracle'
-                        ? '🔮 Oracle'
-                        : msg.role === 'claude'
-                          ? `🤖 ${msg.author || 'Claude'}`
-                          : `👤 ${msg.author || 'User'}`}
+                      {identity.avatarUrl ? (
+                        <img src={identity.avatarUrl} alt={identity.name} className={styles.avatar} />
+                      ) : (
+                        <span className={styles.avatarEmoji}>{identity.emoji}</span>
+                      )}
+                      {identity.name}
                     </span>
-                    <span className={styles.time}>{formatTime(msg.created_at)}</span>
+                    <span className={styles.time} title={msg.created_at}>{formatTime(msg.created_at)}</span>
                   </div>
+                  {msg.reply_to_id && (() => {
+                    const quoted = selectedThread.messages.find(m => m.id === msg.reply_to_id);
+                    return quoted ? (
+                      <div className={styles.inlineQuote}>
+                        <span className={styles.inlineQuoteAuthor}>{quoted.author || 'message'}:</span>
+                        {quoted.content.slice(0, 120)}{quoted.content.length > 120 ? '...' : ''}
+                      </div>
+                    ) : null;
+                  })()}
                   <div className={styles.messageContent}>
-                    {msg.content}
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        code({ className, children, ...props }) {
+                          const match = /language-(\w+)/.exec(className || '');
+                          const inline = !match && !String(children).includes('\n');
+                          return inline ? (
+                            <code className={className} {...props}>{children}</code>
+                          ) : (
+                            <SyntaxHighlighter
+                              style={oneDark}
+                              language={match?.[1] || 'text'}
+                              PreTag="div"
+                              customStyle={{ margin: '12px 0', borderRadius: '8px', fontSize: '0.85em' }}
+                            >
+                              {String(children).replace(/\n$/, '')}
+                            </SyntaxHighlighter>
+                          );
+                        },
+                      }}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
                   </div>
                   {msg.patterns_found !== null && msg.patterns_found > 0 && (
                     <div className={styles.messageMeta}>
                       Found {msg.patterns_found} patterns
                     </div>
                   )}
+                  <div className={styles.reactionBar}>
+                    {(reactions[msg.id] || []).map(r => (
+                      <button
+                        key={r.emoji}
+                        className={`${styles.reactionBtn} ${r.beasts.includes('karo') ? styles.reactionActive : ''}`}
+                        onClick={() => toggleReaction(msg.id, r.emoji)}
+                        title={r.beasts.join(', ')}
+                      >
+                        {r.emoji} {r.count}
+                      </button>
+                    ))}
+                    <button
+                      className={styles.addReaction}
+                      onClick={() => toggleReaction(msg.id, '👍')}
+                      title="React"
+                    >+</button>
+                    <button
+                      className={styles.replyBtn}
+                      onClick={() => {
+                        setReplyTo({ id: msg.id, author: msg.author, content: msg.content });
+                        const quote = `> **${msg.author || 'message'}**: ${msg.content.split('\n')[0].slice(0, 80)}\n\n`;
+                        setNewMessage(quote);
+                      }}
+                      title="Reply to this message"
+                    >↩ Reply</button>
+                  </div>
                 </div>
-              ))}
+                );
+              })}
+              <div ref={messagesEndRef} />
             </div>
 
             <form onSubmit={handleSendMessage} className={styles.replyForm}>
-              <textarea
-                placeholder="Continue the discussion..."
-                value={newMessage}
-                onChange={e => setNewMessage(e.target.value)}
-                className={styles.textarea}
-                rows={3}
-              />
-              <button
-                type="submit"
-                disabled={loading || !newMessage.trim()}
-                className={styles.submitButton}
-              >
-                {loading ? 'Sending...' : 'Reply'}
-              </button>
+              {replyTo && (
+                <div className={styles.quotePreview}>
+                  <span className={styles.quoteLabel}>Replying to {replyTo.author || 'message'}</span>
+                  <span className={styles.quoteText}>{replyTo.content.slice(0, 100)}{replyTo.content.length > 100 ? '...' : ''}</span>
+                  <button type="button" className={styles.quoteClear} onClick={() => setReplyTo(null)}>✕</button>
+                </div>
+              )}
+              <div className={styles.replyInputRow}>
+                <textarea
+                  placeholder={replyTo ? `Reply to ${replyTo.author || 'message'}...` : 'Continue the discussion...'}
+                  value={newMessage}
+                  onChange={e => setNewMessage(e.target.value)}
+                  className={styles.textarea}
+                  rows={3}
+                />
+                <button
+                  type="submit"
+                  disabled={loading || !newMessage.trim()}
+                  className={styles.submitButton}
+                >
+                  {loading ? 'Sending...' : 'Reply'}
+                </button>
+              </div>
             </form>
           </div>
         )}

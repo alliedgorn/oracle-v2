@@ -111,7 +111,7 @@ export function Playground() {
               onChange={e => setQuery(e.target.value)}
               placeholder="Type a query to compare FTS, Vector, and Hybrid..."
               className={styles.input}
-              autoFocus
+              
             />
             <button type="submit" className={styles.button} disabled={loading}>
               Compare
@@ -145,7 +145,7 @@ export function Playground() {
               onChange={e => setQuery(e.target.value)}
               placeholder="Search query..."
               className={styles.input}
-              autoFocus
+              
             />
             <button type="submit" className={styles.button} disabled={loading}>
               {loading ? 'Searching...' : 'Compare'}

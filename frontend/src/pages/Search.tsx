@@ -54,7 +54,7 @@ export function Search() {
           onChange={e => setQuery(e.target.value)}
           placeholder="Search for patterns, principles, learnings..."
           className={styles.input}
-          autoFocus
+          
         />
         <button type="submit" className={styles.button}>
           Search

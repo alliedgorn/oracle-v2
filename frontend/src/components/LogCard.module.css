@@ -80,7 +80,7 @@
 .projectBadge {
   font-size: 11px;
   color: var(--text-secondary);
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
   padding: 2px 8px;
   border-radius: 4px;
   font-family: monospace;
@@ -116,7 +116,7 @@
 .scoreBarFill {
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, #6d28d9, #a78bfa, #4ade80);
+  background: linear-gradient(90deg, var(--accent-hover), var(--accent), #4ade80);
   transition: width 0.3s ease;
 }
 
@@ -144,8 +144,8 @@
 }
 
 .source_vector {
-  color: #a78bfa;
-  background: rgba(167, 139, 250, 0.15);
+  color: var(--accent);
+  background: rgba(212, 148, 58, 0.15);
 }
 
 .source_hybrid {

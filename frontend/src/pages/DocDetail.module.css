@@ -1,5 +1,5 @@
 .container {
-  max-width: 720px;
+  max-width: var(--width-medium);
 }
 
 .backLink {
@@ -84,7 +84,7 @@
 }
 
 .content code {
-  background: rgba(167, 139, 250, 0.15);
+  background: rgba(212, 148, 58, 0.15);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 15px;
@@ -156,7 +156,7 @@
 }
 
 .content th {
-  background: rgba(167, 139, 250, 0.15);
+  background: rgba(212, 148, 58, 0.15);
   color: var(--accent);
   font-weight: 600;
 }
@@ -250,7 +250,7 @@
 .projectSource {
   font-size: 12px;
   color: var(--accent);
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
   padding: 4px 10px;
   border-radius: 4px;
   font-family: monospace;
@@ -339,13 +339,13 @@
   color: var(--accent);
   text-decoration: none;
   padding: 4px 10px;
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
   border-radius: 4px;
   transition: all 0.2s;
 }
 
 .githubLink:hover {
-  background: rgba(167, 139, 250, 0.2);
+  background: rgba(212, 148, 58, 0.2);
   text-decoration: none;
 }
 
@@ -423,7 +423,7 @@
 
 .navBtn:hover:not(:disabled) {
   border-color: var(--accent);
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
 }
 
 .navBtn:disabled {
@@ -437,8 +437,8 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  background: rgba(167, 139, 250, 0.2);
-  border: 1px solid rgba(167, 139, 250, 0.3);
+  background: rgba(212, 148, 58, 0.2);
+  border: 1px solid rgba(212, 148, 58, 0.3);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
@@ -534,12 +534,12 @@
 }
 
 .modalContent::-webkit-scrollbar-thumb {
-  background: rgba(167, 139, 250, 0.3);
+  background: rgba(212, 148, 58, 0.3);
   border-radius: 4px;
 }
 
 .modalContent::-webkit-scrollbar-thumb:hover {
-  background: rgba(167, 139, 250, 0.5);
+  background: rgba(212, 148, 58, 0.5);
 }
 
 /* Line numbers */

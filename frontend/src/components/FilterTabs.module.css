@@ -1,0 +1,45 @@
+.tabs {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.tab {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.tab.active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+/* Compact variant — for sidebar/small spaces */
+.compact .tab {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.count {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75em;
+  padding: 1px 6px;
+  border-radius: 10px;
+}

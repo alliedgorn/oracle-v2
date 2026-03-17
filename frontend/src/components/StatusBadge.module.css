@@ -1,0 +1,10 @@
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: white;
+  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1.4;
+}

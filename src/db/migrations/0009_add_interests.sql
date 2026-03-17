@@ -1,0 +1,1 @@
+ALTER TABLE `beast_profiles` ADD `interests` text;

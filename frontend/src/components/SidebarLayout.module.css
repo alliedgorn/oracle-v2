@@ -1,6 +1,6 @@
 .container {
   display: flex;
-  max-width: 1200px;
+  max-width: var(--width-full);
   margin: 0 auto;
   padding: 32px 24px;
   gap: 48px;

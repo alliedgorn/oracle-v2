@@ -1,0 +1,485 @@
+.container {
+  display: flex;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+  gap: 24px;
+  height: calc(100vh - 80px);
+}
+
+/* Left Panel — Beast Grid */
+.packGrid {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin: 0 0 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.beastGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.beastCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  border-left: 3px solid var(--beast-color, transparent);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.beastCard:hover {
+  background: var(--bg-secondary);
+  border-color: var(--border);
+}
+
+.beastCard.selected {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+}
+
+.beastCard.processing {
+  animation: cardPulse 2s ease-in-out infinite;
+}
+
+@keyframes cardPulse {
+  0%, 100% {
+    background: var(--bg-card);
+    box-shadow: none;
+  }
+  50% {
+    background: rgba(63, 185, 80, 0.04);
+    box-shadow: 0 0 8px rgba(63, 185, 80, 0.1);
+  }
+}
+
+.beastCard.idle {
+  /* steady state — no animation */
+}
+
+.beastCard.shell {
+  opacity: 0.75;
+}
+
+.beastCard.shell:hover {
+  opacity: 0.9;
+}
+
+.beastCard.offline {
+  opacity: 0.5;
+}
+
+.beastCard.offline:hover {
+  opacity: 0.7;
+}
+
+/* Avatar */
+.avatarContainer {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.beastAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.beastEmoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  font-size: 22px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 50%;
+}
+
+.statusDot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-card);
+}
+
+.dotOnline {
+  background: #3fb950;
+}
+
+.dotOffline {
+  background: #4b5563;
+}
+
+.beastName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.beastName:hover {
+  color: var(--accent);
+}
+
+.beastRole {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+/* Right Panel — Terminal */
+.terminalPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #0d1117;
+}
+
+.terminalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.terminalTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.terminalRole {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.terminalControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.interactiveToggle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.interactiveToggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.interactiveToggle.toggleActive {
+  background: rgba(255, 123, 114, 0.15);
+  border-color: rgba(255, 123, 114, 0.4);
+  color: #ff7b72;
+}
+
+.terminalStatus {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.statusProcessing {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.1);
+}
+
+.statusIdle {
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.1);
+}
+
+.statusShell {
+  color: #6e7681;
+  background: rgba(110, 118, 129, 0.1);
+}
+
+.statusOffline {
+  color: var(--text-muted);
+  background: rgba(110, 118, 129, 0.1);
+}
+
+.terminalContainer {
+  flex: 1;
+  padding: 8px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* xterm.js overrides */
+.terminalContainer :global(.xterm) {
+  height: auto !important;
+  min-height: 100%;
+}
+
+.terminalContainer :global(.xterm-viewport) {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Allow touch scrolling through xterm on mobile */
+@media (max-width: 768px) {
+  .terminalContainer {
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .terminalContainer :global(.xterm-screen),
+  .terminalContainer :global(.xterm-helpers),
+  .terminalContainer :global(.xterm-helper-textarea) {
+    touch-action: pan-y !important;
+    pointer-events: none;
+  }
+
+  .terminalContainer :global(.xterm) {
+    pointer-events: none;
+  }
+
+  .terminalContainer {
+    pointer-events: auto;
+  }
+}
+
+/* Input Bar */
+.inputBar {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.specialKeys {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.keyButton {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.keyButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.inputForm {
+  display: flex;
+  gap: 8px;
+}
+
+.terminalInput {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.terminalInput:focus {
+  border-color: var(--accent);
+}
+
+.terminalInput::placeholder {
+  color: var(--text-muted);
+}
+
+.sendButton {
+  padding: 8px 16px;
+  background: var(--accent);
+  border: none;
+  color: white;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.sendButton:hover {
+  background: var(--accent-hover);
+}
+
+/* Placeholder */
+.terminalPlaceholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.placeholderContent {
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.placeholderIcon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.placeholderContent p {
+  font-size: 16px;
+  margin: 0;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+    height: auto;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .packGrid {
+    width: 100%;
+  }
+
+  .title {
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+
+  .beastGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 6px;
+  }
+
+  .beastCard {
+    flex-direction: column;
+    text-align: center;
+    padding: 10px 6px;
+    gap: 6px;
+  }
+
+  .beastEmoji {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+  }
+
+  .beastAvatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .beastName {
+    font-size: 11px;
+  }
+
+  .beastRole {
+    display: none;
+  }
+
+  .statusDot {
+    width: 8px;
+    height: 8px;
+  }
+
+  .terminalPanel {
+    height: 55vh;
+    min-height: 300px;
+  }
+
+  .terminalHeader {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .terminalTitle {
+    font-size: 13px;
+  }
+
+  .terminalRole {
+    display: none;
+  }
+
+  .inputBar {
+    padding: 6px 8px;
+  }
+
+  .specialKeys {
+    gap: 2px;
+    margin-bottom: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .specialKeys::-webkit-scrollbar {
+    display: none;
+  }
+
+  .keyButton {
+    padding: 4px 6px;
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  .terminalInput {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .beastGrid {
+    grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
+  }
+}

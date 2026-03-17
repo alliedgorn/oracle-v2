@@ -1,5 +1,5 @@
 .container {
-  max-width: 1000px;
+  max-width: var(--width-wide);
   margin: 0 auto;
   padding: 32px 24px;
 }
@@ -52,7 +52,7 @@
 .periodBtn.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0a0a0f;
+  color: var(--bg-primary);
   font-weight: 500;
 }
 
@@ -152,7 +152,7 @@
 .refreshBtn:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
 }
 
 .refreshBtn:disabled {
@@ -200,12 +200,12 @@
 }
 
 .tabBtn:hover {
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
   color: var(--text-primary);
 }
 
 .tabBtn.active {
-  background: rgba(167, 139, 250, 0.2);
+  background: rgba(212, 148, 58, 0.2);
   color: var(--accent);
   font-weight: 500;
 }
@@ -219,7 +219,7 @@
 
 .tabBtn.active .tabCount {
   background: var(--accent);
-  color: #0a0a0f;
+  color: var(--bg-primary);
 }
 
 /* Activity List */
@@ -247,7 +247,7 @@
 }
 
 .activityItem.clickable:hover {
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
   border-radius: 8px;
   margin: 0 -8px;
   padding-left: 8px;
@@ -262,7 +262,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
   border-radius: 8px;
 }
 
@@ -318,7 +318,7 @@
 
 .gapCount {
   background: #f59e0b !important;
-  color: #0a0a0f !important;
+  color: var(--bg-primary) !important;
 }
 
 .gapItem {
@@ -365,7 +365,7 @@
 .learnBtn {
   background: #f59e0b;
   border: none;
-  color: #0a0a0f;
+  color: var(--bg-primary);
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;

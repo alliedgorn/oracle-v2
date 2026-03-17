@@ -1,5 +1,5 @@
 .page {
-  max-width: 900px;
+  max-width: var(--width-wide);
   margin: 0 auto;
   padding: 48px 32px;
 }
@@ -46,7 +46,7 @@
 }
 
 .hint code {
-  background: rgba(167, 139, 250, 0.15);
+  background: rgba(212, 148, 58, 0.15);
   padding: 4px 8px;
   border-radius: 4px;
   color: var(--accent);
@@ -132,7 +132,7 @@
 .linkStatus {
   font-size: 11px;
   color: var(--accent);
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
   padding: 2px 8px;
   border-radius: 4px;
 }
@@ -166,7 +166,7 @@
 }
 
 .depth {
-  background: rgba(167, 139, 250, 0.15);
+  background: rgba(212, 148, 58, 0.15);
   padding: 2px 8px;
   border-radius: 4px;
   color: var(--accent);
@@ -195,7 +195,7 @@
 }
 
 .badgeReviewed {
-  background: rgba(59, 130, 246, 0.2);
+  background: rgba(212, 148, 58, 0.2);
   color: #60a5fa;
 }
 
@@ -239,7 +239,7 @@
 }
 
 .navButton {
-  background: rgba(167, 139, 250, 0.15);
+  background: rgba(212, 148, 58, 0.15);
   border: 1px solid var(--accent);
   color: var(--accent);
   padding: 6px 12px;
@@ -596,11 +596,11 @@
 }
 
 .fileItem:hover {
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
 }
 
 .fileItem.expanded {
-  background: rgba(167, 139, 250, 0.15);
+  background: rgba(212, 148, 58, 0.15);
 }
 
 .filePreview {
@@ -643,7 +643,7 @@
   font-family: monospace;
   font-size: 12px;
   color: var(--accent);
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
   padding: 4px 10px;
   border-radius: 4px;
   display: inline-block;
@@ -659,7 +659,7 @@
 }
 
 .viewOnGithub {
-  background: rgba(167, 139, 250, 0.2);
+  background: rgba(212, 148, 58, 0.2);
   color: var(--accent);
   padding: 8px 16px;
   border-radius: 6px;
@@ -669,7 +669,7 @@
 }
 
 .viewOnGithub:hover {
-  background: rgba(167, 139, 250, 0.3);
+  background: rgba(212, 148, 58, 0.3);
   color: #fff;
 }
 
@@ -691,7 +691,7 @@
 
 .learningSnippet {
   padding: 10px 14px;
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
   border-left: 3px solid var(--accent);
   border-radius: 4px;
   font-size: 13px;
@@ -703,7 +703,7 @@
   font-size: 11px;
   padding: 3px 10px;
   border-radius: 12px;
-  background: rgba(59, 130, 246, 0.2);
+  background: rgba(212, 148, 58, 0.2);
   color: #60a5fa;
   font-weight: 500;
 }
@@ -739,7 +739,7 @@
 .commitHash {
   font-family: monospace;
   font-size: 12px;
-  background: rgba(167, 139, 250, 0.15);
+  background: rgba(212, 148, 58, 0.15);
   padding: 4px 8px;
   border-radius: 4px;
   color: var(--accent);
@@ -749,7 +749,7 @@
 }
 
 a.commitHash:hover {
-  background: rgba(167, 139, 250, 0.3);
+  background: rgba(212, 148, 58, 0.3);
   color: #fff;
 }
 
@@ -785,8 +785,8 @@ a.commitHash:hover {
 }
 
 .issueState.closed {
-  background: rgba(139, 92, 246, 0.2);
-  color: #a78bfa;
+  background: rgba(192, 125, 42, 0.2);
+  color: var(--accent);
 }
 
 .issueTitle {
@@ -855,7 +855,7 @@ a.commitHash:hover {
 .projectLink {
   font-size: 12px;
   color: var(--text-secondary);
-  background: rgba(167, 139, 250, 0.1);
+  background: var(--accent-glow);
   padding: 4px 10px;
   border-radius: 4px;
   font-family: monospace;
@@ -865,7 +865,7 @@ a.commitHash:hover {
 
 .projectLink:hover {
   color: var(--accent);
-  background: rgba(167, 139, 250, 0.2);
+  background: rgba(212, 148, 58, 0.2);
 }
 
 .universalBadge {

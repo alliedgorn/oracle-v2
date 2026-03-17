@@ -80,6 +80,7 @@ export interface OracleThreadInput {
   title?: string;         // For new threads
   role?: MessageRole;     // Default: 'human'
   model?: string;         // e.g., 'opus', 'sonnet' for Claude calls
+  author?: string;        // Override author (e.g., 'karo' from HTTP callers)
 }
 
 export interface OracleThreadOutput {
@@ -92,6 +93,7 @@ export interface OracleThreadOutput {
   };
   status: ThreadStatus;
   issueUrl?: string;
+  notified?: string[];
 }
 
 // Sync thread to GitHub Issue

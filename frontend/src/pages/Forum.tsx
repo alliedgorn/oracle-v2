@@ -432,18 +432,18 @@ export function Forum() {
 
   async function toggleReaction(messageId: number, emoji: string) {
     const existing = reactions[messageId] || [];
-    const myReaction = existing.find(r => r.emoji === emoji && r.beasts.includes('karo'));
+    const myReaction = existing.find(r => r.emoji === emoji && r.beasts.includes('gorn'));
     if (myReaction) {
       await fetch(`${API_BASE}/message/${messageId}/react`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beast: 'karo', emoji }),
+        body: JSON.stringify({ beast: 'gorn', emoji }),
       });
     } else {
       await fetch(`${API_BASE}/message/${messageId}/react`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beast: 'karo', emoji }),
+        body: JSON.stringify({ beast: 'gorn', emoji }),
       });
     }
     // Reload reactions for this message
@@ -680,7 +680,7 @@ export function Forum() {
                     {(reactions[msg.id] || []).map(r => (
                       <button
                         key={r.emoji}
-                        className={`${styles.reactionBtn} ${r.beasts.includes('karo') ? styles.reactionActive : ''}`}
+                        className={`${styles.reactionBtn} ${r.beasts.includes('gorn') ? styles.reactionActive : ''}`}
                         onClick={() => toggleReaction(msg.id, r.emoji)}
                         title={r.beasts.join(', ')}
                       >

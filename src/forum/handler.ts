@@ -297,8 +297,8 @@ export async function handleThreadMessage(
     author,
   });
 
-  // Mark as pending (no auto-response engine currently)
-  if (role === 'human' || role === 'claude') {
+  // Mark as pending — but don't reopen closed threads
+  if ((role === 'human' || role === 'claude') && thread.status !== 'closed') {
     updateThreadStatus(thread.id, 'pending');
   }
 

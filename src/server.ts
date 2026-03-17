@@ -1892,6 +1892,10 @@ app.get('/api/thread/:id', (c) => {
     messages: threadData.messages.map(m => {
       // Get reply_to_id from raw SQL (not in Drizzle schema)
       const raw = sqlite.prepare('SELECT reply_to_id FROM forum_messages WHERE id = ?').get(m.id) as any;
+      // Get reactions for this message
+      const reactionRows = sqlite.prepare(
+        'SELECT emoji, GROUP_CONCAT(beast_name) as beasts, COUNT(*) as count FROM forum_reactions WHERE message_id = ? GROUP BY emoji'
+      ).all(m.id) as any[];
       return {
         id: m.id,
         role: m.role,
@@ -1901,6 +1905,7 @@ app.get('/api/thread/:id', (c) => {
         principles_found: m.principlesFound,
         patterns_found: m.patternsFound,
         created_at: new Date(m.createdAt).toISOString(),
+        reactions: reactionRows.map(r => ({ emoji: r.emoji, beasts: r.beasts.split(','), count: r.count })),
       };
     }),
     total: threadData.total,

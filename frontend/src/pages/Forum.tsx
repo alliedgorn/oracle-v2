@@ -228,21 +228,17 @@ export function Forum() {
     const pollMessages = setInterval(() => {
       if (document.hidden) return;
       if (selectedThread) {
-        // Check for new messages by fetching latest 5
         fetchThread(selectedThread.thread.id, 5, 0, 'desc').then(data => {
-          if (data.total !== totalMessages) {
-            // New messages arrived — append them
-            const existingIds = new Set(selectedThread.messages.map(m => m.id));
+          // Dedup inside functional updater to use latest state
+          setSelectedThread(prev => {
+            if (!prev) return prev;
+            const existingIds = new Set(prev.messages.map(m => m.id));
             const newMsgs = data.messages.filter(m => !existingIds.has(m.id)).reverse();
-            if (newMsgs.length > 0) {
-              setSelectedThread(prev => prev ? {
-                ...prev,
-                messages: [...prev.messages, ...newMsgs],
-              } : prev);
-              setTotalMessages(data.total);
-              loadReactionsForThread(newMsgs);
-            }
-          }
+            if (newMsgs.length === 0) return prev;
+            loadReactionsForThread(newMsgs);
+            return { ...prev, messages: [...prev.messages, ...newMsgs] };
+          });
+          setTotalMessages(data.total);
         }).catch(() => {});
       }
     }, 3000);
@@ -281,20 +277,19 @@ export function Forum() {
   const handleWsMessage = useCallback((data: any) => {
     if (selectedThread && data.thread_id === selectedThread.thread.id) {
       fetchThread(selectedThread.thread.id, 5, 0, 'desc').then(d => {
-        const existingIds = new Set(selectedThread.messages.map(m => m.id));
-        const newMsgs = d.messages.filter(m => !existingIds.has(m.id)).reverse();
-        if (newMsgs.length > 0) {
-          setSelectedThread(prev => prev ? {
-            ...prev,
-            messages: [...prev.messages, ...newMsgs],
-          } : prev);
-          setTotalMessages(d.total);
+        setSelectedThread(prev => {
+          if (!prev) return prev;
+          const existingIds = new Set(prev.messages.map(m => m.id));
+          const newMsgs = d.messages.filter(m => !existingIds.has(m.id)).reverse();
+          if (newMsgs.length === 0) return prev;
           loadReactionsForThread(newMsgs);
-        }
+          return { ...prev, messages: [...prev.messages, ...newMsgs] };
+        });
+        setTotalMessages(d.total);
       }).catch(() => {});
     }
     fetchThreads().then(d => setThreads(d.threads)).catch(() => {});
-  }, [selectedThread?.thread.id, selectedThread?.messages.length]);
+  }, [selectedThread?.thread.id]);
 
   useWebSocket('new_message', handleWsMessage);
 

@@ -2500,6 +2500,152 @@ app.patch('/api/dm/:name/:other/read-all', (c) => {
 });
 
 // ============================================================================
+// Library — searchable knowledge base
+// ============================================================================
+
+// Create library table
+try {
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS library (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'learning',
+    author TEXT NOT NULL,
+    tags TEXT DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`).run();
+} catch { /* already exists */ }
+
+// GET /api/library — list/search library entries
+app.get('/api/library', (c) => {
+  const q = c.req.query('q');
+  const type = c.req.query('type');
+  const author = c.req.query('author');
+  const tag = c.req.query('tag');
+  const limit = Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50);
+  const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0);
+
+  let query = 'SELECT * FROM library WHERE 1=1';
+  const params: any[] = [];
+
+  if (q) {
+    query += ' AND (title LIKE ? OR content LIKE ?)';
+    params.push(`%${q}%`, `%${q}%`);
+  }
+  if (type) {
+    query += ' AND type = ?';
+    params.push(type);
+  }
+  if (author) {
+    query += ' AND author = ?';
+    params.push(author);
+  }
+  if (tag) {
+    query += ' AND tags LIKE ?';
+    params.push(`%"${tag}"%`);
+  }
+
+  // Count
+  const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as count');
+  const countResult = sqlite.prepare(countQuery).get(...params) as any;
+
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+
+  const rows = sqlite.prepare(query).all(...params) as any[];
+
+  return c.json({
+    entries: rows.map(r => ({
+      id: r.id,
+      title: r.title,
+      content: r.content,
+      type: r.type,
+      author: r.author,
+      tags: JSON.parse(r.tags || '[]'),
+      created_at: new Date(r.created_at).toISOString(),
+      updated_at: new Date(r.updated_at).toISOString(),
+    })),
+    total: countResult?.count || 0,
+  });
+});
+
+// GET /api/library/:id — get single entry
+app.get('/api/library/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const row = sqlite.prepare('SELECT * FROM library WHERE id = ?').get(id) as any;
+  if (!row) return c.json({ error: 'Entry not found' }, 404);
+
+  return c.json({
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    type: row.type,
+    author: row.author,
+    tags: JSON.parse(row.tags || '[]'),
+    created_at: new Date(row.created_at).toISOString(),
+    updated_at: new Date(row.updated_at).toISOString(),
+  });
+});
+
+// POST /api/library — create entry
+app.post('/api/library', async (c) => {
+  try {
+    const data = await c.req.json();
+    if (!data.title || !data.content || !data.author) {
+      return c.json({ error: 'title, content, and author required' }, 400);
+    }
+
+    const allowed = ['research', 'architecture', 'learning', 'decision'];
+    const type = allowed.includes(data.type) ? data.type : 'learning';
+    const tags = JSON.stringify(data.tags || []);
+    const now = Date.now();
+
+    const result = sqlite.prepare(
+      'INSERT INTO library (title, content, type, author, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(data.title, data.content, type, data.author, tags, now, now);
+
+    return c.json({
+      id: (result as any).lastInsertRowid,
+      title: data.title,
+      type,
+      author: data.author,
+    }, 201);
+  } catch (e) {
+    return c.json({ error: 'Invalid JSON' }, 400);
+  }
+});
+
+// PATCH /api/library/:id — update entry
+app.patch('/api/library/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  try {
+    const data = await c.req.json();
+    const now = Date.now();
+    const updates: string[] = ['updated_at = ?'];
+    const params: any[] = [now];
+
+    if (data.title) { updates.push('title = ?'); params.push(data.title); }
+    if (data.content) { updates.push('content = ?'); params.push(data.content); }
+    if (data.type) { updates.push('type = ?'); params.push(data.type); }
+    if (data.tags) { updates.push('tags = ?'); params.push(JSON.stringify(data.tags)); }
+
+    params.push(id);
+    sqlite.prepare(`UPDATE library SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    return c.json({ success: true, id });
+  } catch (e) {
+    return c.json({ error: 'Invalid JSON' }, 400);
+  }
+});
+
+// GET /api/library/types — list available types and counts
+app.get('/api/library/types', (c) => {
+  const rows = sqlite.prepare('SELECT type, COUNT(*) as count FROM library GROUP BY type ORDER BY count DESC').all() as any[];
+  return c.json({ types: rows });
+});
+
+// ============================================================================
 // Supersede Log Routes (Issue #18, #19)
 // ============================================================================
 

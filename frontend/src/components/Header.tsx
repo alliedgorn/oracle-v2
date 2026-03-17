@@ -16,6 +16,7 @@ const navGroups = [
   {
     label: 'More',
     items: [
+      { path: '/library', label: 'Library' },
       { path: '/groups', label: 'Groups' },
       { path: '/playbook', label: 'Playbook' },
       { path: '/overview', label: 'Overview' },

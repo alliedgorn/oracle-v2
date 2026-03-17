@@ -26,6 +26,7 @@ import { GornQueue } from './pages/GornQueue';
 import { RemoteControl } from './pages/RemoteControl';
 import { RemotePanel } from './components/RemotePanel';
 import { Mindlink } from './pages/Mindlink';
+import { Library } from './pages/Library';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
@@ -77,6 +78,7 @@ function AppContent() {
         <Route path="/queue" element={<RequireAuth><GornQueue /></RequireAuth>} />
         <Route path="/mindlink" element={<RequireAuth><Mindlink /></RequireAuth>} />
         <Route path="/remote" element={<RequireAuth><RemoteControl /></RequireAuth>} />
+        <Route path="/library" element={<RequireAuth><Library /></RequireAuth>} />
         <Route path="/forum" element={<RequireAuth><Forum /></RequireAuth>} />
         <Route path="/dms" element={<RequireAuth><DirectMessages /></RequireAuth>} />
         <Route path="/evolution" element={<RequireAuth><Evolution /></RequireAuth>} />

@@ -1982,6 +1982,14 @@ app.post('/api/message/:id/react', async (c) => {
     if (!body.beast || !body.emoji) {
       return c.json({ error: 'beast and emoji are required' }, 400);
     }
+    // Sender validation for non-local requests
+    if (!isLocalNetwork(c)) {
+      const as = body.as?.toLowerCase();
+      if (!as) return c.json({ error: 'as param required for sender validation' }, 400);
+      if (as !== body.beast.toLowerCase() && as !== 'gorn') {
+        return c.json({ error: 'Can only react as yourself' }, 403);
+      }
+    }
     if (!SUPPORTED_EMOJI.has(body.emoji)) {
       return c.json({ error: `Unsupported emoji. Supported: ${[...SUPPORTED_EMOJI].join(' ')}` }, 400);
     }
@@ -2004,6 +2012,13 @@ app.delete('/api/message/:id/react', async (c) => {
     const body = await c.req.json();
     if (!body.beast || !body.emoji) {
       return c.json({ error: 'beast and emoji are required' }, 400);
+    }
+    if (!isLocalNetwork(c)) {
+      const as = body.as?.toLowerCase();
+      if (!as) return c.json({ error: 'as param required' }, 400);
+      if (as !== body.beast.toLowerCase() && as !== 'gorn') {
+        return c.json({ error: 'Can only remove your own reactions' }, 403);
+      }
     }
     sqlite.prepare('DELETE FROM forum_reactions WHERE message_id = ? AND beast_name = ? AND emoji = ?')
       .run(messageId, body.beast.toLowerCase(), body.emoji);

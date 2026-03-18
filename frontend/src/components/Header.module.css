@@ -189,13 +189,21 @@
   }
 
   .navLink {
-    padding: 6px 12px;
+    padding: 10px 12px;
     font-size: 13px;
     white-space: nowrap;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .settingsLink, .logoutButton {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .sessionStats {
-    font-size: 11px;
+    font-size: 12px;
     gap: 8px;
   }
 

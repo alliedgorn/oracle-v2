@@ -40,3 +40,21 @@
 .clearButton:hover {
   color: var(--text-primary);
 }
+
+@media (max-width: 768px) {
+  .input {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
+
+  .clearButton {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    right: 0;
+    font-size: 16px;
+  }
+}

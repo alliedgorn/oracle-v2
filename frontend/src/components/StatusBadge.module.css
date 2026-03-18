@@ -8,3 +8,10 @@
   font-weight: 500;
   line-height: 1.4;
 }
+
+@media (max-width: 768px) {
+  .badge {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+}

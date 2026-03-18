@@ -4,6 +4,7 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import styles from './DirectMessages.module.css';
 import { SearchInput } from '../components/SearchInput';
+import { ImageUpload } from '../components/ImageUpload';
 
 interface DashboardConversation {
   id: number;
@@ -420,6 +421,7 @@ export function DirectMessages() {
 
             {selectedConv && selectedConv.participants.includes('gorn') && (
               <form onSubmit={handleSend} className={styles.replyForm}>
+                <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
                 <div className={styles.replyInput}>
                   <textarea
                     placeholder="Message... (⌘+Enter to send)"

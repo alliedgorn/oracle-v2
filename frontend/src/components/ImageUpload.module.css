@@ -1,0 +1,109 @@
+/* Upload trigger button — sits in message composer */
+.uploadBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.uploadBtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.uploadBtn.uploading {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Hidden file input */
+.fileInput {
+  display: none;
+}
+
+/* Preview area — shows above composer when image is staged */
+.preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.thumbnail {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.fileName {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileSize {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.removeBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+
+.removeBtn:hover {
+  color: var(--danger);
+  background: rgba(196, 75, 63, 0.1);
+}
+
+/* Upload progress */
+.progress {
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .uploadBtn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .removeBtn {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .thumbnail {
+    width: 40px;
+    height: 40px;
+  }
+}

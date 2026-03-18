@@ -8,6 +8,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import styles from './Forum.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
+import { ImageUpload } from '../components/ImageUpload';
 import { SearchInput } from '../components/SearchInput';
 import { StatusBadge } from '../components/StatusBadge';
 import { FilterTabs } from '../components/FilterTabs';
@@ -730,6 +731,7 @@ export function Forum() {
                   <button type="button" className={styles.quoteClear} onClick={() => setReplyTo(null)}>✕</button>
                 </div>
               )}
+              <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
               <div className={styles.replyInputRow}>
                 <textarea
                   placeholder={replyTo ? `Reply to ${replyTo.author || 'message'}...` : 'Continue the discussion...'}

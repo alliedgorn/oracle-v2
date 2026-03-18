@@ -3035,6 +3035,9 @@ try {
   )`).run();
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_beast_schedules_beast ON beast_schedules(beast)`).run();
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_beast_schedules_due ON beast_schedules(next_due_at)`).run();
+  // v2 columns
+  try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN last_triggered_at TEXT`).run(); } catch { /* exists */ }
+  try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN trigger_status TEXT DEFAULT 'pending'`).run(); } catch { /* exists */ }
 } catch { /* already exists */ }
 
 const VALID_INTERVALS: Record<string, number> = {
@@ -3175,6 +3178,89 @@ app.delete('/api/schedules/:id', async (c) => {
   wsBroadcast('schedule_update', { action: 'deleted', id });
   return c.json({ deleted: true, id });
 });
+
+// PATCH /api/schedules/:id/trigger — mark as triggered (server-side only)
+app.patch('/api/schedules/:id/trigger', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Schedule not found' }, 404);
+  const now = new Date().toISOString();
+  sqlite.prepare(
+    `UPDATE beast_schedules SET last_triggered_at = ?, trigger_status = 'triggered', updated_at = datetime('now') WHERE id = ?`
+  ).run(now, id);
+  const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
+  wsBroadcast('schedule_update', { action: 'triggered', schedule: updated });
+  return c.json(updated);
+});
+
+// GET /api/scheduler/health — daemon status
+app.get('/api/scheduler/health', (c) => {
+  return c.json({ status: 'running', interval_seconds: 60, last_check: schedulerLastCheck });
+});
+
+// ============================================================================
+// Scheduler Auto-Trigger Daemon (60s polling)
+// ============================================================================
+
+let schedulerLastCheck: string | null = null;
+
+function runSchedulerCycle() {
+  try {
+    const now = new Date().toISOString();
+    schedulerLastCheck = now;
+
+    // Find all overdue, enabled schedules that haven't been triggered yet (or were triggered but not run)
+    const overdue = sqlite.prepare(
+      `SELECT * FROM beast_schedules
+       WHERE enabled = 1 AND next_due_at <= ?
+       AND (trigger_status IS NULL OR trigger_status = 'pending' OR trigger_status = 'completed' OR trigger_status = 'failed')
+       ORDER BY next_due_at`
+    ).all(now) as any[];
+
+    for (const schedule of overdue) {
+      const sessionName = schedule.beast.charAt(0).toUpperCase() + schedule.beast.slice(1);
+
+      // Check if Beast tmux session exists
+      try {
+        execSync(`tmux has-session -t ${JSON.stringify(sessionName)}`, { timeout: 2000 });
+      } catch {
+        // Session not found — skip, log
+        console.log(`[Scheduler] Skip ${schedule.beast}/${schedule.task}: tmux session '${sessionName}' not found`);
+        continue;
+      }
+
+      // Send comment notification to Beast (NOT a command — Option 1 per Gnarl's review)
+      // Sanitize task name: strip any chars that could be interpreted by tmux/shell
+      const safeTask = schedule.task.replace(/[^a-zA-Z0-9 _./-]/g, '');
+      const notification = `# [Scheduler] Due now: ${safeTask} (schedule #${schedule.id})`;
+
+      try {
+        execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(notification)}`, { timeout: 2000 });
+        execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} Enter`, { timeout: 2000 });
+
+        // Mark as triggered
+        sqlite.prepare(
+          `UPDATE beast_schedules SET last_triggered_at = ?, trigger_status = 'triggered', updated_at = datetime('now') WHERE id = ?`
+        ).run(now, schedule.id);
+
+        wsBroadcast('schedule_update', { action: 'triggered', schedule: { ...schedule, last_triggered_at: now, trigger_status: 'triggered' } });
+        console.log(`[Scheduler] Triggered: ${schedule.beast}/${schedule.task} (#${schedule.id})`);
+      } catch (err) {
+        console.log(`[Scheduler] Failed to notify ${schedule.beast}: ${err}`);
+      }
+    }
+  } catch (err) {
+    console.error(`[Scheduler] Cycle error: ${err}`);
+  }
+}
+
+// Start the daemon — runs every 60 seconds
+const SCHEDULER_INTERVAL = 60_000;
+setInterval(runSchedulerCycle, SCHEDULER_INTERVAL);
+// Run first cycle after 5s (let server boot)
+setTimeout(runSchedulerCycle, 5000);
+console.log('[Scheduler] Auto-trigger daemon started (60s interval)');
 
 // ============================================================================
 // Supersede Log Routes (Issue #18, #19)

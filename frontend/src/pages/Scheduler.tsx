@@ -17,6 +17,8 @@ interface Schedule {
   next_due_at: string;
   enabled: number;
   source: string | null;
+  last_triggered_at: string | null;
+  trigger_status: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -194,13 +196,14 @@ export function Scheduler() {
               <th>Interval</th>
               <th>Last Run</th>
               <th>Next Due</th>
+              <th>Trigger</th>
               <th>Source</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {schedules.length === 0 && (
-              <tr><td colSpan={8} className={styles.empty}>No schedules yet</td></tr>
+              <tr><td colSpan={9} className={styles.empty}>No schedules yet</td></tr>
             )}
             {schedules.map(s => {
               const status = getStatus(s);
@@ -221,6 +224,12 @@ export function Scheduler() {
                   <td>{s.interval}</td>
                   <td>{formatTimeAgo(s.last_run_at)}</td>
                   <td className={status === 'overdue' ? styles.overdueTd : undefined}>{formatDueTime(s.next_due_at)}</td>
+                  <td className={styles.triggerCell}>
+                    <span className={styles[`trigger_${s.trigger_status || 'pending'}`]}>
+                      {s.trigger_status || 'pending'}
+                    </span>
+                    {s.last_triggered_at && <span className={styles.triggerTime}>{formatTimeAgo(s.last_triggered_at)}</span>}
+                  </td>
                   <td className={styles.source}>{s.source || '—'}</td>
                   <td className={styles.actions}>
                     <button onClick={() => markRun(s.id)} title="Mark as run">Run</button>

@@ -214,6 +214,22 @@
   font-weight: 600;
 }
 
+.triggerCell {
+  font-size: 12px;
+}
+
+.triggerTime {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.trigger_pending { color: var(--text-muted); }
+.trigger_triggered { color: var(--accent); }
+.trigger_running { color: var(--success); }
+.trigger_completed { color: var(--success); }
+.trigger_failed { color: var(--danger); }
+
 .paused {
   opacity: 0.5;
 }

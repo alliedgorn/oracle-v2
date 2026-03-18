@@ -536,19 +536,21 @@ export function Forum() {
           </div>
         )}
 
-        <FilterTabs
-          items={[
-            { id: 'all', label: 'All' },
-            { id: 'announcement', label: 'Announcement' },
-            { id: 'task', label: 'Task' },
-            { id: 'discussion', label: 'Discussion' },
-            { id: 'decision', label: 'Decision' },
-            { id: 'question', label: 'Question' },
-          ]}
-          activeId={categoryFilter}
-          onChange={setCategoryFilter}
-          variant="compact"
-        />
+        <div className={styles.filterWrapper}>
+          <FilterTabs
+            items={[
+              { id: 'all', label: 'All' },
+              { id: 'announcement', label: 'Announcement' },
+              { id: 'task', label: 'Task' },
+              { id: 'discussion', label: 'Discussion' },
+              { id: 'decision', label: 'Decision' },
+              { id: 'question', label: 'Question' },
+            ]}
+            activeId={categoryFilter}
+            onChange={setCategoryFilter}
+            variant="compact"
+          />
+        </div>
 
         <div className={styles.threadList}>
           {threads

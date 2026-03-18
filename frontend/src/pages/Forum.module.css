@@ -769,12 +769,12 @@
     color: var(--accent);
   }
 
-  .categoryTabs {
+  .filterWrapper {
     display: none;
   }
 
   .searchForm {
-    margin-bottom: 8px;
+    display: none;
   }
 
   .threadItem {

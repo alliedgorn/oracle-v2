@@ -481,6 +481,7 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
       style={{ '--priority-color': getPriorityColor(task.priority) } as React.CSSProperties}
       onClick={onClick}
     >
+      <span className={styles.taskId}>#{task.id}</span>
       <div className={styles.taskTitle}>{task.title}</div>
       <div className={styles.taskMeta}>
         <span className={`${styles.priorityBadge} ${styles[`priority${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}`]}`}>

@@ -659,7 +659,10 @@ export function Forum() {
                       )}
                       {identity.name}
                     </span>
-                    <span className={styles.time} title={msg.created_at}>{formatTime(msg.created_at)}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className={styles.messageId}>#{msg.id}</span>
+                      <span className={styles.time} title={msg.created_at}>{formatTime(msg.created_at)}</span>
+                    </span>
                   </div>
                   {msg.reply_to_id && (() => {
                     const quoted = selectedThread.messages.find(m => m.id === msg.reply_to_id);

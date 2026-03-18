@@ -139,6 +139,14 @@
   border-left-color: var(--priority-color, var(--text-muted));
 }
 
+.taskId {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  float: right;
+  margin-left: var(--space-sm);
+}
+
 .taskTitle {
   font-size: 14px;
   font-weight: 500;

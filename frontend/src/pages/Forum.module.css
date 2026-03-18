@@ -496,6 +496,16 @@
   color: var(--text-muted);
 }
 
+.messageId {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.mobileBack {
+  display: none;
+}
+
 .messageContent {
   color: var(--text-primary);
   line-height: 1.6;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ANIMAL_EMOJI } from '../utils/animals';
 import styles from './RemoteControl.module.css';
 
@@ -16,6 +17,7 @@ interface Beast {
 const API_BASE = '/api';
 
 export function RemoteControl() {
+  const navigate = useNavigate();
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -115,6 +117,11 @@ export function RemoteControl() {
                 <span className={styles.role}>{beast.role || beast.animal}</span>
               </div>
               {isAttached && <span className={styles.attachedLabel}>ATTACHED</span>}
+              <button
+                className={styles.dmButton}
+                title={`DM ${beast.displayName}`}
+                onClick={(e) => { e.stopPropagation(); navigate(`/dms?conv=gorn-${beast.name}`); }}
+              >💬</button>
             </div>
           );
         })}

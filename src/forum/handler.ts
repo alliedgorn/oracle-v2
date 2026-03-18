@@ -306,14 +306,13 @@ export async function handleThreadMessage(
   const mentions = parseMentions(message, thread.id);
   const notified = notifyMentioned(mentions, thread.id, thread.title, author, message);
 
-  // Gorn notification rules:
-  // 1. Gorn posts with @mentions → only mentioned beasts notified (already handled above)
-  // 2. Gorn posts without @mentions → notify thread participants (same as @here)
-  if (role === 'human' && mentions.length === 0) {
+  // Notify all thread participants on new posts (not just @mentioned ones)
+  // Skip participants who were already notified via @mention
+  {
     const { getOracleRegistry } = await import('./mentions.ts');
     const registry = getOracleRegistry();
     const alreadyNotified = new Set(notified);
-    // Get thread participants using Drizzle
+    const senderName = author?.split('@')[0]?.toLowerCase() || '';
     try {
       const rows = db.select({ author: forumMessages.author })
         .from(forumMessages)
@@ -323,13 +322,13 @@ export async function handleThreadMessage(
       const participants: string[] = [];
       for (const r of rows) {
         const name = r.author?.split('@')[0]?.toLowerCase();
-        if (name && name in registry && name !== 'gorn' && name !== 'human' && name !== 'user' && !alreadyNotified.has(name) && !seen.has(name)) {
+        if (name && name in registry && name !== 'gorn' && name !== 'human' && name !== 'user' && name !== senderName && !alreadyNotified.has(name) && !seen.has(name)) {
           seen.add(name);
           participants.push(name);
         }
       }
       if (participants.length > 0) {
-        const extra = notifyMentioned(participants, thread.id, thread.title, 'gorn', message);
+        const extra = notifyMentioned(participants, thread.id, thread.title, author || 'unknown', message);
         notified.push(...extra);
       }
     } catch { /* ignore */ }

@@ -96,6 +96,14 @@ export function Board() {
     loadBoard();
   }, [projectFilter, assigneeFilter]);
 
+  // ESC key closes modal
+  useEffect(() => {
+    if (!selectedTask) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectedTask(null); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedTask]);
+
   // Poll for updates
   useEffect(() => {
     const interval = setInterval(() => {

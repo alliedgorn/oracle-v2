@@ -154,6 +154,7 @@ export function Forum() {
   const [replyTo, setReplyTo] = useState<{ id: number; author: string | null; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [totalMessages, setTotalMessages] = useState(0);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDone = useRef(false);
@@ -161,6 +162,14 @@ export function Forum() {
   const PAGE_SIZE = 50;
   const threadIdParam = searchParams.get('thread');
   const showNewThread = searchParams.get('new') === 'true';
+
+  // ESC key closes lightbox
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxSrc(null); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lightboxSrc]);
 
   // Load unread counts for gorn
   async function loadUnreadCounts() {
@@ -602,9 +611,10 @@ export function Forum() {
                 className={styles.input}
               />
               <textarea
-                placeholder="What's on your mind?"
+                placeholder="What's on your mind? (⌘+Enter to send)"
                 value={newMessage}
                 onChange={e => setNewMessage(e.target.value)}
+                onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
                 className={styles.textarea}
                 rows={8}
               />
@@ -693,6 +703,17 @@ export function Forum() {
                             </SyntaxHighlighter>
                           );
                         },
+                        img({ src, alt, ...props }) {
+                          return (
+                            <img
+                              src={src}
+                              alt={alt || ''}
+                              {...props}
+                              style={{ cursor: 'pointer' }}
+                              onClick={(e) => { e.stopPropagation(); if (src) setLightboxSrc(src); }}
+                            />
+                          );
+                        },
                       }}
                     >
                       {msg.content}
@@ -745,9 +766,10 @@ export function Forum() {
               )}
               <div className={styles.replyInputRow}>
                 <textarea
-                  placeholder={replyTo ? `Reply to ${replyTo.author || 'message'}...` : 'Continue the discussion...'}
+                  placeholder={replyTo ? `Reply to ${replyTo.author || 'message'}...` : 'Continue the discussion... (⌘+Enter to send)'}
                   value={newMessage}
                   onChange={e => setNewMessage(e.target.value)}
+                  onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
                   className={styles.textarea}
                   rows={3}
                 />
@@ -772,6 +794,13 @@ export function Forum() {
           </div>
         )}
       </div>
+
+      {/* Image Lightbox */}
+      {lightboxSrc && (
+        <div className={styles.lightboxOverlay} onClick={() => setLightboxSrc(null)}>
+          <img src={lightboxSrc} className={styles.lightboxImage} alt="" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   );
 }

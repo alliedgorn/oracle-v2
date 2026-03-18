@@ -2707,6 +2707,266 @@ app.get('/api/library/types', (c) => {
 });
 
 // ============================================================================
+// PM Board — Projects + Tasks + Task Comments
+// ============================================================================
+
+// Create projects table
+try {
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`).run();
+} catch { /* already exists */ }
+
+// Create tasks table
+try {
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER REFERENCES projects(id),
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'todo',
+    priority TEXT NOT NULL DEFAULT 'medium',
+    assigned_to TEXT,
+    created_by TEXT NOT NULL,
+    thread_id INTEGER,
+    due_date TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`).run();
+} catch { /* already exists */ }
+
+// Create task_comments table
+try {
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS task_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    author TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`).run();
+} catch { /* already exists */ }
+
+// --- Projects CRUD ---
+
+// GET /api/projects — list projects
+app.get('/api/projects', (c) => {
+  const status = c.req.query('status') || 'active';
+  const rows = sqlite.prepare(
+    'SELECT * FROM projects WHERE status = ? ORDER BY created_at DESC'
+  ).all(status) as any[];
+  return c.json({ projects: rows });
+});
+
+// POST /api/projects — create project
+app.post('/api/projects', async (c) => {
+  const data = await c.req.json();
+  const { name, description, created_by } = data;
+  if (!name || !created_by) return c.json({ error: 'name and created_by required' }, 400);
+  const now = new Date().toISOString();
+  const result = sqlite.prepare(
+    'INSERT INTO projects (name, description, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(name, description || '', created_by, now, now);
+  const project = sqlite.prepare('SELECT * FROM projects WHERE id = ?').get((result as any).lastInsertRowid);
+  wsBroadcast('project_created', project);
+  return c.json(project, 201);
+});
+
+// GET /api/projects/:id — get project with task counts
+app.get('/api/projects/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const project = sqlite.prepare('SELECT * FROM projects WHERE id = ?').get(id) as any;
+  if (!project) return c.json({ error: 'Project not found' }, 404);
+  const taskCounts = sqlite.prepare(
+    'SELECT status, COUNT(*) as count FROM tasks WHERE project_id = ? GROUP BY status'
+  ).all(id) as any[];
+  return c.json({ ...project, task_counts: Object.fromEntries(taskCounts.map(r => [r.status, r.count])) });
+});
+
+// PATCH /api/projects/:id — update project
+app.patch('/api/projects/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const data = await c.req.json();
+  const updates: string[] = [];
+  const params: any[] = [];
+  for (const field of ['name', 'description', 'status']) {
+    if (data[field] !== undefined) { updates.push(`${field} = ?`); params.push(data[field]); }
+  }
+  if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+  updates.push('updated_at = ?'); params.push(new Date().toISOString());
+  params.push(id);
+  sqlite.prepare(`UPDATE projects SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+  const project = sqlite.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+  return c.json(project);
+});
+
+// --- Tasks CRUD ---
+
+// GET /api/tasks — list tasks with filters
+app.get('/api/tasks', (c) => {
+  const projectId = c.req.query('project_id');
+  const status = c.req.query('status');
+  const assignedTo = c.req.query('assigned_to');
+  const priority = c.req.query('priority');
+  const limit = Math.min(200, parseInt(c.req.query('limit') || '100', 10));
+  const offset = parseInt(c.req.query('offset') || '0', 10);
+
+  let query = 'SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE 1=1';
+  const params: any[] = [];
+
+  if (projectId) { query += ' AND t.project_id = ?'; params.push(parseInt(projectId, 10)); }
+  if (status) { query += ' AND t.status = ?'; params.push(status); }
+  if (assignedTo) { query += ' AND t.assigned_to = ?'; params.push(assignedTo); }
+  if (priority) { query += ' AND t.priority = ?'; params.push(priority); }
+
+  const countQuery = query.replace('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id', 'SELECT COUNT(*) as total FROM tasks t');
+  const total = (sqlite.prepare(countQuery).get(...params) as any)?.total || 0;
+
+  query += ' ORDER BY CASE t.priority WHEN \'critical\' THEN 0 WHEN \'high\' THEN 1 WHEN \'medium\' THEN 2 WHEN \'low\' THEN 3 END, t.created_at DESC';
+  query += ' LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+
+  const tasks = sqlite.prepare(query).all(...params) as any[];
+  return c.json({ tasks, total });
+});
+
+// POST /api/tasks — create task
+app.post('/api/tasks', async (c) => {
+  const data = await c.req.json();
+  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date } = data;
+  if (!title || !created_by) return c.json({ error: 'title and created_by required' }, 400);
+
+  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked'];
+  const validPriorities = ['critical', 'high', 'medium', 'low'];
+  const taskStatus = validStatuses.includes(status) ? status : 'todo';
+  const taskPriority = validPriorities.includes(priority) ? priority : 'medium';
+
+  const now = new Date().toISOString();
+  const result = sqlite.prepare(
+    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, now, now);
+
+  const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid);
+  wsBroadcast('task_created', task);
+  return c.json(task, 201);
+});
+
+// GET /api/tasks/:id — get task with comments
+app.get('/api/tasks/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const task = sqlite.prepare(
+    'SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?'
+  ).get(id) as any;
+  if (!task) return c.json({ error: 'Task not found' }, 404);
+  const comments = sqlite.prepare('SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at ASC').all(id) as any[];
+  return c.json({ ...task, comments });
+});
+
+// PATCH /api/tasks/:id — update task
+app.patch('/api/tasks/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const data = await c.req.json();
+
+  const updates: string[] = [];
+  const params: any[] = [];
+  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date']) {
+    if (data[field] !== undefined) { updates.push(`${field} = ?`); params.push(data[field]); }
+  }
+  if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+  updates.push('updated_at = ?'); params.push(new Date().toISOString());
+  params.push(id);
+
+  sqlite.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+  const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get(id);
+  wsBroadcast('task_updated', task);
+  return c.json(task);
+});
+
+// DELETE /api/tasks/:id — soft delete (set status to 'deleted')
+app.delete('/api/tasks/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const now = new Date().toISOString();
+  sqlite.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run('deleted', now, id);
+  return c.json({ success: true, id });
+});
+
+// POST /api/tasks/bulk-status — bulk status update (for PM)
+app.post('/api/tasks/bulk-status', async (c) => {
+  const data = await c.req.json();
+  const { task_ids, status } = data;
+  if (!Array.isArray(task_ids) || !status) return c.json({ error: 'task_ids and status required' }, 400);
+
+  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked'];
+  if (!validStatuses.includes(status)) return c.json({ error: 'Invalid status' }, 400);
+
+  const now = new Date().toISOString();
+  const stmt = sqlite.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?');
+  for (const id of task_ids) {
+    stmt.run(status, now, id);
+  }
+  wsBroadcast('tasks_bulk_updated', { task_ids, status });
+  return c.json({ success: true, updated: task_ids.length });
+});
+
+// --- Task Comments ---
+
+// GET /api/tasks/:id/comments
+app.get('/api/tasks/:id/comments', (c) => {
+  const taskId = parseInt(c.req.param('id'), 10);
+  const comments = sqlite.prepare('SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at ASC').all(taskId) as any[];
+  return c.json({ comments });
+});
+
+// POST /api/tasks/:id/comments
+app.post('/api/tasks/:id/comments', async (c) => {
+  const taskId = parseInt(c.req.param('id'), 10);
+  const data = await c.req.json();
+  const { author, content } = data;
+  if (!author || !content) return c.json({ error: 'author and content required' }, 400);
+
+  const now = new Date().toISOString();
+  const result = sqlite.prepare(
+    'INSERT INTO task_comments (task_id, author, content, created_at) VALUES (?, ?, ?, ?)'
+  ).run(taskId, author, content, now);
+  const comment = sqlite.prepare('SELECT * FROM task_comments WHERE id = ?').get((result as any).lastInsertRowid);
+  return c.json(comment, 201);
+});
+
+// --- Board summary endpoint (for Kanban view) ---
+
+// GET /api/board — grouped by status with project filter
+app.get('/api/board', (c) => {
+  const projectId = c.req.query('project_id');
+  const assignedTo = c.req.query('assigned_to');
+
+  let query = 'SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.status != \'deleted\'';
+  const params: any[] = [];
+
+  if (projectId) { query += ' AND t.project_id = ?'; params.push(parseInt(projectId, 10)); }
+  if (assignedTo) { query += ' AND t.assigned_to = ?'; params.push(assignedTo); }
+
+  query += ' ORDER BY CASE t.priority WHEN \'critical\' THEN 0 WHEN \'high\' THEN 1 WHEN \'medium\' THEN 2 WHEN \'low\' THEN 3 END, t.created_at DESC';
+
+  const tasks = sqlite.prepare(query).all(...params) as any[];
+
+  const columns: Record<string, any[]> = {
+    todo: [], in_progress: [], in_review: [], done: [], blocked: [],
+  };
+  for (const task of tasks) {
+    if (columns[task.status]) columns[task.status].push(task);
+  }
+
+  const projects = sqlite.prepare('SELECT * FROM projects WHERE status = ? ORDER BY name').all('active') as any[];
+
+  return c.json({ columns, projects, total: tasks.length });
+});
+
+// ============================================================================
 // Supersede Log Routes (Issue #18, #19)
 // ============================================================================
 

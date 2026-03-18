@@ -9,6 +9,7 @@ const topNavItems = [
   { path: '/forum', label: 'Forum' },
   { path: '/dms', label: 'DMs' },
   { path: '/mindlink', label: 'Mindlink' },
+  { path: '/board', label: 'Board' },
 ];
 
 // Grouped navigation (dropdowns for secondary items)

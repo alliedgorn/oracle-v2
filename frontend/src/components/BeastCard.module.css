@@ -150,3 +150,21 @@
     height: 10px;
   }
 }
+
+.dmButton {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  padding: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.2s;
+}
+
+.dmButton:hover {
+  opacity: 1;
+  background: var(--bg-secondary);
+}

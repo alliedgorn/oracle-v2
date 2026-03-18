@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BeastCard } from './BeastCard';
 import styles from './RemotePanel.module.css';
 
@@ -23,6 +24,7 @@ interface RemotePanelProps {
 }
 
 export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollapse }: RemotePanelProps) {
+  const navigate = useNavigate();
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -118,6 +120,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
                 selected={isAttached}
                 badge={isAttached ? 'ATTACHED' : undefined}
                 onClick={() => !loading && handleClick(beast)}
+                onDmClick={(e) => { e.stopPropagation(); navigate(`/dms?conv=gorn-${beast.name}`); }}
               />
             );
           })}

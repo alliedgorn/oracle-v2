@@ -14,6 +14,7 @@ interface BeastCardProps {
   badge?: string;
   onClick?: () => void;
   onNameClick?: (e: React.MouseEvent) => void;
+  onDmClick?: (e: React.MouseEvent) => void;
 }
 
 export function BeastCard({
@@ -29,6 +30,7 @@ export function BeastCard({
   badge,
   onClick,
   onNameClick,
+  onDmClick,
 }: BeastCardProps) {
   const isProcessing = status === 'processing';
   const isOffline = status === 'offline' || !online;
@@ -57,6 +59,9 @@ export function BeastCard({
         <div className={styles.role}>{role || animal}</div>
       </div>
       {badge && <span className={styles.badge}>{badge}</span>}
+      {onDmClick && (
+        <button className={styles.dmButton} title={`DM ${displayName}`} onClick={onDmClick}>💬</button>
+      )}
     </div>
   );
 }

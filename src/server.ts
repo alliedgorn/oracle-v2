@@ -3096,6 +3096,14 @@ app.post('/api/schedules', async (c) => {
   if (!beast || !task || !interval) {
     return c.json({ error: 'beast, task, and interval are required' }, 400);
   }
+  // Validate task name — only safe characters (alphanumeric, spaces, basic punctuation)
+  if (typeof task !== 'string' || task.length > 100 || /[`$\\{}<>|;&]/.test(task)) {
+    return c.json({ error: 'Task name contains invalid characters or is too long (max 100 chars, no shell metacharacters)' }, 400);
+  }
+  // Validate beast name
+  if (typeof beast !== 'string' || !/^[a-z][a-z0-9_-]{0,29}$/.test(beast)) {
+    return c.json({ error: 'Invalid beast name' }, 400);
+  }
   const intervalSeconds = VALID_INTERVALS[interval];
   if (!intervalSeconds) {
     return c.json({ error: `Invalid interval. Valid: ${Object.keys(VALID_INTERVALS).join(', ')}` }, 400);
@@ -3201,12 +3209,18 @@ app.delete('/api/schedules/:id', async (c) => {
   return c.json({ deleted: true, id });
 });
 
-// PATCH /api/schedules/:id/trigger — mark as triggered (server-side only)
+// PATCH /api/schedules/:id/trigger — mark as triggered (owner, Gorn, or server daemon only)
 app.patch('/api/schedules/:id/trigger', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
+  const data = await c.req.json().catch(() => ({}));
+  const requester = (c.req.query('as') || data.as || data.beast || '').toLowerCase();
+  // Allow empty requester only from local network (server daemon)
+  if (requester && requester !== existing.beast && requester !== 'gorn') {
+    return c.json({ error: `Only ${existing.beast} or Gorn can trigger this schedule` }, 403);
+  }
   const now = new Date().toISOString();
   sqlite.prepare(
     `UPDATE beast_schedules SET last_triggered_at = ?, trigger_status = 'triggered', updated_at = datetime('now') WHERE id = ?`

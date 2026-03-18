@@ -82,6 +82,7 @@ export function DirectMessages() {
   const [showNewDm, setShowNewDm] = useState(false);
   const [beasts, setBeasts] = useState<{ name: string; displayName: string }[]>([]);
   const [totalMessages, setTotalMessages] = useState(0);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDone = useRef(false);
@@ -416,7 +417,16 @@ export function DirectMessages() {
                     <span className={styles.sender}>{msg.sender}</span>
                     <span className={styles.time}>{formatFullTime(msg.created_at)}</span>
                   </div>
-                  <div className={styles.messageContent}><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown></div>
+                  <div className={styles.messageContent}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        img({ src, alt, ...props }) {
+                          return <img src={src} alt={alt || ''} {...props} onClick={() => { if (src) setLightboxSrc(src); }} />;
+                        },
+                      }}
+                    >{msg.content}</ReactMarkdown>
+                  </div>
                 </div>
               ))}
               <div ref={messagesEndRef} />
@@ -460,6 +470,14 @@ export function DirectMessages() {
           </div>
         )}
       </div>
+
+      {/* Image Lightbox */}
+      {lightboxSrc && (
+        <div className={styles.lightboxOverlay} onClick={() => setLightboxSrc(null)}>
+          <img src={lightboxSrc} className={styles.lightboxImage} alt="" onClick={e => e.stopPropagation()} />
+          <button className={styles.lightboxClose} onClick={() => setLightboxSrc(null)}>✕</button>
+        </div>
+      )}
     </div>
   );
 }

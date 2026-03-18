@@ -2804,7 +2804,11 @@ try {
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`).run();
+  // v2: add type column
+  try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN type TEXT DEFAULT 'task'`).run(); } catch { /* exists */ }
 } catch { /* already exists */ }
+
+const VALID_TASK_TYPES = ['bug', 'feature', 'improvement', 'chore', 'task'];
 
 // Create task_comments table
 try {
@@ -2888,6 +2892,8 @@ app.get('/api/tasks', (c) => {
   if (status) { query += ' AND t.status = ?'; params.push(status); }
   if (assignedTo) { query += ' AND t.assigned_to = ?'; params.push(assignedTo); }
   if (priority) { query += ' AND t.priority = ?'; params.push(priority); }
+  const type = c.req.query('type');
+  if (type) { query += ' AND t.type = ?'; params.push(type); }
 
   const countQuery = query.replace('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id', 'SELECT COUNT(*) as total FROM tasks t');
   const total = (sqlite.prepare(countQuery).get(...params) as any)?.total || 0;
@@ -2903,18 +2909,19 @@ app.get('/api/tasks', (c) => {
 // POST /api/tasks — create task
 app.post('/api/tasks', async (c) => {
   const data = await c.req.json();
-  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date } = data;
+  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type } = data;
   if (!title || !created_by) return c.json({ error: 'title and created_by required' }, 400);
 
   const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked'];
   const validPriorities = ['critical', 'high', 'medium', 'low'];
   const taskStatus = validStatuses.includes(status) ? status : 'todo';
   const taskPriority = validPriorities.includes(priority) ? priority : 'medium';
+  const taskType = VALID_TASK_TYPES.includes(type) ? type : 'task';
 
   const now = new Date().toISOString();
   const result = sqlite.prepare(
-    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, now, now);
+    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, now, now);
 
   const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid);
   wsBroadcast('task_created', task);
@@ -2944,10 +2951,11 @@ app.patch('/api/tasks/:id', async (c) => {
   const validPriorities = ['critical', 'high', 'medium', 'low'];
   if (data.status && !validStatuses.includes(data.status)) return c.json({ error: `Invalid status. Valid: ${validStatuses.join(', ')}` }, 400);
   if (data.priority && !validPriorities.includes(data.priority)) return c.json({ error: `Invalid priority. Valid: ${validPriorities.join(', ')}` }, 400);
+  if (data.type && !VALID_TASK_TYPES.includes(data.type)) return c.json({ error: `Invalid type. Valid: ${VALID_TASK_TYPES.join(', ')}` }, 400);
 
   const updates: string[] = [];
   const params: any[] = [];
-  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date']) {
+  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type']) {
     if (data[field] !== undefined) { updates.push(`${field} = ?`); params.push(data[field]); }
   }
   if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);

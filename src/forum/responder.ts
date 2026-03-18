@@ -104,7 +104,7 @@ function sendToLiveSession(pane: string, oracle: string, threadId: number, title
   const preview = message.length > 300 ? message.slice(0, 300) + '...' : message;
 
   // Craft the injected prompt — the Oracle will process this as a user message
-  const prompt = `[Forum message] From ${senderName} in thread #${threadId} ("${title}"):\n\n${preview}\n\nPlease read and respond to this forum message. Post your response by running: curl -s -X POST http://localhost:47778/api/thread -H 'Content-Type: application/json' -d '{"message": "<your response>", "thread_id": ${threadId}, "role": "claude", "author": "${oracle}"}'`;
+  const prompt = `[Forum message] From ${senderName} in thread #${threadId} ("${title}"):\n\n${preview}\n\nUse /forum thread ${threadId} to read and /forum post <message> (with thread_id ${threadId}) to reply.`;
 
   try {
     // Use tmux send-keys to inject into the session

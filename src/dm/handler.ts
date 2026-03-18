@@ -133,9 +133,7 @@ function notifyDmRecipient(from: string, to: string, content: string): boolean {
   if (!entry) return false;
 
   const preview = sanitizeForTmux(content, 120);
-  const readCmd = `curl -s http://localhost:47778/api/dm/${to}/${from}?limit=5`;
-  const replyCmd = `curl -s -X POST http://localhost:47778/api/dm -H 'Content-Type: application/json' -d '{"from": "${to}", "to": "${from}", "message": "<your reply>"}'`;
-  const message = `[DM from ${from}]: ${preview}...\n\nRead full: ${readCmd}\nReply: ${replyCmd}`;
+  const message = `[DM from ${from}]: ${preview}...\n\nUse /forum dms to read and /forum dm ${from} <message> to reply.`;
 
   try {
     const result = Bun.spawnSync(['tmux', 'send-keys', '-t', entry.tmux, message, 'Enter']);

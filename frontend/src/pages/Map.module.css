@@ -312,3 +312,59 @@
   text-align: center;
   line-height: 1.6;
 }
+
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .mapArea {
+    height: 60vh;
+    min-height: 300px;
+  }
+
+  .sidebar {
+    width: 100%;
+    height: auto;
+    max-height: 35vh;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding: var(--space-md);
+  }
+
+  .searchInput {
+    width: calc(100vw - 80px);
+    max-width: 300px;
+  }
+
+  .legend {
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 10px;
+  }
+
+  .zoomBtn {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mapArea {
+    height: 50vh;
+  }
+
+  .sidebar {
+    padding: 12px;
+  }
+
+  .sidebarTitle {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+
+  .legend {
+    display: none;
+  }
+}

@@ -196,3 +196,32 @@
   margin: 0;
   line-height: 1.4;
 }
+
+@media (max-width: 768px) {
+  .hud {
+    top: auto;
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+    min-width: auto;
+    padding: 12px;
+  }
+
+  .hudSlider {
+    height: 8px;
+  }
+
+  .hudSlider::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+  }
+
+  .hudSlider::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+  }
+
+  .nodeLabel {
+    font-size: 13px;
+  }
+}

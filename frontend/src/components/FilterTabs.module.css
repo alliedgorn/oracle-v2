@@ -43,3 +43,17 @@
   padding: 1px 6px;
   border-radius: 10px;
 }
+
+@media (max-width: 768px) {
+  .tab {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  .compact .tab {
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}

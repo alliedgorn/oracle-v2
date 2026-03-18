@@ -212,3 +212,21 @@
   z-index: 100;
   backdrop-filter: blur(10px);
 }
+
+@media (max-width: 768px) {
+  .container {
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .header {
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .tooltip {
+    max-width: calc(100vw - 32px);
+    bottom: 16px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+}

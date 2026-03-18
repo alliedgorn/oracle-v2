@@ -138,3 +138,37 @@
 .time::before {
   content: '🕐 ';
 }
+
+@media (max-width: 768px) {
+  .title {
+    font-size: 1.4rem;
+  }
+
+  .dateGroup {
+    padding: 0.75rem;
+  }
+
+  .meta {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .arrow {
+    font-size: 0.85rem;
+  }
+
+  .item {
+    padding: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .title {
+    font-size: 1.2rem;
+  }
+
+  .timeline {
+    gap: 1rem;
+  }
+}

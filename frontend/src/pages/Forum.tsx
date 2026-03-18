@@ -93,6 +93,7 @@ interface Message {
   reply_to_id: number | null;
   principles_found: number | null;
   patterns_found: number | null;
+  reactions?: { emoji: string; beasts: string[]; count: number }[];
   created_at: string;
 }
 
@@ -362,6 +363,12 @@ export function Forum() {
     setSelectedThread(data);
     setTotalMessages(data.total);
     setSearchParams({ thread: id.toString() });
+    // Set reactions synchronously from inline data to prevent flash of empty reactions
+    const inlineReactions: Record<number, any[]> = {};
+    for (const m of data.messages) {
+      if (m.reactions !== undefined) inlineReactions[m.id] = m.reactions;
+    }
+    setReactions(inlineReactions);
     loadReactionsForThread(data.messages);
     // Mark as read for gorn
     if (data.messages.length > 0) {

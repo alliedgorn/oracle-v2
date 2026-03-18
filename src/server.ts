@@ -3135,9 +3135,12 @@ app.patch('/api/schedules/:id/run', async (c) => {
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
   const data = await c.req.json().catch(() => ({}));
-  const requester = (c.req.query('as') || data.as || '').toLowerCase();
-  if (requester && requester !== existing.beast && requester !== 'gorn') {
-    return c.json({ error: 'Only the schedule owner or Gorn can run this schedule' }, 403);
+  const requester = (c.req.query('as') || data.as || data.beast || '').toLowerCase();
+  if (!requester) {
+    return c.json({ error: 'Identity required: pass ?as=beast or beast in body' }, 400);
+  }
+  if (requester !== existing.beast && requester !== 'gorn') {
+    return c.json({ error: `Only ${existing.beast} or Gorn can run this schedule` }, 403);
   }
   // If task failed, don't update last_run (Pip's edge case)
   if (data.failed) {

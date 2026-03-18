@@ -713,16 +713,29 @@ export function Forum() {
                             </SyntaxHighlighter>
                           );
                         },
-                        img({ src, alt, ...props }) {
+                        img({ src, alt }) {
                           return (
                             <img
                               src={src}
                               alt={alt || ''}
-                              {...props}
                               style={{ cursor: 'pointer' }}
                               onClick={(e) => { e.stopPropagation(); if (src) setLightboxSrc(src); }}
                             />
                           );
+                        },
+                        a({ href, children }) {
+                          const isImage = href && /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(href);
+                          if (isImage) {
+                            return (
+                              <img
+                                src={href}
+                                alt={String(children) || ''}
+                                style={{ cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); if (href) setLightboxSrc(href); }}
+                              />
+                            );
+                          }
+                          return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
                         },
                       }}
                     >

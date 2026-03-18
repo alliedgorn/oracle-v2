@@ -439,6 +439,21 @@ export function DirectMessages() {
                             />
                           );
                         },
+                        a({ href, children }) {
+                          // Detect bare image URLs rendered as links
+                          const isImage = href && /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(href);
+                          if (isImage) {
+                            return (
+                              <img
+                                src={href}
+                                alt={String(children) || ''}
+                                style={{ cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); setLightboxSrc(href); }}
+                              />
+                            );
+                          }
+                          return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+                        },
                       }}
                     >{msg.content}</ReactMarkdown>
                   </div>

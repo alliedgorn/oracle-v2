@@ -111,11 +111,11 @@ async function fetchThreads(): Promise<{ threads: Thread[]; total: number }> {
   return res.json();
 }
 
-async function fetchThread(id: number, limit?: number, offset = 0, order: 'asc' | 'desc' = 'asc'): Promise<ThreadDetail & { total: number }> {
+async function fetchThread(id: number, limit?: number, offset = 0, order: 'asc' | 'desc' = 'desc'): Promise<ThreadDetail & { total: number }> {
   const params = new URLSearchParams();
   if (limit !== undefined) params.set('limit', limit.toString());
   if (offset) params.set('offset', offset.toString());
-  if (order !== 'asc') params.set('order', order);
+  if (order === 'asc') params.set('order', 'asc');
   const qs = params.toString();
   const res = await fetch(`${API_BASE}/thread/${id}${qs ? '?' + qs : ''}`);
   return res.json();
@@ -411,6 +411,7 @@ export function Forum() {
       const result = await updateThreadStatus(selectedThread.thread.id, newStatus);
       console.log('Status update:', result);
       const data = await fetchThread(selectedThread.thread.id);
+      data.messages.reverse();
       setSelectedThread(data);
       await loadThreads();
     } catch (err) {

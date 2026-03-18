@@ -46,11 +46,11 @@ async function fetchDashboard(): Promise<Dashboard> {
   return res.json();
 }
 
-async function fetchMessages(name1: string, name2: string, limit = 50, offset = 0, order: 'asc' | 'desc' = 'asc'): Promise<ConversationDetail> {
+async function fetchMessages(name1: string, name2: string, limit = 50, offset = 0, order: 'asc' | 'desc' = 'desc'): Promise<ConversationDetail> {
   const params = new URLSearchParams();
   params.set('limit', limit.toString());
   if (offset) params.set('offset', offset.toString());
-  if (order !== 'asc') params.set('order', order);
+  if (order === 'asc') params.set('order', 'asc');
   const res = await fetch(`${API_BASE}/dm/${name1}/${name2}?${params}`);
   return res.json();
 }
@@ -311,8 +311,8 @@ export function DirectMessages() {
 
   return (
     <div className={styles.container}>
-      {/* Left: All conversations */}
-      <div className={styles.sidebar}>
+      {/* Left: All conversations — hidden on mobile when conversation is selected */}
+      <div className={`${styles.sidebar} ${selectedConv ? styles.hidden : ''}`}>
         <div className={styles.sidebarHeader}>
           <div className={styles.sidebarTitleRow}>
             <h2>Direct Messages</h2>
@@ -388,10 +388,11 @@ export function DirectMessages() {
         </div>
       </div>
 
-      {/* Right: Conversation messages */}
-      <div className={styles.main}>
+      {/* Right: Conversation messages — full screen on mobile */}
+      <div className={`${styles.main} ${selectedConv ? styles.fullScreen : ''}`}>
         {selectedConv && messages ? (
           <div className={styles.chatView}>
+            <button className={styles.mobileBack} onClick={() => { setSelectedConv(null); setSearchParams({}); }}>← Conversations</button>
             <div className={styles.chatHeader}>
               <h2>
                 <span className={styles.headerName}>{selectedConv.participants[0]}</span>

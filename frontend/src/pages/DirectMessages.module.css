@@ -375,6 +375,10 @@
   cursor: not-allowed;
 }
 
+.mobileBack {
+  display: none;
+}
+
 /* Mobile */
 @media (max-width: 768px) {
   .container {
@@ -402,6 +406,21 @@
     display: flex;
     flex: 1;
     height: 100%;
+  }
+
+  .mobileBack {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm, 6px);
+    padding: 10px 12px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border, #333);
+    color: var(--accent, #7eb8da);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    width: 100%;
   }
 
   .sidebarHeader {
@@ -492,9 +511,5 @@
 @media (max-width: 480px) {
   .container {
     padding: 8px;
-  }
-
-  .sidebar {
-    max-height: 30vh;
   }
 }

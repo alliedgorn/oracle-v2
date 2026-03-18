@@ -1932,7 +1932,7 @@ app.get('/api/thread/:id', (c) => {
   const limit = rawLimit ? (isNaN(parsedLimit) || parsedLimit < 1 ? 50 : parsedLimit) : undefined;
   const rawOffset = parseInt(c.req.query('offset') || '0', 10);
   const offset = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset;
-  const order = (c.req.query('order') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
+  const order = (c.req.query('order') === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc';
 
   const threadData = getFullThread(threadId, limit, offset, order);
   if (!threadData) {
@@ -2506,7 +2506,7 @@ app.get('/api/dm/:name/:other', (c) => {
   const limit = isNaN(parsedDmLimit) || parsedDmLimit < 1 ? 50 : parsedDmLimit;
   const parsedDmOffset = parseInt(c.req.query('offset') || '0', 10);
   const offset = isNaN(parsedDmOffset) || parsedDmOffset < 0 ? 0 : parsedDmOffset;
-  const order = (c.req.query('order') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
+  const order = (c.req.query('order') === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc';
   const data = getDmMessages(name, other, limit, offset, order);
   return c.json({
     conversation_id: data.conversationId,

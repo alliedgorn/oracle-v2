@@ -759,21 +759,18 @@
 
   .sidebarHeader {
     margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebarHeader h2 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
   }
 
   .categoryTabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    margin-bottom: 6px;
-  }
-
-  .categoryTabs::-webkit-scrollbar {
     display: none;
-  }
-
-  .categoryTab {
-    flex-shrink: 0;
   }
 
   .searchForm {

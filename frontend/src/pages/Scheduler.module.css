@@ -153,6 +153,10 @@
 
 .taskName {
   font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .command {
@@ -161,6 +165,9 @@
   color: var(--text-muted);
   font-family: var(--font-mono);
   margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .source {
@@ -171,6 +178,8 @@
 .actions {
   display: flex;
   gap: 4px;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .actions button {

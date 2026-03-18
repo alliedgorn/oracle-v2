@@ -3291,7 +3291,7 @@ app.patch('/api/schedules/:id/run', async (c) => {
     nextDue = new Date(now.getTime() + existing.interval_seconds * 1000).toISOString();
   }
   sqlite.prepare(
-    `UPDATE beast_schedules SET last_run_at = ?, next_due_at = ?, trigger_status = 'completed', last_triggered_at = ?, updated_at = datetime('now') WHERE id = ?`
+    `UPDATE beast_schedules SET last_run_at = ?, next_due_at = ?, trigger_status = 'pending', last_triggered_at = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(now.toISOString(), nextDue, now.toISOString(), id);
   const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   wsBroadcast('schedule_update', { action: 'run', schedule: updated });

@@ -3204,12 +3204,14 @@ app.patch('/api/schedules/:id/run', async (c) => {
   }
   // If task failed, don't update last_run (Pip's edge case)
   if (data.failed) {
-    return c.json({ ...existing, message: 'Failed run — not updating last_run_at' });
+    sqlite.prepare(`UPDATE beast_schedules SET trigger_status = 'failed', updated_at = datetime('now') WHERE id = ?`).run(id);
+    const failedState = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
+    return c.json({ ...failedState, message: 'Failed run — not updating last_run_at' });
   }
   const now = new Date();
   const nextDue = new Date(now.getTime() + existing.interval_seconds * 1000).toISOString();
   sqlite.prepare(
-    `UPDATE beast_schedules SET last_run_at = ?, next_due_at = ?, updated_at = datetime('now') WHERE id = ?`
+    `UPDATE beast_schedules SET last_run_at = ?, next_due_at = ?, trigger_status = 'completed', updated_at = datetime('now') WHERE id = ?`
   ).run(now.toISOString(), nextDue, id);
   const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   wsBroadcast('schedule_update', { action: 'run', schedule: updated });

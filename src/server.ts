@@ -3291,8 +3291,8 @@ app.patch('/api/schedules/:id/run', async (c) => {
     nextDue = new Date(now.getTime() + existing.interval_seconds * 1000).toISOString();
   }
   sqlite.prepare(
-    `UPDATE beast_schedules SET last_run_at = ?, next_due_at = ?, trigger_status = 'completed', updated_at = datetime('now') WHERE id = ?`
-  ).run(now.toISOString(), nextDue, id);
+    `UPDATE beast_schedules SET last_run_at = ?, next_due_at = ?, trigger_status = 'completed', last_triggered_at = ?, updated_at = datetime('now') WHERE id = ?`
+  ).run(now.toISOString(), nextDue, now.toISOString(), id);
   const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   wsBroadcast('schedule_update', { action: 'run', schedule: updated });
   return c.json(updated);
@@ -3357,10 +3357,14 @@ function runSchedulerCycle() {
     const now = new Date().toISOString();
     schedulerLastCheck = now;
 
-    // Find all overdue, enabled schedules. Re-trigger if last trigger was >5 min ago (cooldown).
+    // Find overdue schedules that need triggering:
+    // - enabled and overdue (next_due_at <= now)
+    // - NOT already triggered (waiting for beast to /run)
+    // - cooldown: last_triggered_at null or >5 min ago
     const overdue = sqlite.prepare(
       `SELECT * FROM beast_schedules
        WHERE enabled = 1 AND next_due_at <= ?
+       AND (trigger_status IS NULL OR trigger_status = 'pending' OR trigger_status = 'completed' OR trigger_status = 'failed')
        AND (last_triggered_at IS NULL OR last_triggered_at <= datetime(?, '-5 minutes'))
        ORDER BY next_due_at`
     ).all(now, now) as any[];

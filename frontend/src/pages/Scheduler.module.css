@@ -234,6 +234,34 @@
   opacity: 0.5;
 }
 
+.scheduleCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scheduleTime {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.scheduleTz {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.timeInput {
+  width: 100px;
+  min-width: unset !important;
+  flex: 0 !important;
+}
+
+.tzSelect {
+  min-width: 130px;
+}
+
 @media (max-width: 768px) {
   .container {
     padding: 12px;

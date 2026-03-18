@@ -19,6 +19,8 @@ interface Schedule {
   source: string | null;
   last_triggered_at: string | null;
   trigger_status: string | null;
+  schedule_time: string | null;
+  timezone: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -91,6 +93,8 @@ export function Scheduler() {
   const [formCommand, setFormCommand] = useState('');
   const [formInterval, setFormInterval] = useState('1h');
   const [formSource, setFormSource] = useState('gorn');
+  const [formTime, setFormTime] = useState('');
+  const [formTimezone, setFormTimezone] = useState('Asia/Bangkok');
 
   const loadSchedules = useCallback(async () => {
     const url = beastFilter === 'all' ? `${API_BASE}/schedules` : `${API_BASE}/schedules?beast=${beastFilter}`;
@@ -116,10 +120,10 @@ export function Scheduler() {
     await fetch(`${API_BASE}/schedules`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ beast: formBeast, task: formTask, command: formCommand || null, interval: formInterval, source: formSource }),
+      body: JSON.stringify({ beast: formBeast, task: formTask, command: formCommand || null, interval: formInterval, source: formSource, ...(formTime ? { schedule_time: formTime, timezone: formTimezone } : {}) }),
     });
     setShowForm(false);
-    setFormBeast(''); setFormTask(''); setFormCommand(''); setFormInterval('1h');
+    setFormBeast(''); setFormTask(''); setFormCommand(''); setFormInterval('1h'); setFormTime(''); setFormTimezone('Asia/Bangkok');
     loadSchedules();
   }
 
@@ -182,6 +186,14 @@ export function Scheduler() {
             <option value="standing_order">standing_order</option>
             <option value="self">self</option>
           </select>
+          <input type="time" placeholder="Time (HH:MM)" value={formTime} onChange={e => setFormTime(e.target.value)} className={styles.timeInput} />
+          <select value={formTimezone} onChange={e => setFormTimezone(e.target.value)} className={styles.tzSelect}>
+            <option value="Asia/Bangkok">Asia/Bangkok</option>
+            <option value="UTC">UTC</option>
+            <option value="US/Eastern">US/Eastern</option>
+            <option value="US/Pacific">US/Pacific</option>
+            <option value="Europe/London">Europe/London</option>
+          </select>
           <button type="submit" className={styles.submitBtn}>Create</button>
         </form>
       )}
@@ -193,7 +205,7 @@ export function Scheduler() {
               <th>Status</th>
               <th>Beast</th>
               <th>Task</th>
-              <th>Interval</th>
+              <th>Schedule</th>
               <th>Last Run</th>
               <th>Next Due</th>
               <th>Trigger</th>
@@ -221,7 +233,11 @@ export function Scheduler() {
                     <span className={styles.taskName}>{s.task}</span>
                     {s.command && <span className={styles.command}>{s.command}</span>}
                   </td>
-                  <td>{s.interval}</td>
+                  <td className={styles.scheduleCell}>
+                    <span>{s.interval}</span>
+                    {s.schedule_time && <span className={styles.scheduleTime}>at {s.schedule_time}</span>}
+                    {s.timezone && s.timezone !== 'Asia/Bangkok' && <span className={styles.scheduleTz}>{s.timezone}</span>}
+                  </td>
                   <td>{formatTimeAgo(s.last_run_at)}</td>
                   <td className={status === 'overdue' ? styles.overdueTd : undefined}>{formatDueTime(s.next_due_at)}</td>
                   <td className={styles.triggerCell}>

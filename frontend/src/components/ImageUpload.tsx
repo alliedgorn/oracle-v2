@@ -24,6 +24,26 @@ export function ImageUpload({ onUploadComplete }: ImageUploadProps) {
 
     const previewUrl = URL.createObjectURL(file);
     setStaged({ file, previewUrl });
+
+    // Auto-upload immediately
+    autoUpload(file, previewUrl);
+  }
+
+  async function autoUpload(file: File, previewUrl: string) {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.url) {
+        onUploadComplete(`![${file.name}](${data.url})`);
+        URL.revokeObjectURL(previewUrl);
+        setStaged(null);
+        if (fileRef.current) fileRef.current.value = '';
+      }
+    } catch { /* ignore */ }
+    setUploading(false);
   }
 
   async function handleUpload() {

@@ -3100,9 +3100,12 @@ app.patch('/api/schedules/:id', async (c) => {
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
   const data = await c.req.json();
-  const requester = (c.req.query('as') || data.as || '').toLowerCase();
-  if (requester && requester !== existing.beast && requester !== 'gorn') {
-    return c.json({ error: 'Only the schedule owner or Gorn can modify this schedule' }, 403);
+  const requester = (c.req.query('as') || data.as || data.beast || '').toLowerCase();
+  if (!requester) {
+    return c.json({ error: 'Identity required: pass ?as=beast or beast in body' }, 400);
+  }
+  if (requester !== existing.beast && requester !== 'gorn') {
+    return c.json({ error: `Only ${existing.beast} or Gorn can modify this schedule` }, 403);
   }
   const updates: string[] = [];
   const params: any[] = [];
@@ -3150,16 +3153,20 @@ app.patch('/api/schedules/:id/run', async (c) => {
   return c.json(updated);
 });
 
-// DELETE /api/schedules/:id — remove a schedule
 // DELETE /api/schedules/:id — remove a schedule (owner or Gorn only)
 app.delete('/api/schedules/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
-  const requester = (c.req.query('as') || '').toLowerCase();
-  if (requester && requester !== existing.beast && requester !== 'gorn') {
-    return c.json({ error: 'Only the schedule owner or Gorn can delete this schedule' }, 403);
+  // Parse body for identity (DELETE can have body)
+  const body = await c.req.json().catch(() => ({}));
+  const requester = (c.req.query('as') || body.as || body.beast || '').toLowerCase();
+  if (!requester) {
+    return c.json({ error: 'Identity required: pass ?as=beast or beast in body' }, 400);
+  }
+  if (requester !== existing.beast && requester !== 'gorn') {
+    return c.json({ error: `Only ${existing.beast} or Gorn can delete this schedule` }, 403);
   }
   sqlite.prepare('DELETE FROM beast_schedules WHERE id = ?').run(id);
   wsBroadcast('schedule_update', { action: 'deleted', id });

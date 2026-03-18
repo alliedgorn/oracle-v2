@@ -116,3 +116,25 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+
+@media (max-width: 768px) {
+  .container {
+    padding: var(--space-md);
+  }
+
+  .suggestions {
+    flex-wrap: wrap;
+  }
+
+  .suggestion {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 12px;
+  }
+}

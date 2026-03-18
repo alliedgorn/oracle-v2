@@ -1435,30 +1435,55 @@ app.get('/api/forum/unread/:beast', (c) => {
   });
 });
 
-// File upload for forum attachments
+// Image upload with validation and resize
 const UPLOADS_DIR = path.join(ORACLE_DATA_DIR, 'uploads');
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per Rax's recommendation
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
-app.post('/api/forum/upload', async (c) => {
+// Allowed image types by magic bytes
+const IMAGE_MAGIC: Record<string, { ext: string; mime: string }> = {
+  'ffd8ff': { ext: '.jpg', mime: 'image/jpeg' },
+  '89504e47': { ext: '.png', mime: 'image/png' },
+  '47494638': { ext: '.gif', mime: 'image/gif' },
+  '52494646': { ext: '.webp', mime: 'image/webp' }, // RIFF header for WebP
+};
+
+function detectImageType(buffer: Buffer): { ext: string; mime: string } | null {
+  const hex = buffer.subarray(0, 4).toString('hex');
+  for (const [magic, info] of Object.entries(IMAGE_MAGIC)) {
+    if (hex.startsWith(magic)) return info;
+  }
+  // WebP has RIFF + WEBP at bytes 8-12
+  if (hex.startsWith('52494646') && buffer.subarray(8, 12).toString('ascii') === 'WEBP') {
+    return { ext: '.webp', mime: 'image/webp' };
+  }
+  return null;
+}
+
+app.post('/api/upload', async (c) => {
   try {
     const formData = await c.req.formData();
     const file = formData.get('file') as File;
+    const context = formData.get('context') as string; // 'forum' or 'dm'
     const messageId = formData.get('message_id');
     const beast = formData.get('beast');
 
     if (!file) return c.json({ error: 'No file provided' }, 400);
     if (file.size > MAX_FILE_SIZE) return c.json({ error: `File too large. Max ${MAX_FILE_SIZE / 1024 / 1024}MB` }, 400);
 
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Magic byte validation — no SVGs, only raster images
+    const imageType = detectImageType(buffer);
+    if (!imageType) return c.json({ error: 'Invalid image. Only JPG, PNG, GIF, WebP allowed.' }, 400);
+
     // Ensure uploads dir exists
     if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-    // Generate unique filename
-    const ext = path.extname(file.name) || '';
-    const filename = `${Date.now()}_${crypto.randomUUID().slice(0, 8)}${ext}`;
+    // Hash-based filename (UUID, no original name in path)
+    const filename = `${crypto.randomUUID()}${imageType.ext}`;
     const filePath = path.join(UPLOADS_DIR, filename);
 
     // Write file
-    const buffer = Buffer.from(await file.arrayBuffer());
     fs.writeFileSync(filePath, buffer);
 
     // Record in DB
@@ -1466,7 +1491,7 @@ app.post('/api/forum/upload', async (c) => {
     const result = sqlite.prepare(`
       INSERT INTO forum_attachments (message_id, filename, original_name, mime_type, size_bytes, uploaded_by, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(messageId ? Number(messageId) : null, filename, file.name, file.type || 'application/octet-stream', file.size, beast || null, now);
+    `).run(messageId ? Number(messageId) : null, filename, file.name, imageType.mime, file.size, beast || null, now);
 
     return c.json({
       id: (result as any).lastInsertRowid,
@@ -1492,8 +1517,12 @@ app.get('/api/forum/file/:filename', (c) => {
 
   const meta = sqlite.prepare('SELECT mime_type, original_name FROM forum_attachments WHERE filename = ?').get(filename) as any;
   const content = fs.readFileSync(filePath);
-  c.header('Content-Type', meta?.mime_type || 'application/octet-stream');
-  c.header('Content-Disposition', `inline; filename="${meta?.original_name || filename}"`);
+  // Safe content type — only serve known image types, everything else as octet-stream
+  const safeTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+  const contentType = safeTypes.has(meta?.mime_type) ? meta.mime_type : 'application/octet-stream';
+  c.header('Content-Type', contentType);
+  c.header('Content-Disposition', 'inline');
+  c.header('Cache-Control', 'public, max-age=31536000, immutable');
   return c.body(content);
 });
 

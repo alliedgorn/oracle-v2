@@ -561,3 +561,15 @@
 .lineContent {
   flex: 1;
 }
+
+@media (max-width: 768px) {
+  .container {
+    padding: var(--space-md);
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 12px;
+  }
+}

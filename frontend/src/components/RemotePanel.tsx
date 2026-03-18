@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ANIMAL_EMOJI } from '../utils/animals';
+import { BeastCard } from './BeastCard';
 import styles from './RemotePanel.module.css';
 
 interface Beast {
@@ -110,31 +110,15 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
         <div className={styles.beastList}>
           {beasts.map(beast => {
             const isAttached = attachedBeast === beast.name;
-            const isOffline = beast.status === 'offline';
 
             return (
-              <div
+              <BeastCard
                 key={beast.name}
-                className={`${styles.beastItem} ${isAttached ? styles.attached : ''} ${isOffline ? styles.offline : ''}`}
+                {...beast}
+                selected={isAttached}
+                badge={isAttached ? 'ATTACHED' : undefined}
                 onClick={() => !loading && handleClick(beast)}
-                style={beast.themeColor ? { borderLeftColor: beast.themeColor } : undefined}
-              >
-                <div className={styles.beastAvatar}>
-                  {beast.avatarUrl ? (
-                    <img src={beast.avatarUrl} alt={beast.displayName} className={styles.avatar} />
-                  ) : (
-                    <span className={styles.emoji}>{ANIMAL_EMOJI[beast.animal?.toLowerCase()] || '🐾'}</span>
-                  )}
-                  <span className={`${styles.statusDot} ${styles['dot' + beast.status.charAt(0).toUpperCase() + beast.status.slice(1)]}`} />
-                </div>
-                <div className={styles.beastInfo}>
-                  <span className={styles.beastName}>{beast.displayName}</span>
-                  <span className={styles.beastStatus}>
-                    {beast.status === 'processing' ? 'Processing' : beast.status === 'idle' ? 'Idle' : beast.status === 'shell' ? 'Shell' : 'Offline'}
-                  </span>
-                </div>
-                {isAttached && <span className={styles.attachedLabel}>ATTACHED</span>}
-              </div>
+              />
             );
           })}
         </div>

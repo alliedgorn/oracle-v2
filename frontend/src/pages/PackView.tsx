@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+// Link removed — BeastCard handles name clicks
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import styles from './PackView.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
+import { BeastCard } from '../components/BeastCard';
 
 interface Beast {
   name: string;
@@ -214,25 +215,13 @@ export function PackView() {
         <h2 className={styles.title}>The Den</h2>
         <div className={styles.beastGrid}>
           {beasts.map(beast => (
-            <div
+            <BeastCard
               key={beast.name}
-              className={`${styles.beastCard} ${selected?.name === beast.name ? styles.selected : ''} ${styles[beast.status] || styles.offline}`}
+              {...beast}
+              selected={selected?.name === beast.name}
               onClick={() => selectBeast(beast)}
-              style={beast.themeColor ? { '--beast-color': beast.themeColor } as React.CSSProperties : undefined}
-            >
-              <div className={styles.avatarContainer}>
-                {beast.avatarUrl ? (
-                  <img src={beast.avatarUrl} alt={beast.displayName} className={styles.beastAvatar} />
-                ) : (
-                  <span className={styles.beastEmoji}>
-                    {ANIMAL_EMOJI[beast.animal?.toLowerCase()] || '🐾'}
-                  </span>
-                )}
-                <span className={`${styles.statusDot} ${beast.online ? styles.dotOnline : styles.dotOffline}`} title={beast.online ? 'Online' : 'Offline'} />
-              </div>
-              <Link to={`/beast/${beast.name}`} className={styles.beastName} onClick={e => e.stopPropagation()}>{beast.displayName}</Link>
-              <div className={styles.beastRole}>{beast.role || beast.animal}</div>
-            </div>
+              onNameClick={(e) => { e.stopPropagation(); window.location.href = `/beast/${beast.name}`; }}
+            />
           ))}
         </div>
       </div>

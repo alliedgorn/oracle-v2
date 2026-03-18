@@ -1976,7 +1976,8 @@ app.get('/api/message/:id/history', (c) => {
 // Supported emoji whitelist — request new ones via forum
 const SUPPORTED_EMOJI = new Set([
   '👍', '👎', '❤️', '🔥', '👀', '✅', '❌',
-  '😂', '😢', '🤔', '💪', '🎉', '🙏',
+  '😂', '😢', '🤔', '💪', '🎉', '🙏', '👏', '💯',
+  '🚀', '⭐', '⚠️', '💡', '🏆', '🫡', '🤝',
   '🐾', '🐴', '🐊', '🐻', '🦘', '🦁', '🦝', '🦦', '🐙', '🐦‍⬛', // beast animals
 ]);
 

@@ -90,20 +90,33 @@
 /* Mobile */
 @media (max-width: 768px) {
   .uploadBtn {
-    min-width: 44px;
-    min-height: 44px;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
   }
 
-  .removeBtn {
-    min-width: 44px;
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  .uploadBtn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .preview {
+    padding: var(--space-xs) var(--space-sm);
   }
 
   .thumbnail {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .fileName {
+    font-size: 12px;
+  }
+
+  .removeBtn {
+    min-width: 32px;
+    min-height: 32px;
+    font-size: 14px;
   }
 }

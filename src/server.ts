@@ -197,6 +197,17 @@ function verifySessionToken(token: string): boolean {
   return timingSafeEqual(sigBuf, expectedBuf);
 }
 
+// Check if request has a valid browser session (Gorn)
+function hasSessionAuth(c: Context): boolean {
+  const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
+  return verifySessionToken(sessionCookie || '');
+}
+
+// Check if identity validation can be skipped (local network OR authenticated browser session)
+function isTrustedRequest(c: Context): boolean {
+  return isLocalNetwork(c) || hasSessionAuth(c);
+}
+
 // Check if auth is required and user is authenticated
 function isAuthenticated(c: Context): boolean {
   const authEnabled = getSetting('auth_enabled') === 'true';
@@ -2083,7 +2094,7 @@ app.post('/api/message/:id/react', async (c) => {
       return c.json({ error: 'beast and emoji are required' }, 400);
     }
     // Sender validation for non-local requests
-    if (!isLocalNetwork(c)) {
+    if (!isTrustedRequest(c)) {
       const as = body.as?.toLowerCase();
       if (!as) return c.json({ error: 'as param required for sender validation' }, 400);
       if (as !== body.beast.toLowerCase() && as !== 'gorn') {
@@ -2135,7 +2146,7 @@ app.delete('/api/message/:id/react', async (c) => {
     if (!body.beast || !body.emoji) {
       return c.json({ error: 'beast and emoji are required' }, 400);
     }
-    if (!isLocalNetwork(c)) {
+    if (!isTrustedRequest(c)) {
       const as = body.as?.toLowerCase();
       if (!as) return c.json({ error: 'as param required' }, 400);
       if (as !== body.beast.toLowerCase() && as !== 'gorn') {
@@ -2264,7 +2275,7 @@ app.post('/api/mindlink', async (c) => {
       return c.json({ error: 'beast and message required' }, 400);
     }
     // Sender validation for non-local requests
-    if (!isLocalNetwork(c)) {
+    if (!isTrustedRequest(c)) {
       const as = data.as?.toLowerCase();
       if (!as) return c.json({ error: 'as param required for sender validation' }, 400);
       if (as !== data.beast.toLowerCase() && as !== 'gorn') {
@@ -2304,7 +2315,7 @@ app.patch('/api/mindlink/:id', async (c) => {
       return c.json({ error: `Invalid status. Allowed: ${allowed.join(', ')}` }, 400);
     }
 
-    if (!isLocalNetwork(c)) {
+    if (!isTrustedRequest(c)) {
       const as = data.as?.toLowerCase();
       if (as !== 'gorn') return c.json({ error: 'Only Gorn can update mindlink items' }, 403);
     }
@@ -2384,7 +2395,7 @@ app.patch('/api/queue/gorn/:threadId', async (c) => {
     }
 
     // Browser access restricted to gorn
-    if (!isLocalNetwork(c)) {
+    if (!isTrustedRequest(c)) {
       const as = data.as?.toLowerCase();
       if (as !== 'gorn') return c.json({ error: 'Only Gorn can update queue items' }, 403);
     }
@@ -2464,12 +2475,8 @@ import {
   getDashboard,
 } from './dm/handler.ts';
 
-// DM Dashboard — restricted to gorn on non-local requests
+// DM Dashboard — accessible to authenticated users (auth middleware handles access)
 app.get('/api/dm/dashboard', (c) => {
-  if (!isLocalNetwork(c)) {
-    const as = c.req.query('as')?.toLowerCase();
-    if (as !== 'gorn') return c.json({ error: 'Dashboard access restricted to gorn' }, 403);
-  }
   const limit = parseInt(c.req.query('limit') || '50');
   const data = getDashboard(limit);
   return c.json({
@@ -2496,7 +2503,7 @@ app.post('/api/dm', async (c) => {
       return c.json({ error: 'Missing required fields: from, to, message' }, 400);
     }
     // Sender validation: non-local requests must provide 'as' matching 'from'
-    if (!isLocalNetwork(c)) {
+    if (!isTrustedRequest(c)) {
       const as = data.as?.toLowerCase();
       if (!as) return c.json({ error: 'as param required for sender validation' }, 400);
       if (as !== data.from.toLowerCase() && as !== 'gorn') {
@@ -2525,7 +2532,7 @@ app.get('/api/dm/:name', (c) => {
   const as = c.req.query('as')?.toLowerCase();
   // IDOR protection: 'as' required. Must match name or be 'gorn'.
   // Local network bypass: skip check for local requests (CLI/beast access)
-  if (!isLocalNetwork(c)) {
+  if (!isTrustedRequest(c)) {
     if (!as) return c.json({ error: 'as param required for DM access' }, 400);
     if (as !== 'gorn' && as !== name.toLowerCase()) {
       return c.json({ error: 'Access denied. You can only view your own conversations.' }, 403);
@@ -2554,7 +2561,7 @@ app.get('/api/dm/:name/:other', (c) => {
   const other = c.req.param('other');
   const as = c.req.query('as')?.toLowerCase();
   // IDOR protection: 'as' required from non-local. Must be participant or gorn.
-  if (!isLocalNetwork(c)) {
+  if (!isTrustedRequest(c)) {
     if (!as) return c.json({ error: 'as param required for DM access' }, 400);
     if (as !== 'gorn' && as !== name.toLowerCase() && as !== other.toLowerCase()) {
       return c.json({ error: 'Access denied. You can only read conversations you are part of.' }, 403);
@@ -2584,7 +2591,7 @@ app.get('/api/dm/:name/:other', (c) => {
 app.patch('/api/dm/:name/:other/read', (c) => {
   const reader = c.req.param('name');
   const other = c.req.param('other');
-  if (!isLocalNetwork(c)) {
+  if (!isTrustedRequest(c)) {
     const as = c.req.query('as')?.toLowerCase();
     if (!as) return c.json({ error: 'as param required' }, 400);
     if (as !== reader.toLowerCase() && as !== 'gorn') {
@@ -2602,7 +2609,7 @@ app.patch('/api/dm/:name/:other/read', (c) => {
 app.patch('/api/dm/:name/:other/read-all', (c) => {
   const name = c.req.param('name');
   const other = c.req.param('other');
-  if (!isLocalNetwork(c)) {
+  if (!isTrustedRequest(c)) {
     const as = c.req.query('as')?.toLowerCase();
     if (!as) return c.json({ error: 'as param required' }, 400);
     if (as !== name.toLowerCase() && as !== other.toLowerCase() && as !== 'gorn') {

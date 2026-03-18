@@ -90,6 +90,14 @@ export function DirectMessages() {
 
   const convParam = searchParams.get('conv'); // "bertus-karo"
 
+  // ESC closes lightbox
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxSrc(null); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lightboxSrc]);
+
   useEffect(() => {
     loadDashboard();
     fetch(`${API_BASE}/beasts`).then(r => r.json()).then(d => setBeasts(d.beasts || [])).catch(() => {});
@@ -421,8 +429,15 @@ export function DirectMessages() {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        img({ src, alt, ...props }) {
-                          return <img src={src} alt={alt || ''} {...props} onClick={() => { if (src) setLightboxSrc(src); }} />;
+                        img({ src, alt }) {
+                          return (
+                            <img
+                              src={src}
+                              alt={alt || ''}
+                              style={{ cursor: 'pointer' }}
+                              onClick={(e) => { e.stopPropagation(); if (src) setLightboxSrc(src); }}
+                            />
+                          );
                         },
                       }}
                     >{msg.content}</ReactMarkdown>

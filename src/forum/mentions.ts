@@ -184,7 +184,12 @@ export function notifyMentioned(
     const entry = registry[name];
     if (!entry) continue;
 
-    const message = `[Forum message] From ${author} in thread #${threadId} ("${sanitizeForTmux(threadTitle, 50)}"):\\n\\n${preview}\\n\\nPlease read and respond to this forum message. Post your response by running: curl -s -X POST http://localhost:47778/api/thread -H 'Content-Type: application/json' -d '{"message": "<your response>", "thread_id": ${threadId}, "role": "claude", "author": "${name}"}'`;
+    // UTC+7 timestamp for Beast awareness
+    const now = new Date();
+    const utc7 = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const timeStr = `${utc7.getUTCHours().toString().padStart(2, '0')}:${utc7.getUTCMinutes().toString().padStart(2, '0')} UTC+7`;
+
+    const message = `[${timeStr}] [Forum message] From ${author} in thread #${threadId} ("${sanitizeForTmux(threadTitle, 50)}"):\\n\\n${preview}\\n\\nPlease read and respond to this forum message. Post your response by running: curl -s -X POST http://localhost:47778/api/thread -H 'Content-Type: application/json' -d '{"message": "<your response>", "thread_id": ${threadId}, "role": "claude", "author": "${name}"}'`;
 
     try {
       const result = Bun.spawnSync(['tmux', 'send-keys', '-t', entry.tmux, message, 'Enter']);

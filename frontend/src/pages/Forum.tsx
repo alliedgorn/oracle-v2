@@ -37,31 +37,35 @@ function resolveAuthor(
   author: string | null,
   profiles: Map<string, BeastProfile>
 ): { name: string; emoji: string; avatarUrl: string | null; themeColor: string | null } {
+  // Check author field first — role alone is unreliable (Beasts post with role: human)
+  if (author) {
+    const authorLower = author.toLowerCase();
+
+    // Match against beast profiles from DB
+    for (const [key, profile] of profiles) {
+      if (authorLower.includes(key)) {
+        return {
+          name: profile.displayName,
+          emoji: ANIMAL_EMOJI[profile.animal.toLowerCase()] || '🐾',
+          avatarUrl: profile.avatarUrl,
+          themeColor: profile.themeColor,
+        };
+      }
+    }
+
+    // Fallback to static map
+    for (const [key, identity] of Object.entries(FALLBACK_MAP)) {
+      if (authorLower.includes(key)) return { ...identity, avatarUrl: null, themeColor: null };
+    }
+  }
+
+  // No author or unrecognized author — fall back to role
   if (role === 'human') return { name: 'Gorn', emoji: '👤', avatarUrl: null, themeColor: null };
   if (!author) return {
     name: role === 'oracle' ? 'Oracle' : 'Claude',
     emoji: role === 'oracle' ? '🔮' : '🤖',
     avatarUrl: null, themeColor: null,
   };
-
-  const authorLower = author.toLowerCase();
-
-  // Match against beast profiles from DB
-  for (const [key, profile] of profiles) {
-    if (authorLower.includes(key)) {
-      return {
-        name: profile.displayName,
-        emoji: ANIMAL_EMOJI[profile.animal.toLowerCase()] || '🐾',
-        avatarUrl: profile.avatarUrl,
-        themeColor: profile.themeColor,
-      };
-    }
-  }
-
-  // Fallback to static map
-  for (const [key, identity] of Object.entries(FALLBACK_MAP)) {
-    if (authorLower.includes(key)) return { ...identity, avatarUrl: null, themeColor: null };
-  }
 
   const shortAuthor = author.split('@')[0] || author;
   return { name: shortAuthor, emoji: role === 'oracle' ? '🔮' : '🤖', avatarUrl: null, themeColor: null };

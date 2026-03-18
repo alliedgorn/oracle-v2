@@ -1437,7 +1437,7 @@ app.get('/api/forum/unread/:beast', (c) => {
 
 // Image upload with validation and resize
 const UPLOADS_DIR = path.join(ORACLE_DATA_DIR, 'uploads');
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 30 * 1024 * 1024; // 30MB — resize on server
 
 // Allowed image types by magic bytes
 const IMAGE_MAGIC: Record<string, { ext: string; mime: string }> = {
@@ -1479,19 +1479,43 @@ app.post('/api/upload', async (c) => {
     // Ensure uploads dir exists
     if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
+    // Resize large images (max 1920px wide, JPEG 80% quality)
+    let processedBuffer = buffer;
+    let finalExt = imageType.ext;
+    let finalMime = imageType.mime;
+    try {
+      const sharp = require('sharp');
+      const metadata = await sharp(buffer).metadata();
+      if (metadata.width && metadata.width > 1920) {
+        processedBuffer = await sharp(buffer)
+          .resize(1920, null, { withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toBuffer();
+        finalExt = '.jpg';
+        finalMime = 'image/jpeg';
+      } else if (buffer.length > 2 * 1024 * 1024) {
+        // Over 2MB — compress without resizing
+        processedBuffer = await sharp(buffer)
+          .jpeg({ quality: 85 })
+          .toBuffer();
+        finalExt = '.jpg';
+        finalMime = 'image/jpeg';
+      }
+    } catch { /* sharp not available — save original */ }
+
     // Hash-based filename (UUID, no original name in path)
-    const filename = `${crypto.randomUUID()}${imageType.ext}`;
+    const filename = `${crypto.randomUUID()}${finalExt}`;
     const filePath = path.join(UPLOADS_DIR, filename);
 
-    // Write file
-    fs.writeFileSync(filePath, buffer);
+    // Write processed file
+    fs.writeFileSync(filePath, processedBuffer);
 
     // Record in DB
     const now = Date.now();
     const result = sqlite.prepare(`
       INSERT INTO forum_attachments (message_id, filename, original_name, mime_type, size_bytes, uploaded_by, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(messageId ? Number(messageId) : null, filename, file.name, imageType.mime, file.size, beast || null, now);
+    `).run(messageId ? Number(messageId) : null, filename, file.name, finalMime, processedBuffer.length, beast || null, now);
 
     return c.json({
       id: (result as any).lastInsertRowid,

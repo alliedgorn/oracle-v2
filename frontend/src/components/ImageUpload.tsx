@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import styles from './ImageUpload.module.css';
 
 interface StagedImage {
@@ -16,6 +16,28 @@ export function ImageUpload({ onUploadComplete }: ImageUploadProps) {
   const [staged, setStaged] = useState<StagedImage | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Clipboard paste support
+  useEffect(() => {
+    function handlePaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            const previewUrl = URL.createObjectURL(file);
+            setStaged({ file, previewUrl });
+            autoUpload(file, previewUrl);
+          }
+          break;
+        }
+      }
+    }
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, []);
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

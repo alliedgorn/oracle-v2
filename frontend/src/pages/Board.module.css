@@ -1,0 +1,272 @@
+.container {
+  max-width: none;
+  padding: var(--space-lg);
+  height: calc(100vh - 53px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+  flex-shrink: 0;
+}
+
+.header h1 {
+  font-family: var(--font-heading);
+  color: var(--text-primary);
+  margin: 0;
+  font-size: 24px;
+}
+
+.headerActions {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.newTaskBtn {
+  background: var(--accent);
+  border: none;
+  color: white;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.newTaskBtn:hover {
+  background: var(--accent-hover);
+}
+
+/* Filters row */
+.filters {
+  display: flex;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.projectSelect {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.projectSelect:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Kanban board */
+.board {
+  display: flex;
+  gap: var(--space-md);
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+}
+
+/* Column */
+.column {
+  flex: 1;
+  min-width: 260px;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.columnHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px var(--space-md);
+  border-bottom: 1px solid var(--border);
+}
+
+.columnTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.columnCount {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.columnBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+/* Task card */
+.taskCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--priority-color, var(--border));
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.taskCard:hover {
+  background: var(--bg-elevated);
+  border-color: var(--text-muted);
+  border-left-color: var(--priority-color, var(--text-muted));
+}
+
+.taskTitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.3;
+  margin-bottom: var(--space-sm);
+}
+
+.taskMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.priorityBadge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.priorityCritical {
+  background: rgba(196, 75, 63, 0.15);
+  color: var(--danger);
+}
+
+.priorityHigh {
+  background: rgba(212, 148, 58, 0.15);
+  color: var(--accent);
+}
+
+.priorityMedium {
+  background: rgba(90, 154, 62, 0.15);
+  color: var(--success);
+}
+
+.priorityLow {
+  background: rgba(109, 101, 96, 0.15);
+  color: var(--text-muted);
+}
+
+.assignee {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.assigneeDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.projectTag {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* Empty column */
+.emptyColumn {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+  padding: var(--space-lg);
+}
+
+/* Loading */
+.loading {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 48px;
+}
+
+/* Mobile — single column with tabs */
+@media (max-width: 768px) {
+  .container {
+    padding: var(--space-md);
+    height: auto;
+    overflow: visible;
+  }
+
+  .header h1 {
+    font-size: 20px;
+  }
+
+  .board {
+    flex-direction: column;
+    overflow-x: visible;
+  }
+
+  .column {
+    min-width: auto;
+    max-width: none;
+  }
+
+  .columnBody {
+    max-height: none;
+  }
+
+  .taskCard {
+    padding: 10px;
+  }
+
+  .taskTitle {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: var(--space-sm);
+  }
+
+  .header {
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .filters {
+    flex-wrap: wrap;
+  }
+}

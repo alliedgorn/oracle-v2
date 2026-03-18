@@ -2806,6 +2806,8 @@ try {
   )`).run();
   // v2: add type column
   try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN type TEXT DEFAULT 'task'`).run(); } catch { /* exists */ }
+  // Backfill existing tasks with no type
+  sqlite.prepare(`UPDATE tasks SET type = 'task' WHERE type IS NULL`).run();
 } catch { /* already exists */ }
 
 const VALID_TASK_TYPES = ['bug', 'feature', 'improvement', 'chore', 'task'];
@@ -2916,7 +2918,8 @@ app.post('/api/tasks', async (c) => {
   const validPriorities = ['critical', 'high', 'medium', 'low'];
   const taskStatus = validStatuses.includes(status) ? status : 'todo';
   const taskPriority = validPriorities.includes(priority) ? priority : 'medium';
-  const taskType = VALID_TASK_TYPES.includes(type) ? type : 'task';
+  if (type && !VALID_TASK_TYPES.includes(type)) return c.json({ error: `Invalid type. Valid: ${VALID_TASK_TYPES.join(', ')}` }, 400);
+  const taskType = type || 'task';
 
   const now = new Date().toISOString();
   const result = sqlite.prepare(

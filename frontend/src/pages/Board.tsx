@@ -24,6 +24,7 @@ interface Task {
   project_name: string | null;
   thread_id: number | null;
   due_date: string | null;
+  type: string;
   created_at: string;
   updated_at: string;
 }
@@ -495,6 +496,11 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
         <span className={`${styles.priorityBadge} ${styles[`priority${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}`]}`}>
           {task.priority}
         </span>
+        {task.type && task.type !== 'task' && (
+          <span className={`${styles.typeBadge} ${styles[`type${task.type.charAt(0).toUpperCase() + task.type.slice(1)}`]}`}>
+            {task.type}
+          </span>
+        )}
         {task.assigned_to && (
           <span className={styles.assignee}>
             <span className={styles.assigneeDot} style={{ background: BEAST_COLORS[task.assigned_to] || '#666' }} />

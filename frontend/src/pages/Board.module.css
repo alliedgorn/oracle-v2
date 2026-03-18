@@ -191,6 +191,20 @@
   color: var(--text-muted);
 }
 
+.typeBadge {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.typeBug { background: rgba(231, 76, 60, 0.12); color: #e74c3c; }
+.typeFeature { background: rgba(52, 152, 219, 0.12); color: #3498db; }
+.typeImprovement { background: rgba(46, 204, 113, 0.12); color: #2ecc71; }
+.typeChore { background: rgba(149, 165, 166, 0.12); color: #95a5a6; }
+
 .assignee {
   display: flex;
   align-items: center;

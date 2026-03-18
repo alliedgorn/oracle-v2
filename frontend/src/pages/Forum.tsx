@@ -430,9 +430,10 @@ export function Forum() {
     const needsFetch: { id: number }[] = [];
 
     for (const m of messages) {
-      if (m.reactions && m.reactions.length > 0) {
+      if (m.reactions !== undefined) {
+        // Always set — empty array means reactions were removed
         map[m.id] = m.reactions;
-      } else if (m.reactions === undefined) {
+      } else {
         needsFetch.push(m);
       }
     }
@@ -442,11 +443,11 @@ export function Forum() {
       try {
         const res = await fetch(`${API_BASE}/message/${m.id}/reactions`);
         const data = await res.json();
-        if (data.reactions?.length > 0) map[m.id] = data.reactions;
+        map[m.id] = data.reactions || [];
       } catch { /* ignore */ }
     }));
 
-    // Merge with existing reactions (don't replace)
+    // Merge with existing reactions
     setReactions(prev => ({ ...prev, ...map }));
   }
 

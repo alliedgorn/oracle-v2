@@ -752,18 +752,23 @@
 
   .sidebar {
     width: 100%;
-    height: 100%;
+    flex: 1;
     max-height: none;
     border-bottom: none;
     overflow-y: auto;
   }
 
-  /* When a thread is selected, hide sidebar and show main full-screen */
   .sidebar.hidden {
     display: none;
   }
 
+  .main {
+    display: none;
+  }
+
   .main.fullScreen {
+    display: flex;
+    flex: 1;
     height: 100%;
   }
 

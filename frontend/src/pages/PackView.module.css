@@ -396,35 +396,34 @@
   }
 
   .beastGrid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    display: flex;
+    flex-direction: column;
     gap: 6px;
   }
 
   .beastCard {
-    flex-direction: column;
-    text-align: center;
-    padding: 10px 6px;
-    gap: 6px;
+    flex-direction: row;
+    padding: 10px 12px;
+    gap: 10px;
   }
 
   .beastEmoji {
-    width: 32px;
-    height: 32px;
-    font-size: 18px;
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
   }
 
   .beastAvatar {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
   }
 
   .beastName {
-    font-size: 11px;
+    font-size: 13px;
   }
 
   .beastRole {
-    display: none;
+    font-size: 11px;
   }
 
   .statusDot {
@@ -479,7 +478,7 @@
 }
 
 @media (max-width: 480px) {
-  .beastGrid {
-    grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
+  .container {
+    padding: 8px;
   }
 }

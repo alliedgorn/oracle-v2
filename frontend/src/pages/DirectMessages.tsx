@@ -5,6 +5,7 @@ import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import styles from './DirectMessages.module.css';
 import { SearchInput } from '../components/SearchInput';
 import { ImageUpload } from '../components/ImageUpload';
+import ReactMarkdown from 'react-markdown';
 
 interface DashboardConversation {
   id: number;
@@ -413,7 +414,7 @@ export function DirectMessages() {
                     <span className={styles.sender}>{msg.sender}</span>
                     <span className={styles.time}>{formatFullTime(msg.created_at)}</span>
                   </div>
-                  <div className={styles.messageContent}>{msg.content}</div>
+                  <div className={styles.messageContent}><ReactMarkdown>{msg.content}</ReactMarkdown></div>
                 </div>
               ))}
               <div ref={messagesEndRef} />

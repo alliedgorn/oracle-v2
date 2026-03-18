@@ -517,6 +517,13 @@
   font-family: var(--font-mono);
 }
 
+.messageContent img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  margin: 8px 0;
+}
+
 .messageContent pre {
   margin: 12px 0;
 }
@@ -796,14 +803,19 @@
   }
 
   .threadHeader {
-    padding: 12px;
+    padding: 10px 12px;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
   }
 
   .threadHeader h2 {
-    font-size: 16px;
+    font-size: 15px;
     width: 100%;
+    line-height: 1.3;
+  }
+
+  .threadActions {
+    gap: 6px;
   }
 
   .messages {
@@ -830,23 +842,30 @@
   }
 
   .replyForm {
-    padding: 10px 12px;
+    padding: 8px 10px;
     position: sticky;
     bottom: 0;
   }
 
   .replyInputRow {
-    flex-direction: column;
-    gap: 8px;
+    flex-direction: row;
+    gap: 6px;
+    align-items: flex-end;
   }
 
   .replyForm .textarea {
-    min-height: 60px;
+    min-height: 44px;
+    max-height: 80px;
+    font-size: 14px;
+    padding: 10px;
   }
 
   .replyForm .submitButton {
-    align-self: stretch;
     min-height: 44px;
+    min-width: 60px;
+    padding: 8px 12px;
+    font-size: 13px;
+    flex-shrink: 0;
   }
 
   .newThread {
@@ -873,5 +892,13 @@
 
   .messageContent {
     font-size: 14px;
+  }
+
+  .threadHeader h2 {
+    font-size: 14px;
+  }
+
+  .replyForm {
+    padding: 6px 8px;
   }
 }

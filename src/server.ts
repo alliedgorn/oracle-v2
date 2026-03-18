@@ -2102,6 +2102,28 @@ app.post('/api/message/:id/react', async (c) => {
       VALUES (?, ?, ?, ?)
     `).run(messageId, body.beast.toLowerCase(), body.emoji, now);
     wsBroadcast('reaction', { message_id: messageId, beast: body.beast, emoji: body.emoji, action: 'add' });
+
+    // Notify the message author about the reaction
+    try {
+      const msg = sqlite.prepare('SELECT author, thread_id FROM forum_messages WHERE id = ?').get(messageId) as any;
+      if (msg?.author) {
+        const msgAuthor = msg.author.split('@')[0].toLowerCase();
+        const reactor = body.beast.toLowerCase();
+        // Don't notify yourself
+        if (msgAuthor !== reactor && msgAuthor !== 'gorn' && msgAuthor !== 'human' && msgAuthor !== 'user') {
+          const thread = sqlite.prepare('SELECT title FROM forum_threads WHERE id = ?').get(msg.thread_id) as any;
+          const { notifyMentioned } = await import('./forum/mentions.ts');
+          notifyMentioned(
+            [msgAuthor],
+            msg.thread_id,
+            thread?.title || 'thread',
+            reactor,
+            `${body.emoji} reacted to your message`
+          );
+        }
+      }
+    } catch { /* notification failure is non-critical */ }
+
     return c.json({ success: true, message_id: messageId, emoji: body.emoji });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Unknown error' }, 500);

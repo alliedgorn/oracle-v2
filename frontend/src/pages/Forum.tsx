@@ -418,16 +418,30 @@ export function Forum() {
     return date.toLocaleString();
   }
 
-  async function loadReactionsForThread(messages: { id: number }[]) {
+  async function loadReactionsForThread(messages: { id: number; reactions?: any[] }[]) {
+    // Use inline reactions from thread response if available
     const map: Record<number, any[]> = {};
-    await Promise.all(messages.map(async (m) => {
+    const needsFetch: { id: number }[] = [];
+
+    for (const m of messages) {
+      if (m.reactions && m.reactions.length > 0) {
+        map[m.id] = m.reactions;
+      } else if (m.reactions === undefined) {
+        needsFetch.push(m);
+      }
+    }
+
+    // Fetch individually only for messages without inline reactions
+    await Promise.all(needsFetch.map(async (m) => {
       try {
         const res = await fetch(`${API_BASE}/message/${m.id}/reactions`);
         const data = await res.json();
         if (data.reactions?.length > 0) map[m.id] = data.reactions;
       } catch { /* ignore */ }
     }));
-    setReactions(map);
+
+    // Merge with existing reactions (don't replace)
+    setReactions(prev => ({ ...prev, ...map }));
   }
 
   async function toggleReaction(messageId: number, emoji: string) {

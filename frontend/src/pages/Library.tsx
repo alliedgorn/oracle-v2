@@ -9,13 +9,14 @@ import { SearchInput } from '../components/SearchInput';
 import { FilterTabs } from '../components/FilterTabs';
 
 interface LibraryDoc {
-  id: string;
+  id: number;
   title: string;
   content: string;
-  preview: string;
+  type: string;
+  category?: string;
   author: string;
-  authorColor: string | null;
-  category: string;
+  authorColor?: string;
+  preview?: string;
   tags: string[];
   created_at: string;
   updated_at: string;
@@ -62,7 +63,7 @@ export function Library() {
     if (!docId) { setSelectedDoc(null); return; }
     fetch(`${API_BASE}/library/${docId}`)
       .then(r => r.json())
-      .then(d => setSelectedDoc(d.doc || null))
+      .then(d => setSelectedDoc(d.doc || d.id ? d : null))
       .catch(() => setSelectedDoc(null));
   }, [docId]);
 
@@ -81,7 +82,7 @@ export function Library() {
           <h1 className={styles.detailTitle}>{selectedDoc.title}</h1>
           <div className={styles.detailMeta}>
             <span className={styles.author}>
-              <span className={styles.authorDot} style={{ backgroundColor: selectedDoc.authorColor || 'var(--text-muted)' }} />
+              <span className={styles.authorDot} style={{ backgroundColor: 'var(--text-muted)' }} />
               {selectedDoc.author}
             </span>
             <span>{formatDate(selectedDoc.created_at)}</span>
@@ -152,19 +153,18 @@ export function Library() {
           <div
             key={doc.id}
             className={styles.docCard}
-            style={doc.authorColor ? { '--beast-color': doc.authorColor } as React.CSSProperties : undefined}
-            onClick={() => setSearchParams({ doc: doc.id })}
+            onClick={() => setSearchParams({ doc: String(doc.id) })}
           >
             <div className={styles.cardHeader}>
               <span className={styles.cardTitle}>{doc.title}</span>
               <span className={styles.cardDate}>{formatDate(doc.created_at)}</span>
             </div>
-            {doc.preview && (
-              <p className={styles.cardPreview}>{doc.preview}</p>
+            {doc.content && (
+              <p className={styles.cardPreview}>{doc.content.slice(0, 150).replace(/[#*`]/g, '')}{doc.content.length > 150 ? '...' : ''}</p>
             )}
             <div className={styles.cardMeta}>
               <span className={styles.author}>
-                <span className={styles.authorDot} style={{ backgroundColor: doc.authorColor || 'var(--text-muted)' }} />
+                <span className={styles.authorDot} style={{ backgroundColor: 'var(--text-muted)' }} />
                 {doc.author}
               </span>
               {doc.category && <span>{doc.category}</span>}

@@ -2582,6 +2582,7 @@ app.get('/api/library/:id', (c) => {
     title: row.title,
     content: row.content,
     type: row.type,
+    category: row.type,
     author: row.author,
     tags: JSON.parse(row.tags || '[]'),
     created_at: new Date(row.created_at).toISOString(),

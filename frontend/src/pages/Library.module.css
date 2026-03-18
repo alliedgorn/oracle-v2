@@ -142,16 +142,25 @@
 }
 
 .backLink {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13px;
+  font-family: inherit;
   margin-bottom: var(--space-lg);
-  text-decoration: none;
-  transition: color 0.2s;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .backLink:hover {
   color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-glow);
 }
 
 .detailHeader {

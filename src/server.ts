@@ -138,11 +138,8 @@ const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Check if request is from local network
 function isLocalNetwork(c: Context): boolean {
-  // If request comes through Caddy (trusted reverse proxy), treat as local.
-  // Caddy adds Via header and connects from localhost. Firewall restricts external access.
-  const via = c.req.header('via');
-  if (via && via.includes('Caddy')) return true;
-
+  // Check actual client IP — do NOT trust Via header (spoofable).
+  // Caddy should be configured to set X-Real-IP to the actual client IP.
   const forwarded = c.req.header('x-forwarded-for');
   const realIp = c.req.header('x-real-ip');
   const ip = forwarded?.split(',')[0]?.trim() || realIp || '127.0.0.1';

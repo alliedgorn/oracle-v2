@@ -3240,8 +3240,12 @@ app.patch('/api/schedules/:id/trigger', async (c) => {
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
   const data = await c.req.json().catch(() => ({}));
   const requester = (c.req.query('as') || data.as || data.beast || '').toLowerCase();
-  // Allow empty requester only from local network (server daemon)
-  if (requester && requester !== existing.beast && requester !== 'gorn') {
+  if (!requester) {
+    // Allow empty requester only from local network (server daemon uses this)
+    if (!isLocalNetwork(c)) {
+      return c.json({ error: 'Identity required: pass ?as=beast or beast in body' }, 400);
+    }
+  } else if (requester !== existing.beast && requester !== 'gorn') {
     return c.json({ error: `Only ${existing.beast} or Gorn can trigger this schedule` }, 403);
   }
   const now = new Date().toISOString();

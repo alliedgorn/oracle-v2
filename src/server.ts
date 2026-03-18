@@ -2520,7 +2520,7 @@ try {
 // GET /api/library — list/search library entries
 app.get('/api/library', (c) => {
   const q = c.req.query('q');
-  const type = c.req.query('type');
+  const type = c.req.query('type') || c.req.query('category');
   const author = c.req.query('author');
   const tag = c.req.query('tag');
   const limit = Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50);
@@ -2561,6 +2561,7 @@ app.get('/api/library', (c) => {
       title: r.title,
       content: r.content,
       type: r.type,
+      category: r.type,
       author: r.author,
       tags: JSON.parse(r.tags || '[]'),
       created_at: new Date(r.created_at).toISOString(),

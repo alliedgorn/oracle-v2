@@ -50,7 +50,7 @@ export function Library() {
       if (category !== 'all') params.set('category', category);
       const res = await fetch(`${API_BASE}/library?${params}`);
       const data = await res.json();
-      setDocs(data.docs || []);
+      setDocs(data.entries || data.docs || []);
     } catch { /* ignore */ }
     setLoading(false);
   }, [search, category]);

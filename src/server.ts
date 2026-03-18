@@ -3196,13 +3196,17 @@ app.post('/api/schedules', async (c) => {
   // Fixed-time scheduling
   const scheduleTime = data.schedule_time || null;
   const tz = data.timezone || 'Asia/Bangkok';
+  const VALID_TIMEZONES = ['Asia/Bangkok', 'UTC', 'America/New_York', 'Europe/London', 'Asia/Tokyo', 'Asia/Singapore'];
   if (scheduleTime) {
-    if (!/^\d{2}:\d{2}$/.test(scheduleTime)) {
-      return c.json({ error: 'schedule_time must be HH:MM format' }, 400);
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleTime)) {
+      return c.json({ error: 'schedule_time must be HH:MM format (00:00-23:59)' }, 400);
     }
     if (interval !== '1d' && interval !== '7d') {
       return c.json({ error: 'schedule_time requires interval of 1d (daily) or 7d (weekly)' }, 400);
     }
+  }
+  if (data.timezone && !VALID_TIMEZONES.includes(data.timezone)) {
+    return c.json({ error: `Invalid timezone. Valid: ${VALID_TIMEZONES.join(', ')}` }, 400);
   }
 
   let nextDue: string;

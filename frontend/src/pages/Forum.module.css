@@ -752,9 +752,19 @@
 
   .sidebar {
     width: 100%;
-    max-height: 45vh;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 8px;
+    height: 100%;
+    max-height: none;
+    border-bottom: none;
+    overflow-y: auto;
+  }
+
+  /* When a thread is selected, hide sidebar and show main full-screen */
+  .sidebar.hidden {
+    display: none;
+  }
+
+  .main.fullScreen {
+    height: 100%;
   }
 
   .sidebarHeader {
@@ -797,6 +807,21 @@
 
   .threadDetail {
     height: 100%;
+  }
+
+  .mobileBack {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 10px 12px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--accent);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    width: 100%;
   }
 
   .threadHeader {

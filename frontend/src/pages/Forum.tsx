@@ -487,8 +487,8 @@ export function Forum() {
 
   return (
     <div className={styles.container}>
-      {/* Sidebar: Thread List */}
-      <div className={styles.sidebar}>
+      {/* Sidebar: Thread List — hidden on mobile when thread is selected */}
+      <div className={`${styles.sidebar} ${selectedThread ? styles.hidden : ''}`}>
         <div className={styles.sidebarHeader}>
           <h2>Threads</h2>
           <button
@@ -582,8 +582,8 @@ export function Forum() {
         </div>
       </div>
 
-      {/* Main: Thread Detail or New Thread */}
-      <div className={styles.main}>
+      {/* Main: Thread Detail or New Thread — full screen on mobile */}
+      <div className={`${styles.main} ${selectedThread ? styles.fullScreen : ''}`}>
         {showNewThread && !selectedThread && (
           <div className={styles.newThread}>
             <h2>New Thread</h2>
@@ -615,6 +615,7 @@ export function Forum() {
 
         {selectedThread && (
           <div className={styles.threadDetail}>
+            <button className={styles.mobileBack} onClick={() => { setSelectedThread(null); setSearchParams({}); }}>← Threads</button>
             <div className={styles.threadHeader}>
               <h2><span className={styles.threadIdHeader}>#{selectedThread.thread.id}</span> {selectedThread.thread.title}</h2>
               <div className={styles.threadActions}>

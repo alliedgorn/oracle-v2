@@ -233,10 +233,9 @@ export function Scheduler() {
                     <span className={styles.taskName}>{s.task}</span>
                     {s.command && <span className={styles.command}>{s.command}</span>}
                   </td>
-                  <td className={styles.scheduleCell}>
+                  <td>
                     <span>{s.interval}</span>
-                    {s.schedule_time && <span className={styles.scheduleTime}>at {s.schedule_time}</span>}
-                    {s.timezone && s.timezone !== 'Asia/Bangkok' && <span className={styles.scheduleTz}>{s.timezone}</span>}
+                    {s.schedule_time && <span className={styles.scheduleTime}>at {s.schedule_time}{s.timezone && s.timezone !== 'Asia/Bangkok' ? <span className={styles.scheduleTz}>{s.timezone}</span> : null}</span>}
                   </td>
                   <td>{formatTimeAgo(s.last_run_at)}</td>
                   <td className={status === 'overdue' ? styles.overdueTd : undefined}>{formatDueTime(s.next_due_at)}</td>

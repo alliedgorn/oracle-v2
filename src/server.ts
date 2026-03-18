@@ -2870,7 +2870,15 @@ app.get('/api/tasks/:id', (c) => {
 // PATCH /api/tasks/:id — update task
 app.patch('/api/tasks/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
+  const existing = sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  if (!existing) return c.json({ error: 'Task not found' }, 404);
+
   const data = await c.req.json();
+
+  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked'];
+  const validPriorities = ['critical', 'high', 'medium', 'low'];
+  if (data.status && !validStatuses.includes(data.status)) return c.json({ error: `Invalid status. Valid: ${validStatuses.join(', ')}` }, 400);
+  if (data.priority && !validPriorities.includes(data.priority)) return c.json({ error: `Invalid priority. Valid: ${validPriorities.join(', ')}` }, 400);
 
   const updates: string[] = [];
   const params: any[] = [];

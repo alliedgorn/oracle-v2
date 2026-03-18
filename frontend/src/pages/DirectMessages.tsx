@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
@@ -501,12 +502,13 @@ export function DirectMessages() {
         )}
       </div>
 
-      {/* Image Lightbox */}
-      {lightboxSrc && (
+      {/* Image Lightbox — portaled to body to avoid expanding chat container */}
+      {lightboxSrc && createPortal(
         <div className={styles.lightboxOverlay} onClick={() => setLightboxSrc(null)}>
           <img src={lightboxSrc} className={styles.lightboxImage} alt="" onClick={e => e.stopPropagation()} />
           <button className={styles.lightboxClose} onClick={() => setLightboxSrc(null)}>✕</button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

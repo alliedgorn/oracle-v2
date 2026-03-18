@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
@@ -818,8 +819,8 @@ export function Forum() {
         )}
       </div>
 
-      {/* Image Lightbox */}
-      {lightboxSrc && (
+      {/* Image Lightbox — portaled to body to avoid layout interference */}
+      {lightboxSrc && createPortal(
         <div className={styles.lightboxOverlay} onClick={() => setLightboxSrc(null)}>
           <img
             src={lightboxSrc}
@@ -829,7 +830,8 @@ export function Forum() {
             onError={e => { (e.target as HTMLImageElement).alt = 'Failed to load image'; }}
           />
           <button className={styles.lightboxClose} onClick={() => setLightboxSrc(null)}>✕</button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

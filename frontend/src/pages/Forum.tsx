@@ -30,6 +30,9 @@ const FALLBACK_MAP: Record<string, { name: string; emoji: string }> = {
   mara: { name: 'Mara', emoji: '🦘' },
   leonard: { name: 'Leonard', emoji: '🦁' },
   rax: { name: 'Rax', emoji: '🦝' },
+  pip: { name: 'Pip', emoji: '🦦' },
+  nyx: { name: 'Nyx', emoji: '🐦‍⬛' },
+  dex: { name: 'Dex', emoji: '🐙' },
 };
 
 function resolveAuthor(
@@ -798,7 +801,14 @@ export function Forum() {
       {/* Image Lightbox */}
       {lightboxSrc && (
         <div className={styles.lightboxOverlay} onClick={() => setLightboxSrc(null)}>
-          <img src={lightboxSrc} className={styles.lightboxImage} alt="" onClick={e => e.stopPropagation()} />
+          <img
+            src={lightboxSrc}
+            className={styles.lightboxImage}
+            alt=""
+            onClick={e => e.stopPropagation()}
+            onError={e => { (e.target as HTMLImageElement).alt = 'Failed to load image'; }}
+          />
+          <button className={styles.lightboxClose} onClick={() => setLightboxSrc(null)}>✕</button>
         </div>
       )}
     </div>

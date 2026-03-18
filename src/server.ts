@@ -3075,6 +3075,13 @@ app.post('/api/schedules', async (c) => {
   if (!intervalSeconds) {
     return c.json({ error: `Invalid interval. Valid: ${Object.keys(VALID_INTERVALS).join(', ')}` }, 400);
   }
+  // Prevent duplicate: same beast + same task name + enabled
+  const duplicate = sqlite.prepare(
+    'SELECT id FROM beast_schedules WHERE beast = ? AND task = ? AND enabled = 1'
+  ).get(beast, task) as any;
+  if (duplicate) {
+    return c.json({ error: `Schedule '${task}' already exists for ${beast} (id: ${duplicate.id}). Disable or delete it first.` }, 409);
+  }
   const now = new Date();
   const nextDue = new Date(now.getTime() + intervalSeconds * 1000).toISOString();
   const result = sqlite.prepare(
@@ -3086,13 +3093,17 @@ app.post('/api/schedules', async (c) => {
   return c.json(created, 201);
 });
 
-// PATCH /api/schedules/:id — update a schedule
+// PATCH /api/schedules/:id — update a schedule (owner or Gorn only)
 app.patch('/api/schedules/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
   const data = await c.req.json();
+  const requester = (c.req.query('as') || data.as || '').toLowerCase();
+  if (requester && requester !== existing.beast && requester !== 'gorn') {
+    return c.json({ error: 'Only the schedule owner or Gorn can modify this schedule' }, 403);
+  }
   const updates: string[] = [];
   const params: any[] = [];
   if (data.task !== undefined) { updates.push('task = ?'); params.push(data.task); }
@@ -3114,13 +3125,17 @@ app.patch('/api/schedules/:id', async (c) => {
   return c.json(updated);
 });
 
-// PATCH /api/schedules/:id/run — mark a schedule as run
+// PATCH /api/schedules/:id/run — mark a schedule as run (owner or Gorn only)
 app.patch('/api/schedules/:id/run', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
   const data = await c.req.json().catch(() => ({}));
+  const requester = (c.req.query('as') || data.as || '').toLowerCase();
+  if (requester && requester !== existing.beast && requester !== 'gorn') {
+    return c.json({ error: 'Only the schedule owner or Gorn can run this schedule' }, 403);
+  }
   // If task failed, don't update last_run (Pip's edge case)
   if (data.failed) {
     return c.json({ ...existing, message: 'Failed run — not updating last_run_at' });
@@ -3136,11 +3151,16 @@ app.patch('/api/schedules/:id/run', async (c) => {
 });
 
 // DELETE /api/schedules/:id — remove a schedule
-app.delete('/api/schedules/:id', (c) => {
+// DELETE /api/schedules/:id — remove a schedule (owner or Gorn only)
+app.delete('/api/schedules/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
+  const requester = (c.req.query('as') || '').toLowerCase();
+  if (requester && requester !== existing.beast && requester !== 'gorn') {
+    return c.json({ error: 'Only the schedule owner or Gorn can delete this schedule' }, 403);
+  }
   sqlite.prepare('DELETE FROM beast_schedules WHERE id = ?').run(id);
   wsBroadcast('schedule_update', { action: 'deleted', id });
   return c.json({ deleted: true, id });

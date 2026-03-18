@@ -209,6 +209,11 @@
   font-weight: 600;
 }
 
+.overdueTd {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .paused {
   opacity: 0.5;
 }

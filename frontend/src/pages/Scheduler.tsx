@@ -21,7 +21,7 @@ interface Schedule {
   updated_at: string;
 }
 
-function formatTime(iso: string | null): string {
+function formatTimeAgo(iso: string | null): string {
   if (!iso) return 'Never';
   const d = new Date(iso);
   const now = new Date();
@@ -33,6 +33,28 @@ function formatTime(iso: string | null): string {
   if (diffHrs < 24) return `${diffHrs}h ago`;
   const diffDays = Math.floor(diffHrs / 24);
   return `${diffDays}d ago`;
+}
+
+function formatDueTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  if (diffMs <= 0) {
+    // Overdue
+    const overMin = Math.floor(-diffMs / 60000);
+    if (overMin < 1) return 'Due now';
+    if (overMin < 60) return `Overdue ${overMin}m`;
+    const overHrs = Math.floor(overMin / 60);
+    if (overHrs < 24) return `Overdue ${overHrs}h`;
+    return `Overdue ${Math.floor(overHrs / 24)}d`;
+  }
+  // Future
+  const futMin = Math.floor(diffMs / 60000);
+  if (futMin < 1) return 'Due now';
+  if (futMin < 60) return `In ${futMin}m`;
+  const futHrs = Math.floor(futMin / 60);
+  if (futHrs < 24) return `In ${futHrs}h`;
+  return `In ${Math.floor(futHrs / 24)}d`;
 }
 
 function getStatus(schedule: Schedule): 'overdue' | 'due-soon' | 'on-schedule' | 'paused' {
@@ -197,8 +219,8 @@ export function Scheduler() {
                     {s.command && <span className={styles.command}>{s.command}</span>}
                   </td>
                   <td>{s.interval}</td>
-                  <td>{formatTime(s.last_run_at)}</td>
-                  <td>{formatTime(s.next_due_at)}</td>
+                  <td>{formatTimeAgo(s.last_run_at)}</td>
+                  <td className={status === 'overdue' ? styles.overdueTd : undefined}>{formatDueTime(s.next_due_at)}</td>
                   <td className={styles.source}>{s.source || '—'}</td>
                   <td className={styles.actions}>
                     <button onClick={() => markRun(s.id)} title="Mark as run">Run</button>

@@ -734,7 +734,6 @@ export function Forum() {
                   <button type="button" className={styles.quoteClear} onClick={() => setReplyTo(null)}>✕</button>
                 </div>
               )}
-              <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
               <div className={styles.replyInputRow}>
                 <textarea
                   placeholder={replyTo ? `Reply to ${replyTo.author || 'message'}...` : 'Continue the discussion...'}
@@ -743,6 +742,7 @@ export function Forum() {
                   className={styles.textarea}
                   rows={3}
                 />
+                <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
                 <button
                   type="submit"
                   disabled={loading || !newMessage.trim()}

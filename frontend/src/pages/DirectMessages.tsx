@@ -422,7 +422,6 @@ export function DirectMessages() {
 
             {selectedConv && selectedConv.participants.includes('gorn') && (
               <form onSubmit={handleSend} className={styles.replyForm}>
-                <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
                 <div className={styles.replyInput}>
                   <textarea
                     placeholder="Message... (⌘+Enter to send)"
@@ -439,13 +438,16 @@ export function DirectMessages() {
                     className={styles.textarea}
                     rows={3}
                   />
-                  <button
-                    type="submit"
-                    disabled={loading || !newMessage.trim()}
-                    className={styles.submitButton}
-                  >
+                  <div className={styles.replyActions}>
+                    <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
+                    <button
+                      type="submit"
+                      disabled={loading || !newMessage.trim()}
+                      className={styles.submitButton}
+                    >
                     {loading ? 'Sending...' : 'Send'}
-                  </button>
+                    </button>
+                  </div>
                 </div>
               </form>
             )}

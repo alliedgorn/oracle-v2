@@ -316,7 +316,14 @@
 
 .replyInput {
   display: flex;
-  gap: 12px;
+  gap: 8px;
+}
+
+.replyActions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
 }
 
 .textarea {
@@ -379,11 +386,22 @@
 
   .sidebar {
     width: 100%;
-    max-height: 35vh;
+    flex: 1;
+    max-height: none;
     border-right: none;
-    border-bottom: 1px solid var(--border);
+    border-bottom: none;
     padding-right: 0;
-    padding-bottom: 8px;
+    overflow-y: auto;
+  }
+
+  .sidebar.hidden {
+    display: none;
+  }
+
+  .main.fullScreen {
+    display: flex;
+    flex: 1;
+    height: 100%;
   }
 
   .sidebarHeader {
@@ -447,18 +465,27 @@
     margin-bottom: 6px;
   }
 
+  .replyForm {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 6px;
+  }
+
   .replyInput {
-    flex-direction: column;
-    gap: 8px;
+    flex: 1;
+    min-width: 0;
   }
 
   .textarea {
     min-height: 50px;
+    max-height: 80px;
+    font-size: 14px;
   }
 
   .submitButton {
-    align-self: stretch;
-    min-height: 44px;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 13px;
   }
 }
 

@@ -3103,12 +3103,47 @@ try {
   // v2 columns
   try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN last_triggered_at TEXT`).run(); } catch { /* exists */ }
   try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN trigger_status TEXT DEFAULT 'pending'`).run(); } catch { /* exists */ }
+  // v3: fixed-time scheduling
+  try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN schedule_time TEXT`).run(); } catch { /* exists */ }
+  try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN timezone TEXT DEFAULT 'Asia/Bangkok'`).run(); } catch { /* exists */ }
 } catch { /* already exists */ }
 
 const VALID_INTERVALS: Record<string, number> = {
   '10m': 600, '30m': 1800, '1h': 3600, '3h': 10800,
   '6h': 21600, '12h': 43200, '1d': 86400, '7d': 604800,
 };
+
+// Compute next occurrence of schedule_time (HH:MM) in UTC+7
+function computeNextFixedTime(scheduleTime: string, intervalDays: number): string {
+  const [hours, minutes] = scheduleTime.split(':').map(Number);
+  if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    throw new Error('Invalid schedule_time format (HH:MM)');
+  }
+  // Work in UTC+7
+  const now = new Date();
+  const utc7Now = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  // Build target time today in UTC+7
+  const target = new Date(utc7Now);
+  target.setUTCHours(hours, minutes, 0, 0);
+  // If target is in the past, advance by interval
+  if (target <= utc7Now) {
+    target.setUTCDate(target.getUTCDate() + intervalDays);
+  }
+  // Convert back to UTC
+  return new Date(target.getTime() - 7 * 60 * 60 * 1000).toISOString();
+}
+
+// Compute next_due_at after a run for fixed-time schedules
+function computeNextFixedTimeAfterRun(scheduleTime: string, intervalDays: number): string {
+  const [hours, minutes] = scheduleTime.split(':').map(Number);
+  const now = new Date();
+  const utc7Now = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const target = new Date(utc7Now);
+  target.setUTCHours(hours, minutes, 0, 0);
+  // Always advance to next occurrence
+  target.setUTCDate(target.getUTCDate() + intervalDays);
+  return new Date(target.getTime() - 7 * 60 * 60 * 1000).toISOString();
+}
 
 // GET /api/schedules — all schedules (optional ?beast= filter)
 app.get('/api/schedules', (c) => {
@@ -3158,12 +3193,31 @@ app.post('/api/schedules', async (c) => {
   if (duplicate) {
     return c.json({ error: `Schedule '${task}' already exists for ${beast} (id: ${duplicate.id}). Disable or delete it first.` }, 409);
   }
-  const now = new Date();
-  const nextDue = new Date(now.getTime() + intervalSeconds * 1000).toISOString();
+  // Fixed-time scheduling
+  const scheduleTime = data.schedule_time || null;
+  const tz = data.timezone || 'Asia/Bangkok';
+  if (scheduleTime) {
+    if (!/^\d{2}:\d{2}$/.test(scheduleTime)) {
+      return c.json({ error: 'schedule_time must be HH:MM format' }, 400);
+    }
+    if (interval !== '1d' && interval !== '7d') {
+      return c.json({ error: 'schedule_time requires interval of 1d (daily) or 7d (weekly)' }, 400);
+    }
+  }
+
+  let nextDue: string;
+  if (scheduleTime) {
+    const intervalDays = interval === '7d' ? 7 : 1;
+    nextDue = computeNextFixedTime(scheduleTime, intervalDays);
+  } else {
+    const now = new Date();
+    nextDue = new Date(now.getTime() + intervalSeconds * 1000).toISOString();
+  }
+
   const result = sqlite.prepare(
-    `INSERT INTO beast_schedules (beast, task, command, interval, interval_seconds, next_due_at, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(beast, task, command || null, interval, intervalSeconds, nextDue, source || null);
+    `INSERT INTO beast_schedules (beast, task, command, interval, interval_seconds, next_due_at, schedule_time, timezone, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(beast, task, command || null, interval, intervalSeconds, nextDue, scheduleTime, tz, source || null);
   const created = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(result.lastInsertRowid) as any;
   wsBroadcast('schedule_update', { action: 'created', schedule: created });
   return c.json(created, 201);
@@ -3225,7 +3279,13 @@ app.patch('/api/schedules/:id/run', async (c) => {
     return c.json({ ...failedState, message: 'Failed run — not updating last_run_at' });
   }
   const now = new Date();
-  const nextDue = new Date(now.getTime() + existing.interval_seconds * 1000).toISOString();
+  let nextDue: string;
+  if (existing.schedule_time) {
+    const intervalDays = existing.interval === '7d' ? 7 : 1;
+    nextDue = computeNextFixedTimeAfterRun(existing.schedule_time, intervalDays);
+  } else {
+    nextDue = new Date(now.getTime() + existing.interval_seconds * 1000).toISOString();
+  }
   sqlite.prepare(
     `UPDATE beast_schedules SET last_run_at = ?, next_due_at = ?, trigger_status = 'completed', updated_at = datetime('now') WHERE id = ?`
   ).run(now.toISOString(), nextDue, id);

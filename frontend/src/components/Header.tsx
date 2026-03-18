@@ -29,6 +29,7 @@ const navGroups = [
       { path: '/evolution', label: 'Evolution' },
       { path: '/traces', label: 'Traces' },
       { path: '/superseded', label: 'Superseded' },
+      { path: '/scheduler', label: 'Scheduler' },
       { path: '/handoff', label: 'Handoff' },
     ],
   },

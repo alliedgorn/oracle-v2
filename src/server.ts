@@ -315,9 +315,17 @@ app.get('/api/settings', (c) => {
   });
 });
 
-// Update settings
+// Update settings (Gorn only — reject beast API calls)
 app.post('/api/settings', async (c) => {
+  // Only allow from browser sessions (Gorn) or local requests, not beast API calls
+  const asParam = c.req.query('as');
+  if (asParam) {
+    return c.json({ error: 'Settings can only be changed by Gorn via the UI' }, 403);
+  }
   const body = await c.req.json();
+  if (body.as) {
+    return c.json({ error: 'Settings can only be changed by Gorn via the UI' }, 403);
+  }
 
   // Handle password change
   if (body.newPassword) {
@@ -1599,10 +1607,41 @@ app.get('/api/forum/link-preview', async (c) => {
   const url = c.req.query('url');
   if (!url) return c.json({ error: 'Missing url parameter' }, 400);
 
+  // SSRF protection: only allow https, block internal IPs
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') {
+      return c.json({ error: 'Only https URLs allowed' }, 400);
+    }
+    // Block internal/private hostnames
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' ||
+        hostname === '0.0.0.0' || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
+      return c.json({ error: 'Internal URLs not allowed' }, 400);
+    }
+    // Resolve DNS and block private IP ranges
+    const { resolve4 } = await import('dns/promises');
+    try {
+      const ips = await resolve4(hostname);
+      for (const ip of ips) {
+        const parts = ip.split('.').map(Number);
+        if (parts[0] === 10 || parts[0] === 127 ||
+            (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+            (parts[0] === 192 && parts[1] === 168) ||
+            (parts[0] === 169 && parts[1] === 254)) {
+          return c.json({ error: 'Internal URLs not allowed' }, 400);
+        }
+      }
+    } catch { /* DNS resolution failed — let fetch handle it */ }
+  } catch {
+    return c.json({ error: 'Invalid URL' }, 400);
+  }
+
   try {
     const response = await fetch(url, {
       headers: { 'User-Agent': 'DenBook/1.0' },
       signal: AbortSignal.timeout(5000),
+      redirect: 'manual', // Don't follow redirects (prevents redirect-to-internal)
     });
     const html = await response.text();
 
@@ -2972,6 +3011,139 @@ app.get('/api/board', (c) => {
   const projects = sqlite.prepare('SELECT * FROM projects WHERE status = ? ORDER BY name').all('active') as any[];
 
   return c.json({ columns, projects, total: tasks.length });
+});
+
+// ============================================================================
+// Beast Scheduler — Persistent schedules that survive sleep cycles
+// ============================================================================
+
+// Create beast_schedules table
+try {
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS beast_schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    beast TEXT NOT NULL,
+    task TEXT NOT NULL,
+    command TEXT,
+    interval TEXT NOT NULL,
+    interval_seconds INTEGER NOT NULL,
+    last_run_at TEXT,
+    next_due_at TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    source TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_beast_schedules_beast ON beast_schedules(beast)`).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_beast_schedules_due ON beast_schedules(next_due_at)`).run();
+} catch { /* already exists */ }
+
+const VALID_INTERVALS: Record<string, number> = {
+  '10m': 600, '30m': 1800, '1h': 3600, '3h': 10800,
+  '6h': 21600, '12h': 43200, '1d': 86400, '7d': 604800,
+};
+
+// GET /api/schedules — all schedules (optional ?beast= filter)
+app.get('/api/schedules', (c) => {
+  const beast = c.req.query('beast');
+  let query = 'SELECT * FROM beast_schedules';
+  const params: any[] = [];
+  if (beast) { query += ' WHERE beast = ?'; params.push(beast); }
+  query += ' ORDER BY beast, next_due_at';
+  const rows = sqlite.prepare(query).all(...params) as any[];
+  return c.json({ schedules: rows, total: rows.length });
+});
+
+// GET /api/schedules/due — overdue items for a beast
+app.get('/api/schedules/due', (c) => {
+  const beast = c.req.query('beast');
+  if (!beast) return c.json({ error: 'beast parameter required' }, 400);
+  const now = new Date().toISOString();
+  const rows = sqlite.prepare(
+    'SELECT * FROM beast_schedules WHERE beast = ? AND enabled = 1 AND next_due_at <= ? ORDER BY next_due_at'
+  ).all(beast, now) as any[];
+  return c.json({ schedules: rows, total: rows.length });
+});
+
+// POST /api/schedules — create a schedule
+app.post('/api/schedules', async (c) => {
+  const data = await c.req.json();
+  const { beast, task, command, interval, source } = data;
+  if (!beast || !task || !interval) {
+    return c.json({ error: 'beast, task, and interval are required' }, 400);
+  }
+  const intervalSeconds = VALID_INTERVALS[interval];
+  if (!intervalSeconds) {
+    return c.json({ error: `Invalid interval. Valid: ${Object.keys(VALID_INTERVALS).join(', ')}` }, 400);
+  }
+  const now = new Date();
+  const nextDue = new Date(now.getTime() + intervalSeconds * 1000).toISOString();
+  const result = sqlite.prepare(
+    `INSERT INTO beast_schedules (beast, task, command, interval, interval_seconds, next_due_at, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(beast, task, command || null, interval, intervalSeconds, nextDue, source || null);
+  const created = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(result.lastInsertRowid) as any;
+  wsBroadcast('schedule_update', { action: 'created', schedule: created });
+  return c.json(created, 201);
+});
+
+// PATCH /api/schedules/:id — update a schedule
+app.patch('/api/schedules/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Schedule not found' }, 404);
+  const data = await c.req.json();
+  const updates: string[] = [];
+  const params: any[] = [];
+  if (data.task !== undefined) { updates.push('task = ?'); params.push(data.task); }
+  if (data.command !== undefined) { updates.push('command = ?'); params.push(data.command); }
+  if (data.interval !== undefined) {
+    const secs = VALID_INTERVALS[data.interval];
+    if (!secs) return c.json({ error: `Invalid interval. Valid: ${Object.keys(VALID_INTERVALS).join(', ')}` }, 400);
+    updates.push('interval = ?', 'interval_seconds = ?');
+    params.push(data.interval, secs);
+  }
+  if (data.enabled !== undefined) { updates.push('enabled = ?'); params.push(data.enabled ? 1 : 0); }
+  if (data.source !== undefined) { updates.push('source = ?'); params.push(data.source); }
+  if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+  updates.push("updated_at = datetime('now')");
+  params.push(id);
+  sqlite.prepare(`UPDATE beast_schedules SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+  const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
+  wsBroadcast('schedule_update', { action: 'updated', schedule: updated });
+  return c.json(updated);
+});
+
+// PATCH /api/schedules/:id/run — mark a schedule as run
+app.patch('/api/schedules/:id/run', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Schedule not found' }, 404);
+  const data = await c.req.json().catch(() => ({}));
+  // If task failed, don't update last_run (Pip's edge case)
+  if (data.failed) {
+    return c.json({ ...existing, message: 'Failed run — not updating last_run_at' });
+  }
+  const now = new Date();
+  const nextDue = new Date(now.getTime() + existing.interval_seconds * 1000).toISOString();
+  sqlite.prepare(
+    `UPDATE beast_schedules SET last_run_at = ?, next_due_at = ?, updated_at = datetime('now') WHERE id = ?`
+  ).run(now.toISOString(), nextDue, id);
+  const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
+  wsBroadcast('schedule_update', { action: 'run', schedule: updated });
+  return c.json(updated);
+});
+
+// DELETE /api/schedules/:id — remove a schedule
+app.delete('/api/schedules/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Schedule not found' }, 404);
+  sqlite.prepare('DELETE FROM beast_schedules WHERE id = ?').run(id);
+  wsBroadcast('schedule_update', { action: 'deleted', id });
+  return c.json({ deleted: true, id });
 });
 
 // ============================================================================

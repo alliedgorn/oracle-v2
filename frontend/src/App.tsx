@@ -28,6 +28,7 @@ import { RemotePanel } from './components/RemotePanel';
 import { Mindlink } from './pages/Mindlink';
 import { Library } from './pages/Library';
 import { Board } from './pages/Board';
+import { Scheduler } from './pages/Scheduler';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
@@ -87,6 +88,7 @@ function AppContent() {
         <Route path="/traces" element={<RequireAuth><Traces /></RequireAuth>} />
         <Route path="/traces/:id" element={<RequireAuth><Traces /></RequireAuth>} />
         <Route path="/superseded" element={<RequireAuth><Superseded /></RequireAuth>} />
+        <Route path="/scheduler" element={<RequireAuth><Scheduler /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       </Routes>
       {!isLoginPage && <QuickLearn />}

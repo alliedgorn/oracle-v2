@@ -742,14 +742,16 @@ export function Forum() {
                   className={styles.textarea}
                   rows={3}
                 />
-                <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
-                <button
-                  type="submit"
-                  disabled={loading || !newMessage.trim()}
-                  className={styles.submitButton}
+                <div className={styles.replyActions}>
+                  <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
+                  <button
+                    type="submit"
+                    disabled={loading || !newMessage.trim()}
+                    className={styles.submitButton}
                 >
                   {loading ? 'Sending...' : 'Reply'}
                 </button>
+                </div>
               </div>
             </form>
           </div>

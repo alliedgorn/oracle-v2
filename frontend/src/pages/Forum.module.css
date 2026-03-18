@@ -715,8 +715,16 @@
 
 .replyInputRow {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   flex: 1;
+}
+
+.replyActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
 }
 
 /* Reply Form */

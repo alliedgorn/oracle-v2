@@ -401,29 +401,40 @@
     gap: 6px;
   }
 
+  .beastGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
   .beastCard {
     flex-direction: row;
-    padding: 10px 12px;
-    gap: 10px;
+    padding: 8px 10px;
+    gap: 8px;
   }
 
   .beastEmoji {
-    width: 36px;
-    height: 36px;
-    font-size: 20px;
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
   }
 
   .beastAvatar {
-    width: 36px;
-    height: 36px;
+    width: 28px;
+    height: 28px;
   }
 
   .beastName {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .beastRole {
-    font-size: 11px;
+    display: none;
+  }
+
+  .statusDot {
+    width: 8px;
+    height: 8px;
   }
 
   .statusDot {

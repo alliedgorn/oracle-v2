@@ -91,6 +91,34 @@ export function DirectMessages() {
 
   const convParam = searchParams.get('conv'); // "bertus-karo"
 
+  // Stable ReactMarkdown components — memoized to prevent image remount on re-render
+  const markdownComponents = useRef({
+    img({ src, alt }: { src?: string; alt?: string }) {
+      return (
+        <img
+          src={src}
+          alt={alt || ''}
+          style={{ cursor: 'pointer' }}
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); if (src) setLightboxSrc(src); }}
+        />
+      );
+    },
+    a({ href, children }: { href?: string; children?: React.ReactNode }) {
+      const isImage = href && /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(href);
+      if (isImage) {
+        return (
+          <img
+            src={href}
+            alt={String(children) || ''}
+            style={{ cursor: 'pointer' }}
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); setLightboxSrc(href); }}
+          />
+        );
+      }
+      return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+    },
+  }).current;
+
   // ESC closes lightbox
   useEffect(() => {
     if (!lightboxSrc) return;
@@ -107,7 +135,7 @@ export function DirectMessages() {
   // Poll for new messages and conversations
   useEffect(() => {
     const pollMessages = setInterval(() => {
-      if (document.hidden) return;
+      if (document.hidden || lightboxSrc) return; // Skip polling when lightbox is open
       if (selectedConv && convParam) {
         const [p1, p2] = convParam.split('-');
         if (p1 && p2) {
@@ -429,33 +457,7 @@ export function DirectMessages() {
                   <div className={styles.messageContent}>
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
-                      components={{
-                        img({ src, alt }) {
-                          return (
-                            <img
-                              src={src}
-                              alt={alt || ''}
-                              style={{ cursor: 'pointer' }}
-                              onClick={(e) => { e.stopPropagation(); if (src) setLightboxSrc(src); }}
-                            />
-                          );
-                        },
-                        a({ href, children }) {
-                          // Detect bare image URLs rendered as links
-                          const isImage = href && /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(href);
-                          if (isImage) {
-                            return (
-                              <img
-                                src={href}
-                                alt={String(children) || ''}
-                                style={{ cursor: 'pointer' }}
-                                onClick={(e) => { e.stopPropagation(); setLightboxSrc(href); }}
-                              />
-                            );
-                          }
-                          return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
-                        },
-                      }}
+                      components={markdownComponents}
                     >{msg.content}</ReactMarkdown>
                   </div>
                 </div>

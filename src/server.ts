@@ -3277,13 +3277,13 @@ function runSchedulerCycle() {
     const now = new Date().toISOString();
     schedulerLastCheck = now;
 
-    // Find all overdue, enabled schedules that haven't been triggered yet (or were triggered but not run)
+    // Find all overdue, enabled schedules. Re-trigger if last trigger was >5 min ago (cooldown).
     const overdue = sqlite.prepare(
       `SELECT * FROM beast_schedules
        WHERE enabled = 1 AND next_due_at <= ?
-       AND (trigger_status IS NULL OR trigger_status = 'pending' OR trigger_status = 'completed' OR trigger_status = 'failed')
+       AND (last_triggered_at IS NULL OR last_triggered_at <= datetime(?, '-5 minutes'))
        ORDER BY next_due_at`
-    ).all(now) as any[];
+    ).all(now, now) as any[];
 
     for (const schedule of overdue) {
       const sessionName = schedule.beast.charAt(0).toUpperCase() + schedule.beast.slice(1);

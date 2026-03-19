@@ -3216,6 +3216,31 @@ try {
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)`).run();
 } catch { /* already exists */ }
 
+// Teams tables (Task #81 — Gnarl spec, thread #105)
+try {
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS teams (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    created_by TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`).run();
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS team_members (
+    team_id INTEGER NOT NULL,
+    beast TEXT NOT NULL,
+    role TEXT DEFAULT 'member',
+    joined_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (team_id, beast),
+    FOREIGN KEY (team_id) REFERENCES teams(id)
+  )`).run();
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS team_projects (
+    team_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
+    PRIMARY KEY (team_id, project_id),
+    FOREIGN KEY (team_id) REFERENCES teams(id)
+  )`).run();
+} catch { /* already exists */ }
+
 // Helper: create a notification
 function createNotification(beast: string, type: string, title: string, body?: string, sourceId?: number, sourceType?: string, priority: string = 'normal') {
   const result = sqlite.prepare(
@@ -3374,6 +3399,130 @@ app.get('/api/audit/stats', (c) => {
   const byActor = sqlite.prepare('SELECT actor, COUNT(*) as count FROM audit_log GROUP BY actor ORDER BY count DESC LIMIT 10').all();
   const byResource = sqlite.prepare('SELECT resource_type, COUNT(*) as count FROM audit_log GROUP BY resource_type ORDER BY count DESC LIMIT 10').all();
   return c.json({ total, denied, errors, by_actor: byActor, by_resource: byResource });
+});
+
+// ============================================================================
+// Teams API (Task #81 — Gnarl spec, thread #105)
+// ============================================================================
+
+// GET /api/teams — list all teams with member counts
+app.get('/api/teams', (c) => {
+  const teams = sqlite.prepare(`
+    SELECT t.*, COUNT(tm.beast) as member_count
+    FROM teams t
+    LEFT JOIN team_members tm ON tm.team_id = t.id
+    GROUP BY t.id
+    ORDER BY t.name
+  `).all() as any[];
+  return c.json({ teams, total: teams.length });
+});
+
+// POST /api/teams — create a team
+app.post('/api/teams', async (c) => {
+  const data = await c.req.json();
+  if (!data.name) return c.json({ error: 'name required' }, 400);
+  if (!data.created_by) return c.json({ error: 'created_by required' }, 400);
+  try {
+    const result = sqlite.prepare(
+      'INSERT INTO teams (name, description, created_by) VALUES (?, ?, ?)'
+    ).run(data.name, data.description || null, data.created_by);
+    // Auto-add creator as lead
+    sqlite.prepare('INSERT INTO team_members (team_id, beast, role) VALUES (?, ?, ?)').run(result.lastInsertRowid, data.created_by, 'lead');
+    const team = sqlite.prepare('SELECT * FROM teams WHERE id = ?').get(result.lastInsertRowid);
+    return c.json(team, 201);
+  } catch (e: any) {
+    if (e.message?.includes('UNIQUE')) return c.json({ error: 'Team name already exists' }, 409);
+    throw e;
+  }
+});
+
+// GET /api/teams/:id — team detail with members and projects
+app.get('/api/teams/:id', (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const team = sqlite.prepare('SELECT * FROM teams WHERE id = ?').get(id) as any;
+  if (!team) return c.json({ error: 'Team not found' }, 404);
+  const members = sqlite.prepare('SELECT beast, role, joined_at FROM team_members WHERE team_id = ?').all(id);
+  const projects = sqlite.prepare('SELECT project_id FROM team_projects WHERE team_id = ?').all(id);
+  return c.json({ ...team, members, projects });
+});
+
+// PATCH /api/teams/:id — update team
+app.patch('/api/teams/:id', async (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const team = sqlite.prepare('SELECT * FROM teams WHERE id = ?').get(id);
+  if (!team) return c.json({ error: 'Team not found' }, 404);
+  const data = await c.req.json();
+  if (data.name) sqlite.prepare('UPDATE teams SET name = ? WHERE id = ?').run(data.name, id);
+  if (data.description !== undefined) sqlite.prepare('UPDATE teams SET description = ? WHERE id = ?').run(data.description, id);
+  const updated = sqlite.prepare('SELECT * FROM teams WHERE id = ?').get(id);
+  return c.json(updated);
+});
+
+// POST /api/teams/:id/members — add Beast to team
+app.post('/api/teams/:id/members', async (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const team = sqlite.prepare('SELECT * FROM teams WHERE id = ?').get(id);
+  if (!team) return c.json({ error: 'Team not found' }, 404);
+  const data = await c.req.json();
+  if (!data.beast) return c.json({ error: 'beast required' }, 400);
+  try {
+    sqlite.prepare('INSERT INTO team_members (team_id, beast, role) VALUES (?, ?, ?)').run(id, data.beast.toLowerCase(), data.role || 'member');
+    return c.json({ team_id: id, beast: data.beast.toLowerCase(), role: data.role || 'member' }, 201);
+  } catch (e: any) {
+    if (e.message?.includes('UNIQUE') || e.message?.includes('PRIMARY')) return c.json({ error: 'Beast already in team' }, 409);
+    throw e;
+  }
+});
+
+// DELETE /api/teams/:id/members/:beast — remove Beast from team
+app.delete('/api/teams/:id/members/:beast', (c) => {
+  const id = parseInt(c.req.param('id'));
+  const beast = c.req.param('beast').toLowerCase();
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const result = sqlite.prepare('DELETE FROM team_members WHERE team_id = ? AND beast = ?').run(id, beast);
+  if (result.changes === 0) return c.json({ error: 'Member not found in team' }, 404);
+  return c.json({ removed: beast, team_id: id });
+});
+
+// POST /api/teams/:id/projects — link project to team
+app.post('/api/teams/:id/projects', async (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const data = await c.req.json();
+  if (!data.project_id) return c.json({ error: 'project_id required' }, 400);
+  try {
+    sqlite.prepare('INSERT INTO team_projects (team_id, project_id) VALUES (?, ?)').run(id, data.project_id);
+    return c.json({ team_id: id, project_id: data.project_id }, 201);
+  } catch (e: any) {
+    if (e.message?.includes('UNIQUE') || e.message?.includes('PRIMARY')) return c.json({ error: 'Project already linked' }, 409);
+    throw e;
+  }
+});
+
+// DELETE /api/teams/:id/projects/:projectId — unlink project
+app.delete('/api/teams/:id/projects/:projectId', (c) => {
+  const id = parseInt(c.req.param('id'));
+  const projectId = parseInt(c.req.param('projectId'));
+  if (isNaN(id) || isNaN(projectId)) return c.json({ error: 'Invalid ID' }, 400);
+  const result = sqlite.prepare('DELETE FROM team_projects WHERE team_id = ? AND project_id = ?').run(id, projectId);
+  if (result.changes === 0) return c.json({ error: 'Project not linked to team' }, 404);
+  return c.json({ removed_project: projectId, team_id: id });
+});
+
+// GET /api/teams/beast/:beast — list teams for a specific Beast
+app.get('/api/teams/beast/:beast', (c) => {
+  const beast = c.req.param('beast').toLowerCase();
+  const teams = sqlite.prepare(`
+    SELECT t.*, tm.role
+    FROM teams t
+    JOIN team_members tm ON tm.team_id = t.id
+    WHERE tm.beast = ?
+    ORDER BY t.name
+  `).all(beast) as any[];
+  return c.json({ beast, teams, total: teams.length });
 });
 
 const VALID_INTERVALS: Record<string, number> = {

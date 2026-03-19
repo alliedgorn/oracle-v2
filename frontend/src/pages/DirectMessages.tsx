@@ -8,6 +8,7 @@ import { SearchInput } from '../components/SearchInput';
 import { ImageUpload } from '../components/ImageUpload';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { autolinkIds } from '../utils/autolink';
 
 interface DashboardConversation {
   id: number;
@@ -83,6 +84,7 @@ export function DirectMessages() {
   const [showNewDm, setShowNewDm] = useState(false);
   const [beasts, setBeasts] = useState<{ name: string; displayName: string }[]>([]);
   const [totalMessages, setTotalMessages] = useState(0);
+  const totalMessagesRef = useRef(0);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -140,17 +142,16 @@ export function DirectMessages() {
         const [p1, p2] = convParam.split('-');
         if (p1 && p2) {
           fetchMessages(p1, p2, 5, 0, 'desc').then(data => {
-            if (data.total !== totalMessages && messages) {
-              const existingIds = new Set(messages.messages.map(m => m.id));
-              const newMsgs = data.messages.filter(m => !existingIds.has(m.id)).reverse();
-              if (newMsgs.length > 0) {
-                setMessages(prev => prev ? {
-                  ...prev,
-                  messages: [...prev.messages, ...newMsgs],
-                  total: data.total,
-                } : prev);
-                setTotalMessages(data.total);
-              }
+            if (data.total !== totalMessagesRef.current) {
+              setMessages(prev => {
+                if (!prev) return prev;
+                const existingIds = new Set(prev.messages.map(m => m.id));
+                const newMsgs = data.messages.filter(m => !existingIds.has(m.id)).reverse();
+                if (newMsgs.length === 0) return prev;
+                return { ...prev, messages: [...prev.messages, ...newMsgs], total: data.total };
+              });
+              totalMessagesRef.current = data.total;
+              setTotalMessages(data.total);
             }
           }).catch(() => {});
         }
@@ -171,24 +172,23 @@ export function DirectMessages() {
   // Real-time WebSocket updates — fetch only new messages
   const handleWsDm = useCallback((_data: any) => {
     loadDashboard();
-    if (convParam && messages) {
+    if (convParam) {
       const [p1, p2] = convParam.split('-');
       if (p1 && p2) {
         fetchMessages(p1, p2, 5, 0, 'desc').then(d => {
-          const existingIds = new Set(messages.messages.map(m => m.id));
-          const newMsgs = d.messages.filter(m => !existingIds.has(m.id)).reverse();
-          if (newMsgs.length > 0) {
-            setMessages(prev => prev ? {
-              ...prev,
-              messages: [...prev.messages, ...newMsgs],
-              total: d.total,
-            } : prev);
-            setTotalMessages(d.total);
-          }
+          setMessages(prev => {
+            if (!prev) return prev;
+            const existingIds = new Set(prev.messages.map(m => m.id));
+            const newMsgs = d.messages.filter(m => !existingIds.has(m.id)).reverse();
+            if (newMsgs.length === 0) return prev;
+            return { ...prev, messages: [...prev.messages, ...newMsgs], total: d.total };
+          });
+          totalMessagesRef.current = d.total;
+          setTotalMessages(d.total);
         }).catch(() => {});
       }
     }
-  }, [convParam, messages?.messages.length]);
+  }, [convParam]);
 
   useWebSocket('new_dm', handleWsDm);
 
@@ -256,7 +256,7 @@ export function DirectMessages() {
         messages: [...data.messages, ...prev.messages],
       } : prev);
     }
-  }, [convParam, messages?.messages.length]);
+  }, [convParam]);
 
   const { isLoadingMore } = useInfiniteScroll({
     containerRef: messagesContainerRef,
@@ -275,6 +275,7 @@ export function DirectMessages() {
     const data = await fetchMessages(p1, p2, PAGE_SIZE, 0, 'desc');
     data.messages.reverse(); // Display chronologically
     setMessages(data);
+    totalMessagesRef.current = data.total;
     setTotalMessages(data.total);
     // Mark all as read and refresh sidebar badges
     await markAllRead(p1, p2);
@@ -326,9 +327,11 @@ export function DirectMessages() {
       const data = await fetchMessages(sorted[0], sorted[1], PAGE_SIZE, 0, 'desc');
       data.messages.reverse();
       setMessages(data);
+      totalMessagesRef.current = data.total;
       setTotalMessages(data.total);
     } catch {
       setMessages({ conversation_id: null, participants: sorted, messages: [], total: 0 });
+      totalMessagesRef.current = 0;
       setTotalMessages(0);
     }
     await loadDashboard();
@@ -458,7 +461,7 @@ export function DirectMessages() {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={markdownComponents}
-                    >{msg.content}</ReactMarkdown>
+                    >{autolinkIds(msg.content)}</ReactMarkdown>
                   </div>
                 </div>
               ))}

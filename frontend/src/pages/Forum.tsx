@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { autolinkIds } from '../utils/autolink';
 import styles from './Forum.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
 import { ImageUpload } from '../components/ImageUpload';
@@ -736,11 +737,14 @@ export function Forum() {
                               />
                             );
                           }
-                          return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+                          const isInternal = href && href.startsWith('/');
+                          return isInternal
+                            ? <a href={href}>{children}</a>
+                            : <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
                         },
                       }}
                     >
-                      {msg.content}
+                      {autolinkIds(msg.content)}
                     </ReactMarkdown>
                   </div>
                   {msg.patterns_found !== null && msg.patterns_found > 0 && (

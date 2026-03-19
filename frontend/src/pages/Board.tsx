@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './Board.module.css';
 import ReactMarkdown from 'react-markdown';
+import { autolinkIds } from '../utils/autolink';
 
 interface Project {
   id: number;
@@ -445,7 +446,7 @@ export function Board() {
 
               {selectedTask.description && (
                 <div className={styles.taskDescription}>
-                  <ReactMarkdown>{selectedTask.description}</ReactMarkdown>
+                  <ReactMarkdown>{autolinkIds(selectedTask.description)}</ReactMarkdown>
                 </div>
               )}
 
@@ -459,7 +460,7 @@ export function Board() {
                       <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{formatTime(comment.created_at)}</span>
                     </div>
                     <div className={styles.commentContent}>
-                      <ReactMarkdown>{comment.content}</ReactMarkdown>
+                      <ReactMarkdown>{autolinkIds(comment.content)}</ReactMarkdown>
                     </div>
                   </div>
                 ))}

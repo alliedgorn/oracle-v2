@@ -151,3 +151,33 @@ a {
   background: rgba(212, 148, 58, 0.3);
   color: var(--text-primary);
 }
+
+/* Auto-link chips — FT#, T#, MSG# references */
+.autolink {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 600;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.autolink:hover {
+  opacity: 0.8;
+}
+
+.autolink-ft {
+  background: rgba(56, 139, 253, 0.15);
+  color: #58a6ff;
+}
+
+.autolink-t {
+  background: rgba(63, 185, 80, 0.15);
+  color: #3fb950;
+}
+
+.autolink-msg {
+  background: rgba(160, 150, 140, 0.15);
+  color: var(--text-secondary);
+}

@@ -3225,6 +3225,16 @@ function createNotification(beast: string, type: string, title: string, body?: s
   return result.lastInsertRowid;
 }
 
+// GET /api/notifications/unread-all — all beasts' unread counts in one call
+app.get('/api/notifications/unread-all', (c) => {
+  const rows = sqlite.prepare(
+    "SELECT beast, COUNT(*) as count FROM beast_notifications WHERE status = 'pending' GROUP BY beast"
+  ).all() as any[];
+  const counts: Record<string, number> = {};
+  for (const row of rows) counts[row.beast] = row.count;
+  return c.json({ counts, total: rows.reduce((sum: number, r: any) => sum + r.count, 0) });
+});
+
 // GET /api/notifications/:beast — list notifications
 app.get('/api/notifications/:beast', (c) => {
   const beast = c.req.param('beast').toLowerCase();

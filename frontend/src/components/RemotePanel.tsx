@@ -32,26 +32,17 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
 
   const loadStatus = useCallback(async () => {
     try {
-      const [packRes, statusRes] = await Promise.all([
+      const [packRes, statusRes, notifRes] = await Promise.all([
         fetch(`${API_BASE}/pack`),
         fetch(`${API_BASE}/remote/status`),
+        fetch(`${API_BASE}/notifications/unread-all`),
       ]);
       const packData = await packRes.json();
       const statusData = await statusRes.json();
+      const notifData = await notifRes.json();
       setBeasts(packData.beasts);
       setAttachedBeast(statusData.attached_beast);
-      // Fetch notification counts for all beasts
-      const counts: Record<string, number> = {};
-      await Promise.all(
-        (packData.beasts as Beast[]).map(async (b) => {
-          try {
-            const res = await fetch(`${API_BASE}/notifications/${b.name}/unread`);
-            const data = await res.json();
-            counts[b.name] = data.unread || 0;
-          } catch { counts[b.name] = 0; }
-        })
-      );
-      setNotifCounts(counts);
+      setNotifCounts(notifData.counts || {});
     } catch { /* ignore */ }
   }, []);
 

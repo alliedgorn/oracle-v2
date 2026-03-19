@@ -3341,9 +3341,12 @@ app.patch('/api/schedules/:id/trigger', async (c) => {
   return c.json(updated);
 });
 
+// Scheduler polling interval (pack vote, thread #75)
+const SCHEDULER_INTERVAL = 10_000;
+
 // GET /api/scheduler/health — daemon status
 app.get('/api/scheduler/health', (c) => {
-  return c.json({ status: 'running', interval_seconds: 60, last_check: schedulerLastCheck });
+  return c.json({ status: 'running', interval_seconds: SCHEDULER_INTERVAL / 1000, last_check: schedulerLastCheck });
 });
 
 // ============================================================================
@@ -3406,8 +3409,7 @@ function runSchedulerCycle() {
   }
 }
 
-// Start the daemon — runs every 10 seconds (pack vote, thread #75)
-const SCHEDULER_INTERVAL = 10_000;
+// Start the daemon
 setInterval(runSchedulerCycle, SCHEDULER_INTERVAL);
 // Run first cycle after 5s (let server boot)
 setTimeout(runSchedulerCycle, 5000);

@@ -151,8 +151,15 @@
   }
 }
 
-.dmButton {
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   margin-left: auto;
+  flex-shrink: 0;
+}
+
+.dmButton {
   flex-shrink: 0;
   background: none;
   border: 1px solid var(--border);

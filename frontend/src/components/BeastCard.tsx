@@ -61,11 +61,15 @@ export function BeastCard({
         <div className={styles.role}>{role || animal}</div>
       </div>
       {badge && <span className={styles.badge}>{badge}</span>}
-      {onProfileClick && (
-        <button className={styles.dmButton} title={`View ${displayName}'s profile`} onClick={onProfileClick}>👤</button>
-      )}
-      {onDmClick && (
-        <button className={styles.dmButton} title={`DM ${displayName}`} onClick={onDmClick}>💬</button>
+      {(onProfileClick || onDmClick) && (
+        <div className={styles.actions}>
+          {onProfileClick && (
+            <button className={styles.dmButton} title={`View ${displayName}'s profile`} onClick={onProfileClick}>👤</button>
+          )}
+          {onDmClick && (
+            <button className={styles.dmButton} title={`DM ${displayName}`} onClick={onDmClick}>💬</button>
+          )}
+        </div>
       )}
     </div>
   );

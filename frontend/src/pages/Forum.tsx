@@ -130,7 +130,7 @@ async function sendMessage(message: string, threadId?: number, title?: string, r
   const res = await fetch(`${API_BASE}/thread`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, thread_id: threadId, title, reply_to_id: replyToId })
+    body: JSON.stringify({ message, thread_id: threadId, title, reply_to_id: replyToId, author: 'gorn', role: 'human' })
   });
   return res.json();
 }

@@ -116,6 +116,17 @@ export function parseMentions(content: string, threadId?: number): string[] {
           }
         }
       } catch { /* groups table may not exist yet */ }
+      // Check if it's a team name (e.g. @real-broker → all team members)
+      try {
+        const teamName = name.replace(/-/g, ' ');
+        const team = sqlite.prepare('SELECT id FROM teams WHERE LOWER(name) = ? OR LOWER(REPLACE(name, \' \', \'-\')) = ?').get(teamName, name) as any;
+        if (team) {
+          const members = sqlite.prepare('SELECT beast FROM team_members WHERE team_id = ?').all(team.id) as any[];
+          for (const m of members) {
+            if (m.beast in registry) names.add(m.beast);
+          }
+        }
+      } catch { /* teams table may not exist yet */ }
     }
   }
 

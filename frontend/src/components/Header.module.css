@@ -234,6 +234,8 @@
 
   .nav {
     gap: 0;
+    overflow: visible;
+    flex-wrap: wrap;
   }
 
   .navLink {
@@ -243,8 +245,8 @@
 
   .dropdownMenu {
     position: absolute;
-    left: 0;
-    right: auto;
+    left: auto;
+    right: 0;
     top: 100%;
     min-width: 180px;
     max-height: 60vh;

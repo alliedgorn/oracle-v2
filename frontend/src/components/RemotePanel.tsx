@@ -120,6 +120,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
                 selected={isAttached}
                 badge={isAttached ? 'ATTACHED' : undefined}
                 onClick={() => !loading && handleClick(beast)}
+                onProfileClick={(e) => { e.stopPropagation(); navigate(`/beast/${beast.name}`); }}
                 onDmClick={(e) => { e.stopPropagation(); navigate(`/dms?conv=gorn-${beast.name}`); }}
               />
             );

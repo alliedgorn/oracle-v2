@@ -234,8 +234,8 @@ export function Forum() {
       if (!selectedThread || selectedThread.thread.id !== parseInt(threadIdParam, 10)) {
         selectThread(parseInt(threadIdParam, 10));
       }
-    } else if (threads.length > 0 && !showNewThread && !threadsLoadedRef.current) {
-      // Auto-select first thread only on initial load
+    } else if (threads.length > 0 && !showNewThread && !threadsLoadedRef.current && window.innerWidth > 768) {
+      // Auto-select first thread only on initial load, desktop only
       threadsLoadedRef.current = true;
       setSearchParams({ thread: threads[0].id.toString() });
     } else if (threads.length === 0) {
@@ -630,13 +630,16 @@ export function Forum() {
                 className={styles.textarea}
                 rows={8}
               />
-              <button
-                type="submit"
-                disabled={loading || !newMessage.trim()}
-                className={styles.submitButton}
-              >
-                {loading ? 'Posting...' : 'Post'}
-              </button>
+              <div className={styles.replyActions}>
+                <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
+                <button
+                  type="submit"
+                  disabled={loading || !newMessage.trim()}
+                  className={styles.submitButton}
+                >
+                  {loading ? 'Posting...' : 'Post'}
+                </button>
+              </div>
             </form>
           </div>
         )}

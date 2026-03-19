@@ -192,19 +192,22 @@ export function DirectMessages() {
 
   useWebSocket('new_dm', handleWsDm);
 
+  // Load conversation when URL param changes (user navigation only)
+  const dashboardRef = useRef<Dashboard | null>(null);
+  dashboardRef.current = dashboard;
+
   useEffect(() => {
-    if (convParam && dashboard) {
+    if (convParam) {
       const [p1, p2] = convParam.split('-');
       if (p1 && p2) {
-        const conv = dashboard.conversations.find(
+        const dash = dashboardRef.current;
+        const conv = dash?.conversations.find(
           c => (c.participants[0] === p1 && c.participants[1] === p2) ||
                (c.participants[0] === p2 && c.participants[1] === p1)
         );
         if (conv) {
           setSelectedConv(conv);
-          loadMessages(p1, p2);
         } else {
-          // New conversation not yet in dashboard — create temporary entry
           setSelectedConv({
             id: 0,
             participants: [p1, p2],
@@ -213,16 +216,16 @@ export function DirectMessages() {
             last_at: new Date().toISOString(),
             created_at: new Date().toISOString(),
           });
-          loadMessages(p1, p2).catch(() => {
-            setMessages({ conversation_id: null, participants: [p1, p2], messages: [], total: 0 });
-          });
         }
+        loadMessages(p1, p2).catch(() => {
+          setMessages({ conversation_id: null, participants: [p1, p2], messages: [], total: 0 });
+        });
       }
     } else {
       setSelectedConv(null);
       setMessages(null);
     }
-  }, [convParam, dashboard]);
+  }, [convParam]);
 
   // Auto-scroll to bottom on initial load or when near bottom
   useEffect(() => {

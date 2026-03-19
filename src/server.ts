@@ -3185,15 +3185,28 @@ app.get('/api/notifications/:beast/unread', (c) => {
   return c.json({ beast, unread: row?.count || 0 });
 });
 
-// PATCH /api/notifications/:id/seen — mark as seen (ownership enforced)
+// PATCH /api/notifications/:id/seen — mark as seen (single by ID, or bulk by beast name)
 app.patch('/api/notifications/:id/seen', async (c) => {
-  const id = parseInt(c.req.param('id'));
-  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
-  const existing = sqlite.prepare('SELECT * FROM beast_notifications WHERE id = ?').get(id) as any;
-  if (!existing) return c.json({ error: 'Notification not found' }, 404);
+  const param = c.req.param('id');
+  const id = parseInt(param);
   const data = await c.req.json().catch(() => ({}));
   const requester = (c.req.query('as') || data.as || '').toLowerCase();
   if (!requester) return c.json({ error: 'Identity required: pass ?as=beast' }, 400);
+
+  // If param is non-numeric, treat as beast name (bulk mark seen)
+  if (isNaN(id)) {
+    const beast = param.toLowerCase();
+    if (requester !== beast && requester !== 'gorn') {
+      return c.json({ error: `Only ${beast} or Gorn can update notifications` }, 403);
+    }
+    const now = new Date().toISOString();
+    const result = sqlite.prepare('UPDATE beast_notifications SET status = ?, seen_at = ? WHERE beast = ? AND status = ?').run('seen', now, beast, 'pending');
+    return c.json({ marked_seen: result.changes, beast });
+  }
+
+  // Single notification by ID
+  const existing = sqlite.prepare('SELECT * FROM beast_notifications WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Notification not found' }, 404);
   if (requester !== existing.beast && requester !== 'gorn') {
     return c.json({ error: `Only ${existing.beast} or Gorn can update this notification` }, 403);
   }
@@ -3203,15 +3216,26 @@ app.patch('/api/notifications/:id/seen', async (c) => {
   return c.json(updated);
 });
 
-// PATCH /api/notifications/:id/dismiss — dismiss (ownership enforced)
+// PATCH /api/notifications/:id/dismiss — dismiss (single by ID, or bulk by beast name)
 app.patch('/api/notifications/:id/dismiss', async (c) => {
-  const id = parseInt(c.req.param('id'));
-  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
-  const existing = sqlite.prepare('SELECT * FROM beast_notifications WHERE id = ?').get(id) as any;
-  if (!existing) return c.json({ error: 'Notification not found' }, 404);
+  const param = c.req.param('id');
+  const id = parseInt(param);
   const data = await c.req.json().catch(() => ({}));
   const requester = (c.req.query('as') || data.as || '').toLowerCase();
   if (!requester) return c.json({ error: 'Identity required: pass ?as=beast' }, 400);
+
+  if (isNaN(id)) {
+    const beast = param.toLowerCase();
+    if (requester !== beast && requester !== 'gorn') {
+      return c.json({ error: `Only ${beast} or Gorn can dismiss notifications` }, 403);
+    }
+    const now = new Date().toISOString();
+    const result = sqlite.prepare('UPDATE beast_notifications SET status = ?, dismissed_at = ? WHERE beast = ? AND status IN (?, ?)').run('dismissed', now, beast, 'pending', 'seen');
+    return c.json({ dismissed: result.changes, beast });
+  }
+
+  const existing = sqlite.prepare('SELECT * FROM beast_notifications WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Notification not found' }, 404);
   if (requester !== existing.beast && requester !== 'gorn') {
     return c.json({ error: `Only ${existing.beast} or Gorn can dismiss this notification` }, 403);
   }

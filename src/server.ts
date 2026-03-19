@@ -1934,6 +1934,9 @@ app.post('/api/thread', async (c) => {
     if (!data.message) {
       return c.json({ error: 'Missing required field: message' }, 400);
     }
+    if (!data.author) {
+      return c.json({ error: 'Missing required field: author' }, 400);
+    }
     const result = await handleThreadMessage({
       message: data.message,
       threadId: data.thread_id,

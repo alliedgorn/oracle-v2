@@ -29,6 +29,7 @@ import { Mindlink } from './pages/Mindlink';
 import { Library } from './pages/Library';
 import { Board } from './pages/Board';
 import { Scheduler } from './pages/Scheduler';
+import { Notifications } from './pages/Notifications';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
@@ -89,6 +90,7 @@ function AppContent() {
         <Route path="/traces/:id" element={<RequireAuth><Traces /></RequireAuth>} />
         <Route path="/superseded" element={<RequireAuth><Superseded /></RequireAuth>} />
         <Route path="/scheduler" element={<RequireAuth><Scheduler /></RequireAuth>} />
+        <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       </Routes>
       {!isLoginPage && <QuickLearn />}

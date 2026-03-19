@@ -28,6 +28,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [notifCounts, setNotifCounts] = useState<Record<string, number>>({});
 
   const loadStatus = useCallback(async () => {
     try {
@@ -39,6 +40,18 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
       const statusData = await statusRes.json();
       setBeasts(packData.beasts);
       setAttachedBeast(statusData.attached_beast);
+      // Fetch notification counts for all beasts
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        (packData.beasts as Beast[]).map(async (b) => {
+          try {
+            const res = await fetch(`${API_BASE}/notifications/${b.name}/unread`);
+            const data = await res.json();
+            counts[b.name] = data.unread || 0;
+          } catch { counts[b.name] = 0; }
+        })
+      );
+      setNotifCounts(counts);
     } catch { /* ignore */ }
   }, []);
 
@@ -118,7 +131,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
                 key={beast.name}
                 {...beast}
                 selected={isAttached}
-                badge={isAttached ? 'ATTACHED' : undefined}
+                badge={isAttached ? 'ATTACHED' : (notifCounts[beast.name] ? `🔔 ${notifCounts[beast.name]}` : undefined)}
                 onClick={() => !loading && handleClick(beast)}
                 onProfileClick={(e) => { e.stopPropagation(); navigate(`/beast/${beast.name}`); }}
                 onDmClick={(e) => { e.stopPropagation(); navigate(`/dms?conv=gorn-${beast.name}`); }}

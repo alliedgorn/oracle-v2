@@ -245,6 +245,54 @@ app.use('/api/*', async (c, next) => {
 });
 
 // ============================================================================
+// Audit Logging Middleware (Task #72 — logs all mutating API requests)
+// ============================================================================
+
+const AUDIT_SKIP = ['/api/health', '/api/auth/status', '/api/auth/login', '/api/session/stats'];
+
+app.use('/api/*', async (c, next) => {
+  const method = c.req.method;
+  const path = c.req.path;
+
+  // Skip: GETs (except sensitive), static, health, WS
+  const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+  const isSensitiveGet = method === 'GET' && (path.includes('/dm/') || path.includes('/settings') || path.includes('/audit'));
+  if (!isMutation && !isSensitiveGet) return next();
+  if (AUDIT_SKIP.some(p => path === p)) return next();
+
+  await next();
+
+  // Log after handler completes
+  try {
+    const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+    // Best-effort actor extraction: ?as param, or infer from path/response
+    let actor = c.req.query('as') || '';
+    if (!actor) {
+      // Try to extract from path patterns like /api/dm/karo/zaghnal, /api/notifications/karo
+      const pathMatch = path.match(/\/api\/(?:dm|notifications|schedules\/\d+\/run)\?.*as=(\w+)/);
+      if (!pathMatch) {
+        // For forum posts, try author from response context
+        actor = c.req.query('author') || 'unknown';
+      } else {
+        actor = pathMatch[1];
+      }
+    }
+    const actorType = isLocalNetwork(c) ? 'beast' : 'human';
+    const statusCode = c.res.status;
+
+    // Extract resource info from path
+    const parts = path.replace('/api/', '').split('/');
+    const resourceType = parts[0] || null;
+    const resourceId = parts[1] || null;
+
+    sqlite.prepare(
+      `INSERT INTO audit_log (actor, actor_type, action, resource_type, resource_id, ip_source, request_method, request_path, status_code)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(actor, actorType, `${method} ${path}`, resourceType, resourceId, ip, method, path, statusCode);
+  } catch { /* never block requests for logging failures */ }
+});
+
+// ============================================================================
 // Auth Routes
 // ============================================================================
 
@@ -3146,6 +3194,28 @@ try {
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_notifications_beast ON beast_notifications(beast, status)`).run();
 } catch { /* already exists */ }
 
+// Audit Log table (Task #72 — Bertus design, thread #81)
+try {
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT DEFAULT (datetime('now')),
+    actor TEXT,
+    actor_type TEXT,
+    action TEXT NOT NULL,
+    resource_type TEXT,
+    resource_id TEXT,
+    detail TEXT,
+    ip_source TEXT,
+    request_method TEXT,
+    request_path TEXT,
+    status_code INTEGER
+  )`).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)`).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log(actor)`).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_log(resource_type, resource_id)`).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)`).run();
+} catch { /* already exists */ }
+
 // Helper: create a notification
 function createNotification(beast: string, type: string, title: string, body?: string, sourceId?: number, sourceType?: string, priority: string = 'normal') {
   const result = sqlite.prepare(
@@ -3257,6 +3327,43 @@ app.patch('/api/notifications/:beast/seen-all', async (c) => {
   const now = new Date().toISOString();
   const result = sqlite.prepare('UPDATE beast_notifications SET status = ?, seen_at = ? WHERE beast = ? AND status = ?').run('seen', now, beast, 'pending');
   return c.json({ marked_seen: result.changes, beast });
+});
+
+// ============================================================================
+// Audit Log Query (Task #72 — Gorn-only read access)
+// ============================================================================
+
+app.get('/api/audit', (c) => {
+  const actor = c.req.query('actor');
+  const resourceType = c.req.query('resource_type');
+  const statusCode = c.req.query('status_code');
+  const method = c.req.query('method');
+  const limit = parseInt(c.req.query('limit') || '100');
+  const since = c.req.query('since');
+
+  let query = 'SELECT * FROM audit_log WHERE 1=1';
+  const params: any[] = [];
+
+  if (actor) { query += ' AND actor = ?'; params.push(actor); }
+  if (resourceType) { query += ' AND resource_type = ?'; params.push(resourceType); }
+  if (statusCode) { query += ' AND status_code = ?'; params.push(parseInt(statusCode)); }
+  if (method) { query += ' AND request_method = ?'; params.push(method.toUpperCase()); }
+  if (since) { query += ' AND datetime(timestamp) >= datetime(?)'; params.push(since); }
+  query += ' ORDER BY timestamp DESC LIMIT ?';
+  params.push(limit);
+
+  const rows = sqlite.prepare(query).all(...params) as any[];
+  return c.json({ audit: rows, total: rows.length });
+});
+
+// GET /api/audit/stats — summary counts
+app.get('/api/audit/stats', (c) => {
+  const total = (sqlite.prepare('SELECT COUNT(*) as count FROM audit_log').get() as any)?.count || 0;
+  const denied = (sqlite.prepare("SELECT COUNT(*) as count FROM audit_log WHERE status_code = 403").get() as any)?.count || 0;
+  const errors = (sqlite.prepare("SELECT COUNT(*) as count FROM audit_log WHERE status_code >= 500").get() as any)?.count || 0;
+  const byActor = sqlite.prepare('SELECT actor, COUNT(*) as count FROM audit_log GROUP BY actor ORDER BY count DESC LIMIT 10').all();
+  const byResource = sqlite.prepare('SELECT resource_type, COUNT(*) as count FROM audit_log GROUP BY resource_type ORDER BY count DESC LIMIT 10').all();
+  return c.json({ total, denied, errors, by_actor: byActor, by_resource: byResource });
 });
 
 const VALID_INTERVALS: Record<string, number> = {

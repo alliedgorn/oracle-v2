@@ -1955,6 +1955,14 @@ app.post('/api/thread', async (c) => {
       message_id: result.messageId,
       author: data.author || data.role || 'unknown',
     });
+    // Write to notification queue for each notified beast
+    if (result.notified) {
+      const author = data.author || data.role || 'unknown';
+      const preview = data.message.slice(0, 80);
+      for (const beast of result.notified) {
+        createNotification(beast, 'forum_mention', `Forum: ${author} in thread #${result.threadId}`, preview, result.threadId, 'thread');
+      }
+    }
     return c.json({
       thread_id: result.threadId,
       message_id: result.messageId,
@@ -2515,6 +2523,11 @@ app.post('/api/dm', async (c) => {
     }
     const result = sendDm(data.from, data.to, data.message);
     wsBroadcast('new_dm', { from: data.from, to: data.to, conversation_id: result.conversationId });
+    // Write to notification queue for recipient
+    const recipient = data.to.toLowerCase();
+    if (recipient !== 'gorn') {
+      createNotification(recipient, 'dm', `DM from ${data.from}`, data.message.slice(0, 80), result.messageId, 'dm');
+    }
     return c.json({
       conversation_id: result.conversationId,
       message_id: result.messageId,
@@ -3111,6 +3124,117 @@ try {
   try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN timezone TEXT DEFAULT 'Asia/Bangkok'`).run(); } catch { /* exists */ }
 } catch { /* already exists */ }
 
+// ============================================================================
+// Notification Queue (Task #69 — Gnarl spec, thread #79)
+// ============================================================================
+
+try {
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS beast_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    beast TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    source_id INTEGER,
+    source_type TEXT,
+    priority TEXT DEFAULT 'normal',
+    status TEXT DEFAULT 'pending',
+    created_at TEXT DEFAULT (datetime('now')),
+    seen_at TEXT,
+    dismissed_at TEXT
+  )`).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_notifications_beast ON beast_notifications(beast, status)`).run();
+} catch { /* already exists */ }
+
+// Helper: create a notification
+function createNotification(beast: string, type: string, title: string, body?: string, sourceId?: number, sourceType?: string, priority: string = 'normal') {
+  const result = sqlite.prepare(
+    `INSERT INTO beast_notifications (beast, type, title, body, source_id, source_type, priority) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(beast, type, title, body || null, sourceId || null, sourceType || null, priority);
+  wsBroadcast('notification', { beast, type, title, id: result.lastInsertRowid });
+  return result.lastInsertRowid;
+}
+
+// GET /api/notifications/:beast — list notifications
+app.get('/api/notifications/:beast', (c) => {
+  const beast = c.req.param('beast').toLowerCase();
+  const status = c.req.query('status');
+  const type = c.req.query('type');
+  const priority = c.req.query('priority');
+  const limit = parseInt(c.req.query('limit') || '50');
+
+  let query = 'SELECT * FROM beast_notifications WHERE beast = ?';
+  const params: any[] = [beast];
+
+  if (status) { query += ' AND status = ?'; params.push(status); }
+  if (type) { query += ' AND type = ?'; params.push(type); }
+  if (priority) { query += ' AND priority = ?'; params.push(priority); }
+  query += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(limit);
+
+  const rows = sqlite.prepare(query).all(...params) as any[];
+  return c.json({ notifications: rows, total: rows.length });
+});
+
+// GET /api/notifications/:beast/unread — count pending
+app.get('/api/notifications/:beast/unread', (c) => {
+  const beast = c.req.param('beast').toLowerCase();
+  const row = sqlite.prepare(
+    'SELECT COUNT(*) as count FROM beast_notifications WHERE beast = ? AND status = ?'
+  ).get(beast, 'pending') as any;
+  return c.json({ beast, unread: row?.count || 0 });
+});
+
+// PATCH /api/notifications/:id/seen — mark as seen (ownership enforced)
+app.patch('/api/notifications/:id/seen', async (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM beast_notifications WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Notification not found' }, 404);
+  const data = await c.req.json().catch(() => ({}));
+  const requester = (c.req.query('as') || data.as || '').toLowerCase();
+  if (!requester) return c.json({ error: 'Identity required: pass ?as=beast' }, 400);
+  if (requester !== existing.beast && requester !== 'gorn') {
+    return c.json({ error: `Only ${existing.beast} or Gorn can update this notification` }, 403);
+  }
+  const now = new Date().toISOString();
+  sqlite.prepare('UPDATE beast_notifications SET status = ?, seen_at = ? WHERE id = ?').run('seen', now, id);
+  const updated = sqlite.prepare('SELECT * FROM beast_notifications WHERE id = ?').get(id);
+  return c.json(updated);
+});
+
+// PATCH /api/notifications/:id/dismiss — dismiss (ownership enforced)
+app.patch('/api/notifications/:id/dismiss', async (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM beast_notifications WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Notification not found' }, 404);
+  const data = await c.req.json().catch(() => ({}));
+  const requester = (c.req.query('as') || data.as || '').toLowerCase();
+  if (!requester) return c.json({ error: 'Identity required: pass ?as=beast' }, 400);
+  if (requester !== existing.beast && requester !== 'gorn') {
+    return c.json({ error: `Only ${existing.beast} or Gorn can dismiss this notification` }, 403);
+  }
+  const now = new Date().toISOString();
+  sqlite.prepare('UPDATE beast_notifications SET status = ?, dismissed_at = ? WHERE id = ?').run('dismissed', now, id);
+  const updated = sqlite.prepare('SELECT * FROM beast_notifications WHERE id = ?').get(id);
+  return c.json(updated);
+});
+
+// PATCH /api/notifications/:beast/seen-all — mark all pending as seen
+app.patch('/api/notifications/:beast/seen-all', async (c) => {
+  const beast = c.req.param('beast').toLowerCase();
+  const data = await c.req.json().catch(() => ({}));
+  const requester = (c.req.query('as') || data.as || '').toLowerCase();
+  if (!requester) return c.json({ error: 'Identity required: pass ?as=beast' }, 400);
+  if (requester !== beast && requester !== 'gorn') {
+    return c.json({ error: `Only ${beast} or Gorn can update notifications` }, 403);
+  }
+  const now = new Date().toISOString();
+  const result = sqlite.prepare('UPDATE beast_notifications SET status = ?, seen_at = ? WHERE beast = ? AND status = ?').run('seen', now, beast, 'pending');
+  return c.json({ marked_seen: result.changes, beast });
+});
+
 const VALID_INTERVALS: Record<string, number> = {
   '10m': 600, '30m': 1800, '1h': 3600, '3h': 10800,
   '6h': 21600, '12h': 43200, '1d': 86400, '7d': 604800,
@@ -3411,6 +3535,8 @@ function runSchedulerCycle() {
         ).run(now, schedule.id);
 
         wsBroadcast('schedule_update', { action: 'triggered', schedule: { ...schedule, last_triggered_at: now, trigger_status: 'triggered' } });
+        // Write to notification queue (persistent, survives missed tmux)
+        createNotification(schedule.beast, 'scheduler', `Due: ${schedule.task}`, `Schedule #${schedule.id} is due`, schedule.id, 'schedule');
         console.log(`[Scheduler] Triggered: ${schedule.beast}/${schedule.task} (#${schedule.id})`);
       } catch (err) {
         console.log(`[Scheduler] Failed to notify ${schedule.beast}: ${err}`);

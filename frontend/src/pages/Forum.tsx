@@ -610,7 +610,7 @@ export function Forum() {
       </div>
 
       {/* Main: Thread Detail or New Thread — full screen on mobile */}
-      <div className={`${styles.main} ${selectedThread ? styles.fullScreen : ''}`}>
+      <div className={`${styles.main} ${selectedThread || showNewThread ? styles.fullScreen : ''}`}>
         {showNewThread && !selectedThread && (
           <div className={styles.newThread}>
             <h2>New Thread</h2>
@@ -643,7 +643,10 @@ export function Forum() {
 
         {selectedThread && (
           <div className={styles.threadDetail}>
-            <button className={styles.mobileBack} onClick={() => { setSelectedThread(null); setSearchParams({}); }}>← Threads</button>
+            <div className={styles.mobileNav}>
+              <button className={styles.mobileBack} onClick={() => { setSelectedThread(null); setSearchParams({}); }}>← Threads</button>
+              <button className={styles.mobileNewBtn} onClick={openNewThread}>+ New</button>
+            </div>
             <div className={styles.threadHeader}>
               <h2><span className={styles.threadIdHeader}>#{selectedThread.thread.id}</span> {selectedThread.thread.title}</h2>
               <div className={styles.threadActions}>

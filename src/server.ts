@@ -3417,15 +3417,37 @@ app.get('/api/teams', (c) => {
   return c.json({ teams, total: teams.length });
 });
 
+// Helper: validate team name (alphanumeric, spaces, hyphens only)
+function validateTeamName(name: string): string | null {
+  if (!name || name.trim().length === 0) return 'name required';
+  if (name.length > 100) return 'name too long (max 100 chars)';
+  if (!/^[a-zA-Z0-9 _-]+$/.test(name)) return 'name contains invalid characters (use letters, numbers, spaces, hyphens only)';
+  return null;
+}
+
+// Helper: sanitize text input (strip HTML tags)
+function sanitizeInput(text: string): string {
+  return text.replace(/<[^>]*>/g, '').trim();
+}
+
+// Helper: check if beast exists
+function beastExists(name: string): boolean {
+  const row = sqlite.prepare('SELECT name FROM beast_profiles WHERE name = ?').get(name.toLowerCase());
+  return !!row;
+}
+
 // POST /api/teams — create a team
 app.post('/api/teams', async (c) => {
   const data = await c.req.json();
-  if (!data.name) return c.json({ error: 'name required' }, 400);
+  const nameErr = validateTeamName(data.name);
+  if (nameErr) return c.json({ error: nameErr }, 400);
   if (!data.created_by) return c.json({ error: 'created_by required' }, 400);
+  const name = sanitizeInput(data.name);
+  const description = data.description ? sanitizeInput(data.description) : null;
   try {
     const result = sqlite.prepare(
       'INSERT INTO teams (name, description, created_by) VALUES (?, ?, ?)'
-    ).run(data.name, data.description || null, data.created_by);
+    ).run(name, description, data.created_by);
     // Auto-add creator as lead
     sqlite.prepare('INSERT INTO team_members (team_id, beast, role) VALUES (?, ?, ?)').run(result.lastInsertRowid, data.created_by, 'lead');
     const team = sqlite.prepare('SELECT * FROM teams WHERE id = ?').get(result.lastInsertRowid);
@@ -3454,8 +3476,12 @@ app.patch('/api/teams/:id', async (c) => {
   const team = sqlite.prepare('SELECT * FROM teams WHERE id = ?').get(id);
   if (!team) return c.json({ error: 'Team not found' }, 404);
   const data = await c.req.json();
-  if (data.name) sqlite.prepare('UPDATE teams SET name = ? WHERE id = ?').run(data.name, id);
-  if (data.description !== undefined) sqlite.prepare('UPDATE teams SET description = ? WHERE id = ?').run(data.description, id);
+  if (data.name) {
+    const nameErr = validateTeamName(data.name);
+    if (nameErr) return c.json({ error: nameErr }, 400);
+    sqlite.prepare('UPDATE teams SET name = ? WHERE id = ?').run(sanitizeInput(data.name), id);
+  }
+  if (data.description !== undefined) sqlite.prepare('UPDATE teams SET description = ? WHERE id = ?').run(sanitizeInput(data.description || ''), id);
   const updated = sqlite.prepare('SELECT * FROM teams WHERE id = ?').get(id);
   return c.json(updated);
 });
@@ -3468,6 +3494,7 @@ app.post('/api/teams/:id/members', async (c) => {
   if (!team) return c.json({ error: 'Team not found' }, 404);
   const data = await c.req.json();
   if (!data.beast) return c.json({ error: 'beast required' }, 400);
+  if (!beastExists(data.beast)) return c.json({ error: `Beast '${data.beast}' not found` }, 404);
   try {
     sqlite.prepare('INSERT INTO team_members (team_id, beast, role) VALUES (?, ?, ?)').run(id, data.beast.toLowerCase(), data.role || 'member');
     return c.json({ team_id: id, beast: data.beast.toLowerCase(), role: data.role || 'member' }, 201);

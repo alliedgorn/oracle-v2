@@ -50,6 +50,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   const { isAuthenticated, authEnabled, logout } = useAuth();
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const isTouchDevice = 'ontouchstart' in window;
   const [sessionStartTime] = useState(() => {
     const stored = localStorage.getItem('oracle_session_start');
     if (stored) return parseInt(stored);
@@ -121,28 +122,32 @@ export function Header({ onRemoteToggle }: HeaderProps) {
           <div
             key={group.label}
             className={styles.dropdown}
-            onMouseEnter={() => setOpenGroup(group.label)}
-            onMouseLeave={() => setOpenGroup(null)}
+            onMouseEnter={() => !isTouchDevice && setOpenGroup(group.label)}
+            onMouseLeave={() => !isTouchDevice && setOpenGroup(null)}
           >
             <button
               type="button"
               className={`${styles.navLink} ${styles.dropdownTrigger} ${isGroupActive(group) ? styles.active : ''}`}
+              onClick={() => setOpenGroup(prev => prev === group.label ? null : group.label)}
             >
               {group.label} ▾
             </button>
             {openGroup === group.label && (
-              <div className={styles.dropdownMenu}>
-                {group.items.map(item => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={`${styles.dropdownItem} ${location.pathname === item.path.split('?')[0] ? styles.active : ''}`}
-                    onClick={() => setOpenGroup(null)}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
+              <>
+                {isTouchDevice && <div className={styles.dropdownBackdrop} onClick={() => setOpenGroup(null)} />}
+                <div className={styles.dropdownMenu}>
+                  {group.items.map(item => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`${styles.dropdownItem} ${location.pathname === item.path.split('?')[0] ? styles.active : ''}`}
+                      onClick={() => setOpenGroup(null)}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         ))}

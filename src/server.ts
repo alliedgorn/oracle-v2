@@ -3347,7 +3347,7 @@ app.get('/api/scheduler/health', (c) => {
 });
 
 // ============================================================================
-// Scheduler Auto-Trigger Daemon (60s polling)
+// Scheduler Auto-Trigger Daemon (10s polling)
 // ============================================================================
 
 let schedulerLastCheck: string | null = null;
@@ -3406,12 +3406,12 @@ function runSchedulerCycle() {
   }
 }
 
-// Start the daemon — runs every 60 seconds
-const SCHEDULER_INTERVAL = 60_000;
+// Start the daemon — runs every 10 seconds (pack vote, thread #75)
+const SCHEDULER_INTERVAL = 10_000;
 setInterval(runSchedulerCycle, SCHEDULER_INTERVAL);
 // Run first cycle after 5s (let server boot)
 setTimeout(runSchedulerCycle, 5000);
-console.log('[Scheduler] Auto-trigger daemon started (60s interval)');
+console.log('[Scheduler] Auto-trigger daemon started (10s interval)');
 
 // ============================================================================
 // Supersede Log Routes (Issue #18, #19)

@@ -92,6 +92,12 @@
   height: 8px;
 }
 
+.dropdownBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+}
+
 .dropdownItem {
   display: block;
   padding: 10px 14px;
@@ -239,7 +245,9 @@
     position: fixed;
     left: 8px;
     right: 8px;
-    top: auto;
+    top: 48px;
     min-width: auto;
+    max-height: 60vh;
+    overflow-y: auto;
   }
 }

@@ -90,7 +90,7 @@ export function invalidateRegistryCache(): void {
  */
 export function parseMentions(content: string, threadId?: number): string[] {
   const registry = getOracleRegistry();
-  const matches = content.match(/@(\w+)/gi);
+  const matches = content.match(/@([\w-]+)/gi);
   if (!matches) return [];
 
   const names = new Set<string>();

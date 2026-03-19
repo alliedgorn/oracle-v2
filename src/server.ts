@@ -3167,6 +3167,15 @@ app.get('/api/schedules/due', (c) => {
   return c.json({ schedules: rows, total: rows.length });
 });
 
+// GET /api/schedules/:id — get a single schedule
+app.get('/api/schedules/:id', (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid schedule ID' }, 400);
+  const row = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id);
+  if (!row) return c.json({ error: 'Schedule not found' }, 404);
+  return c.json(row);
+});
+
 // POST /api/schedules — create a schedule
 app.post('/api/schedules', async (c) => {
   const data = await c.req.json();

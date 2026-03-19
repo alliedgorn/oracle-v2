@@ -272,7 +272,7 @@ export function Forum() {
       clearInterval(pollMessages);
       clearInterval(pollThreads);
     };
-  }, [selectedThread?.thread.id, totalMessages]);
+  }, [selectedThread?.thread.id]);
 
   // Auto-scroll to bottom on initial thread load, or when user is near bottom and new messages arrive
   useEffect(() => {

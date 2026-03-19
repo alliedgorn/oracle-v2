@@ -166,7 +166,7 @@ export function DirectMessages() {
       clearInterval(pollMessages);
       clearInterval(pollDashboard);
     };
-  }, [selectedConv?.id, messages?.total, convParam]);
+  }, [selectedConv?.id, convParam]);
 
   // Real-time WebSocket updates — fetch only new messages
   const handleWsDm = useCallback((_data: any) => {

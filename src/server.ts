@@ -3375,9 +3375,9 @@ function runSchedulerCycle() {
     // - cooldown: last_triggered_at null or >5 min ago
     const overdue = sqlite.prepare(
       `SELECT * FROM beast_schedules
-       WHERE enabled = 1 AND next_due_at <= ?
+       WHERE enabled = 1 AND datetime(next_due_at) <= datetime(?)
        AND (trigger_status IS NULL OR trigger_status = 'pending' OR trigger_status = 'completed' OR trigger_status = 'failed')
-       AND (last_triggered_at IS NULL OR last_triggered_at <= datetime(?, '-5 minutes'))
+       AND (last_triggered_at IS NULL OR datetime(last_triggered_at) <= datetime(?, '-5 minutes'))
        ORDER BY next_due_at`
     ).all(now, now) as any[];
 

@@ -242,11 +242,11 @@
   }
 
   .dropdownMenu {
-    position: fixed;
-    left: 8px;
-    right: 8px;
-    top: 48px;
-    min-width: auto;
+    position: absolute;
+    left: 0;
+    right: auto;
+    top: 100%;
+    min-width: 180px;
     max-height: 60vh;
     overflow-y: auto;
   }

@@ -1,5 +1,6 @@
 /* Shared BeastCard — used in Pack, Remote, and any beast list */
 .card {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -11,6 +12,7 @@
   cursor: pointer;
   transition: all 0.2s;
   user-select: none;
+  overflow: hidden;
 }
 
 .card:hover {
@@ -24,8 +26,20 @@
   border-color: var(--accent);
 }
 
-.card.processing {
-  animation: cardPulse 2s ease-in-out infinite;
+.card.processing::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #a78bfa, transparent);
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 .card.offline {
@@ -35,17 +49,6 @@
 
 .card.offline:hover {
   opacity: 0.5;
-}
-
-@keyframes cardPulse {
-  0%, 100% {
-    background: var(--bg-card);
-    box-shadow: none;
-  }
-  50% {
-    background: rgba(63, 185, 80, 0.12);
-    box-shadow: 0 0 12px rgba(63, 185, 80, 0.25);
-  }
 }
 
 /* Avatar */

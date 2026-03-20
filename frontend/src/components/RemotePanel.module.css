@@ -175,7 +175,7 @@
   border: 2px solid var(--bg-primary);
 }
 
-.dotProcessing { background: #3fb950; animation: pulse 1.5s ease-in-out infinite; }
+.dotProcessing { background: #f59e0b; animation: pulse 1.5s ease-in-out infinite; }
 .dotIdle { background: #d97706; }
 .dotShell { background: #6e7681; }
 .dotOffline { background: #4b5563; }

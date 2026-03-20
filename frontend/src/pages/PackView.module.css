@@ -57,18 +57,24 @@
 }
 
 .beastCard.processing {
-  animation: cardPulse 2s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
 }
 
-@keyframes cardPulse {
-  0%, 100% {
-    background: var(--bg-card);
-    box-shadow: none;
-  }
-  50% {
-    background: rgba(63, 185, 80, 0.04);
-    box-shadow: 0 0 8px rgba(63, 185, 80, 0.1);
-  }
+.beastCard.processing::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #a78bfa, transparent);
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 .beastCard.idle {

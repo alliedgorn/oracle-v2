@@ -3388,10 +3388,14 @@ app.patch('/api/notifications/:beast/seen-all', async (c) => {
 // Audit Log Query (Task #72 — Gorn-only read access)
 // ============================================================================
 
+// Security team allowlist for audit log read access
+const AUDIT_READ_ALLOWLIST = ['bertus', 'talon'];
+
 app.get('/api/audit', (c) => {
-  // Gorn-only: require browser session auth
-  if (!hasSessionAuth(c)) {
-    return c.json({ error: 'Audit logs are restricted to Gorn (session auth required)' }, 403);
+  // Gorn (session auth) or security team (bertus, talon) via ?as=
+  const requester = (c.req.query('as') || '').toLowerCase();
+  if (!hasSessionAuth(c) && !AUDIT_READ_ALLOWLIST.includes(requester)) {
+    return c.json({ error: 'Audit logs are restricted to Gorn and security team' }, 403);
   }
 
   const actor = c.req.query('actor');
@@ -3422,9 +3426,10 @@ app.get('/api/audit', (c) => {
 
 // GET /api/audit/stats — summary counts
 app.get('/api/audit/stats', (c) => {
-  // Gorn-only: require browser session auth
-  if (!hasSessionAuth(c)) {
-    return c.json({ error: 'Audit stats are restricted to Gorn (session auth required)' }, 403);
+  // Gorn (session auth) or security team (bertus, talon) via ?as=
+  const requester = (c.req.query('as') || '').toLowerCase();
+  if (!hasSessionAuth(c) && !AUDIT_READ_ALLOWLIST.includes(requester)) {
+    return c.json({ error: 'Audit stats are restricted to Gorn and security team' }, 403);
   }
 
   const total = (sqlite.prepare('SELECT COUNT(*) as count FROM audit_log').get() as any)?.count || 0;
@@ -3904,6 +3909,79 @@ setInterval(runSchedulerCycle, SCHEDULER_INTERVAL);
 // Run first cycle after 5s (let server boot)
 setTimeout(runSchedulerCycle, 5000);
 console.log('[Scheduler] Auto-trigger daemon started (10s interval)');
+
+// ============================================================================
+// DB Maintenance — audit log retention + VACUUM
+// ============================================================================
+
+const DB_RETENTION_DAYS = 15;
+const DB_MAINTENANCE_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+
+function runDbMaintenance() {
+  try {
+    const cutoff = `-${DB_RETENTION_DAYS} days`;
+
+    // Prune audit_log older than retention period
+    const auditResult = sqlite.prepare(
+      `DELETE FROM audit_log WHERE timestamp < datetime('now', ?)`
+    ).run(cutoff);
+
+    // Prune dismissed notifications older than retention period
+    const notifResult = sqlite.prepare(
+      `DELETE FROM beast_notifications WHERE status = 'dismissed' AND created_at < datetime('now', ?)`
+    ).run(cutoff);
+
+    const pruned = (auditResult.changes || 0) + (notifResult.changes || 0);
+
+    if (pruned > 0) {
+      // VACUUM to reclaim space after large deletes
+      sqlite.exec('VACUUM');
+      console.log(`[DB Maintenance] Pruned ${auditResult.changes} audit rows, ${notifResult.changes} dismissed notifications (>${DB_RETENTION_DAYS}d). VACUUM complete.`);
+    } else {
+      console.log(`[DB Maintenance] Nothing to prune.`);
+    }
+  } catch (err) {
+    console.error(`[DB Maintenance] Error: ${err}`);
+  }
+}
+
+// POST /api/db/maintenance — manual trigger (Gorn-only)
+app.post('/api/db/maintenance', (c) => {
+  const requester = c.req.query('as');
+  if (requester) {
+    return c.json({ error: 'DB maintenance is restricted to Gorn (session auth required)' }, 403);
+  }
+  runDbMaintenance();
+  return c.json({ status: 'ok', retention_days: DB_RETENTION_DAYS });
+});
+
+// GET /api/db/stats — table sizes and DB info
+app.get('/api/db/stats', (c) => {
+  const tables = sqlite.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
+  ).all() as { name: string }[];
+
+  const stats = tables.map((t) => {
+    const row = sqlite.prepare(`SELECT COUNT(*) as cnt FROM "${t.name}"`).get() as { cnt: number };
+    return { table: t.name, rows: row.cnt };
+  });
+
+  const pageCount = (sqlite.prepare('PRAGMA page_count').get() as any)?.page_count || 0;
+  const pageSize = (sqlite.prepare('PRAGMA page_size').get() as any)?.page_size || 0;
+  const freePages = (sqlite.prepare('PRAGMA freelist_count').get() as any)?.freelist_count || 0;
+
+  return c.json({
+    retention_days: DB_RETENTION_DAYS,
+    db_size_bytes: pageCount * pageSize,
+    free_pages: freePages,
+    tables: stats.sort((a, b) => b.rows - a.rows),
+  });
+});
+
+// Run maintenance on boot (after 30s) and every 6 hours
+setTimeout(runDbMaintenance, 30_000);
+setInterval(runDbMaintenance, DB_MAINTENANCE_INTERVAL);
+console.log(`[DB Maintenance] Retention: ${DB_RETENTION_DAYS} days, interval: 6h`);
 
 // ============================================================================
 // Supersede Log Routes (Issue #18, #19)

@@ -3191,6 +3191,9 @@ try {
   // v3: fixed-time scheduling
   try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN schedule_time TEXT`).run(); } catch { /* exists */ }
   try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN timezone TEXT DEFAULT 'Asia/Bangkok'`).run(); } catch { /* exists */ }
+  // v4: one-off schedules
+  try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN once INTEGER DEFAULT 0`).run(); } catch { /* exists */ }
+  try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN run_at TEXT`).run(); } catch { /* exists */ }
 } catch { /* already exists */ }
 
 // ============================================================================
@@ -3630,12 +3633,17 @@ function computeNextFixedTimeAfterRun(scheduleTime: string, intervalDays: number
   return new Date(target.getTime() - 7 * 60 * 60 * 1000).toISOString();
 }
 
-// GET /api/schedules — all schedules (optional ?beast= filter)
+// GET /api/schedules — all schedules (optional ?beast=, ?type=once|recurring filters)
 app.get('/api/schedules', (c) => {
   const beast = c.req.query('beast');
+  const type = c.req.query('type');
   let query = 'SELECT * FROM beast_schedules';
+  const conditions: string[] = [];
   const params: any[] = [];
-  if (beast) { query += ' WHERE beast = ?'; params.push(beast); }
+  if (beast) { conditions.push('beast = ?'); params.push(beast); }
+  if (type === 'once') { conditions.push('once = 1'); }
+  else if (type === 'recurring') { conditions.push('(once = 0 OR once IS NULL)'); }
+  if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
   query += ' ORDER BY beast, next_due_at';
   const rows = sqlite.prepare(query).all(...params) as any[];
   return c.json({ schedules: rows, total: rows.length });
@@ -3664,9 +3672,16 @@ app.get('/api/schedules/:id', (c) => {
 // POST /api/schedules — create a schedule
 app.post('/api/schedules', async (c) => {
   const data = await c.req.json();
-  const { beast, task, command, interval, source } = data;
-  if (!beast || !task || !interval) {
-    return c.json({ error: 'beast, task, and interval are required' }, 400);
+  const { beast, task, command, source } = data;
+  const isOnce = !!data.once;
+
+  // For one-off: interval is optional, run_at is required
+  // For recurring: interval is required
+  if (!beast || !task) {
+    return c.json({ error: 'beast and task are required' }, 400);
+  }
+  if (!isOnce && !data.interval) {
+    return c.json({ error: 'beast, task, and interval are required (or set once: true with run_at)' }, 400);
   }
   // Validate task name — only safe characters (alphanumeric, spaces, basic punctuation)
   if (typeof task !== 'string' || task.length > 100 || /[`$\\{}<>|;&]/.test(task)) {
@@ -3676,10 +3691,33 @@ app.post('/api/schedules', async (c) => {
   if (typeof beast !== 'string' || !/^[a-z][a-z0-9_-]{0,29}$/.test(beast)) {
     return c.json({ error: 'Invalid beast name' }, 400);
   }
-  const intervalSeconds = VALID_INTERVALS[interval];
-  if (!intervalSeconds) {
-    return c.json({ error: `Invalid interval. Valid: ${Object.keys(VALID_INTERVALS).join(', ')}` }, 400);
+
+  let interval = data.interval || 'once';
+  let intervalSeconds = 0;
+
+  if (isOnce) {
+    // One-off schedule: run_at required (ISO 8601), interval optional
+    if (!data.run_at) {
+      return c.json({ error: 'run_at (ISO 8601) is required for one-off schedules' }, 400);
+    }
+    const runAt = new Date(data.run_at);
+    if (isNaN(runAt.getTime())) {
+      return c.json({ error: 'run_at must be a valid ISO 8601 datetime' }, 400);
+    }
+    // schedule_time not compatible with once
+    if (data.schedule_time) {
+      return c.json({ error: 'schedule_time cannot be used with one-off schedules (use run_at instead)' }, 400);
+    }
+    interval = 'once';
+    intervalSeconds = 0;
+  } else {
+    // Recurring schedule: validate interval
+    intervalSeconds = VALID_INTERVALS[interval];
+    if (!intervalSeconds) {
+      return c.json({ error: `Invalid interval. Valid: ${Object.keys(VALID_INTERVALS).join(', ')}` }, 400);
+    }
   }
+
   // Prevent duplicate: same beast + same task name + enabled
   const duplicate = sqlite.prepare(
     'SELECT id FROM beast_schedules WHERE beast = ? AND task = ? AND enabled = 1'
@@ -3687,7 +3725,7 @@ app.post('/api/schedules', async (c) => {
   if (duplicate) {
     return c.json({ error: `Schedule '${task}' already exists for ${beast} (id: ${duplicate.id}). Disable or delete it first.` }, 409);
   }
-  // Fixed-time scheduling
+  // Fixed-time scheduling (recurring only)
   const scheduleTime = data.schedule_time || null;
   const tz = data.timezone || 'Asia/Bangkok';
   const VALID_TIMEZONES = ['Asia/Bangkok', 'UTC', 'America/New_York', 'Europe/London', 'Asia/Tokyo', 'Asia/Singapore'];
@@ -3695,7 +3733,7 @@ app.post('/api/schedules', async (c) => {
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleTime)) {
       return c.json({ error: 'schedule_time must be HH:MM format (00:00-23:59)' }, 400);
     }
-    if (interval !== '1d' && interval !== '7d') {
+    if (data.interval !== '1d' && data.interval !== '7d') {
       return c.json({ error: 'schedule_time requires interval of 1d (daily) or 7d (weekly)' }, 400);
     }
   }
@@ -3704,7 +3742,10 @@ app.post('/api/schedules', async (c) => {
   }
 
   let nextDue: string;
-  if (scheduleTime) {
+  const runAt = data.run_at || null;
+  if (isOnce) {
+    nextDue = new Date(data.run_at).toISOString();
+  } else if (scheduleTime) {
     const intervalDays = interval === '7d' ? 7 : 1;
     nextDue = computeNextFixedTime(scheduleTime, intervalDays);
   } else {
@@ -3713,9 +3754,9 @@ app.post('/api/schedules', async (c) => {
   }
 
   const result = sqlite.prepare(
-    `INSERT INTO beast_schedules (beast, task, command, interval, interval_seconds, next_due_at, schedule_time, timezone, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(beast, task, command || null, interval, intervalSeconds, nextDue, scheduleTime, tz, source || null);
+    `INSERT INTO beast_schedules (beast, task, command, interval, interval_seconds, next_due_at, schedule_time, timezone, source, once, run_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(beast, task, command || null, interval, intervalSeconds, nextDue, scheduleTime, tz, source || null, isOnce ? 1 : 0, runAt);
   const created = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(result.lastInsertRowid) as any;
   wsBroadcast('schedule_update', { action: 'created', schedule: created });
   return c.json(created, 201);
@@ -3777,6 +3818,17 @@ app.patch('/api/schedules/:id/run', async (c) => {
     return c.json({ ...failedState, message: 'Failed run — not updating last_run_at' });
   }
   const now = new Date();
+
+  // One-off schedules: disable after run instead of advancing
+  if (existing.once === 1) {
+    sqlite.prepare(
+      `UPDATE beast_schedules SET last_run_at = ?, enabled = 0, trigger_status = 'completed', last_triggered_at = ?, updated_at = datetime('now') WHERE id = ?`
+    ).run(now.toISOString(), now.toISOString(), id);
+    const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
+    wsBroadcast('schedule_update', { action: 'run', schedule: updated });
+    return c.json(updated);
+  }
+
   let nextDue: string;
   if (existing.schedule_time) {
     const intervalDays = existing.interval === '7d' ? 7 : 1;

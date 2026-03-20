@@ -1087,7 +1087,8 @@ app.get('/api/pack', (c) => {
 
           // "esc to interrupt" at bottom = actively processing
           // "bypass permissions" without "esc to interrupt" = idle
-          const hasEscToInterrupt = /esc to interrupt/.test(bottomLines);
+          // Note: narrow panes truncate "esc to interrupt" to "e…" or "es…"
+          const hasEscToInterrupt = /esc to interrupt|· e…|· es|· esc/.test(bottomLines);
 
           if (hasEscToInterrupt) {
             tmuxStatus.set(session.toLowerCase(), 'processing');

@@ -31,7 +31,6 @@ const navGroups = [
       { path: '/traces', label: 'Traces' },
       { path: '/superseded', label: 'Superseded' },
       { path: '/scheduler', label: 'Scheduler' },
-      { path: '/notifications', label: 'Notifications' },
       { path: '/audit', label: 'Audit Log' },
       { path: '/handoff', label: 'Handoff' },
     ],

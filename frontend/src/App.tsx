@@ -29,7 +29,6 @@ import { Mindlink } from './pages/Mindlink';
 import { Library } from './pages/Library';
 import { Board } from './pages/Board';
 import { Scheduler } from './pages/Scheduler';
-import { Notifications } from './pages/Notifications';
 import { Teams } from './pages/Teams';
 import { AuditLog } from './pages/AuditLog';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -92,7 +91,6 @@ function AppContent() {
         <Route path="/traces/:id" element={<RequireAuth><Traces /></RequireAuth>} />
         <Route path="/superseded" element={<RequireAuth><Superseded /></RequireAuth>} />
         <Route path="/scheduler" element={<RequireAuth><Scheduler /></RequireAuth>} />
-        <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/teams" element={<RequireAuth><Teams /></RequireAuth>} />
         <Route path="/audit" element={<RequireAuth><AuditLog /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />

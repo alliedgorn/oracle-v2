@@ -28,21 +28,17 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [notifCounts, setNotifCounts] = useState<Record<string, number>>({});
 
   const loadStatus = useCallback(async () => {
     try {
-      const [packRes, statusRes, notifRes] = await Promise.all([
+      const [packRes, statusRes] = await Promise.all([
         fetch(`${API_BASE}/pack`),
         fetch(`${API_BASE}/remote/status`),
-        fetch(`${API_BASE}/notifications/unread-all`),
       ]);
       const packData = await packRes.json();
       const statusData = await statusRes.json();
-      const notifData = await notifRes.json();
       setBeasts(packData.beasts);
       setAttachedBeast(statusData.attached_beast);
-      setNotifCounts(notifData.counts || {});
     } catch { /* ignore */ }
   }, []);
 
@@ -122,7 +118,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
                 key={beast.name}
                 {...beast}
                 selected={isAttached}
-                badge={isAttached ? 'ATTACHED' : (notifCounts[beast.name] ? `🔔 ${notifCounts[beast.name]}` : undefined)}
+                badge={isAttached ? 'ATTACHED' : undefined}
                 onClick={() => !loading && handleClick(beast)}
                 onProfileClick={(e) => { e.stopPropagation(); navigate(`/beast/${beast.name}`); }}
                 onDmClick={(e) => { e.stopPropagation(); navigate(`/dms?conv=gorn-${beast.name}`); }}

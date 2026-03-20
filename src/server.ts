@@ -265,19 +265,39 @@ app.use('/api/*', async (c, next) => {
   // Log after handler completes
   try {
     const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
-    // Best-effort actor extraction: ?as param, or infer from path/response
+    // Actor extraction chain (Bertus spec):
+    // 1. ?as= query param (Beast API calls)
+    // 2. Request body .author or .beast field (forum posts, reactions)
+    // 3. Path patterns (e.g. /api/dm/karo/..., /api/notifications/karo)
+    // 4. Session cookie → "gorn" (browser requests)
+    // 5. X-Beast header (future: Beast-to-API calls)
+    // 6. Fallback: "unknown"
     let actor = c.req.query('as') || '';
     if (!actor) {
-      // Try to extract from path patterns like /api/dm/karo/zaghnal, /api/notifications/karo
-      const pathMatch = path.match(/\/api\/(?:dm|notifications|schedules\/\d+\/run)\?.*as=(\w+)/);
-      if (!pathMatch) {
-        // For forum posts, try author from response context
-        actor = c.req.query('author') || 'unknown';
-      } else {
-        actor = pathMatch[1];
-      }
+      // Try to extract from request body (cached by Hono)
+      try {
+        if (isMutation) {
+          const body = await c.req.raw.clone().json().catch(() => null) as Record<string, unknown> | null;
+          if (body?.author && typeof body.author === 'string') actor = body.author;
+          else if (body?.beast && typeof body.beast === 'string') actor = body.beast;
+          else if (body?.from && typeof body.from === 'string') actor = body.from;
+        }
+      } catch { /* body parse failed, continue */ }
     }
-    const actorType = isLocalNetwork(c) ? 'beast' : 'human';
+    if (!actor) {
+      // Try path patterns: /api/dm/{beast}/..., /api/notifications/{beast}
+      const pathMatch = path.match(/\/api\/(?:dm|notifications|schedules)\/([a-z][\w-]*)/i);
+      if (pathMatch) actor = pathMatch[1];
+    }
+    if (!actor) {
+      // Session cookie = Gorn (browser)
+      if (hasSessionAuth(c)) actor = 'gorn';
+    }
+    if (!actor) {
+      // X-Beast header (future use)
+      actor = c.req.header('x-beast') || 'unknown';
+    }
+    const actorType = hasSessionAuth(c) ? 'human' : 'beast';
     const statusCode = c.res.status;
 
     // Extract resource info from path
@@ -3369,36 +3389,51 @@ app.patch('/api/notifications/:beast/seen-all', async (c) => {
 // ============================================================================
 
 app.get('/api/audit', (c) => {
+  // Gorn-only: require browser session auth
+  if (!hasSessionAuth(c)) {
+    return c.json({ error: 'Audit logs are restricted to Gorn (session auth required)' }, 403);
+  }
+
   const actor = c.req.query('actor');
   const resourceType = c.req.query('resource_type');
   const statusCode = c.req.query('status_code');
   const method = c.req.query('method');
   const limit = parseInt(c.req.query('limit') || '100');
+  const offset = parseInt(c.req.query('offset') || '0');
   const since = c.req.query('since');
 
   let query = 'SELECT * FROM audit_log WHERE 1=1';
+  let countQuery = 'SELECT COUNT(*) as count FROM audit_log WHERE 1=1';
   const params: any[] = [];
+  const countParams: any[] = [];
 
-  if (actor) { query += ' AND actor = ?'; params.push(actor); }
-  if (resourceType) { query += ' AND resource_type = ?'; params.push(resourceType); }
-  if (statusCode) { query += ' AND status_code = ?'; params.push(parseInt(statusCode)); }
-  if (method) { query += ' AND request_method = ?'; params.push(method.toUpperCase()); }
-  if (since) { query += ' AND datetime(timestamp) >= datetime(?)'; params.push(since); }
-  query += ' ORDER BY timestamp DESC LIMIT ?';
-  params.push(limit);
+  if (actor) { query += ' AND actor = ?'; countQuery += ' AND actor = ?'; params.push(actor); countParams.push(actor); }
+  if (resourceType) { query += ' AND resource_type = ?'; countQuery += ' AND resource_type = ?'; params.push(resourceType); countParams.push(resourceType); }
+  if (statusCode) { query += ' AND status_code = ?'; countQuery += ' AND status_code = ?'; params.push(parseInt(statusCode)); countParams.push(parseInt(statusCode)); }
+  if (method) { query += ' AND request_method = ?'; countQuery += ' AND request_method = ?'; params.push(method.toUpperCase()); countParams.push(method.toUpperCase()); }
+  if (since) { query += ' AND datetime(timestamp) >= datetime(?)'; countQuery += ' AND datetime(timestamp) >= datetime(?)'; params.push(since); countParams.push(since); }
+  query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
 
+  const total = (sqlite.prepare(countQuery).get(...countParams) as any)?.count || 0;
   const rows = sqlite.prepare(query).all(...params) as any[];
-  return c.json({ audit: rows, total: rows.length });
+  return c.json({ audit: rows, total, limit, offset });
 });
 
 // GET /api/audit/stats — summary counts
 app.get('/api/audit/stats', (c) => {
+  // Gorn-only: require browser session auth
+  if (!hasSessionAuth(c)) {
+    return c.json({ error: 'Audit stats are restricted to Gorn (session auth required)' }, 403);
+  }
+
   const total = (sqlite.prepare('SELECT COUNT(*) as count FROM audit_log').get() as any)?.count || 0;
   const denied = (sqlite.prepare("SELECT COUNT(*) as count FROM audit_log WHERE status_code = 403").get() as any)?.count || 0;
   const errors = (sqlite.prepare("SELECT COUNT(*) as count FROM audit_log WHERE status_code >= 500").get() as any)?.count || 0;
   const byActor = sqlite.prepare('SELECT actor, COUNT(*) as count FROM audit_log GROUP BY actor ORDER BY count DESC LIMIT 10').all();
   const byResource = sqlite.prepare('SELECT resource_type, COUNT(*) as count FROM audit_log GROUP BY resource_type ORDER BY count DESC LIMIT 10').all();
-  return c.json({ total, denied, errors, by_actor: byActor, by_resource: byResource });
+  const byMethod = sqlite.prepare('SELECT request_method, COUNT(*) as count FROM audit_log GROUP BY request_method ORDER BY count DESC').all();
+  return c.json({ total, denied, errors, by_actor: byActor, by_resource: byResource, by_method: byMethod });
 });
 
 // ============================================================================

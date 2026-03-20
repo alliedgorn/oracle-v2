@@ -68,7 +68,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #a78bfa, transparent);
+  background: linear-gradient(90deg, transparent, var(--accent, #d4943a), transparent);
   animation: shimmer 1.5s ease-in-out infinite;
 }
 

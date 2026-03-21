@@ -305,7 +305,8 @@ app.use('/api/*', async (c, next) => {
     }
     if (!actor) {
       // Try path patterns: /api/dm/{beast}/..., /api/schedules/{beast}
-      const pathMatch = path.match(/\/api\/(?:dm|schedules)\/([a-z][\w-]*)/i);
+      // Exclude known sub-paths (messages, dashboard, due) that aren't beast names
+      const pathMatch = path.match(/\/api\/(?:dm|schedules)\/(?!messages|dashboard|due|pending)([a-z][\w-]*)/i);
       if (pathMatch) actor = pathMatch[1];
     }
     if (!actor) {

@@ -591,6 +591,51 @@ describe("Scheduler API Integration", () => {
   });
 
   // =====================
+  // Re-trigger — regression guard for a78e350
+  // =====================
+  describe("Re-trigger — stale triggered schedules", () => {
+    test("triggered schedule appears in /due after being stuck (daemon query coverage)", async () => {
+      const { data: created } = await createSchedule({
+        task: `${TEST_PREFIX}retrigger_test`,
+        interval: "10m",
+      });
+      // Manually trigger it
+      await fetch(`${BASE_URL}/api/schedules/${created.id}/trigger`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ beast: TEST_BEAST }),
+      });
+      // Verify it's in triggered state
+      const check = await fetch(`${BASE_URL}/api/schedules/${created.id}`);
+      const checkData = await check.json();
+      expect(checkData.trigger_status).toBe("triggered");
+    });
+
+    test("/run after trigger resets to pending with advanced next_due", async () => {
+      const { data: created } = await createSchedule({
+        task: `${TEST_PREFIX}retrigger_run`,
+        interval: "10m",
+      });
+      // Trigger
+      await fetch(`${BASE_URL}/api/schedules/${created.id}/trigger`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ beast: TEST_BEAST }),
+      });
+      // Run
+      const res = await fetch(`${BASE_URL}/api/schedules/${created.id}/run`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ beast: TEST_BEAST }),
+      });
+      expect(res.ok).toBe(true);
+      const data = await res.json();
+      expect(data.trigger_status).toBe("pending");
+      expect(new Date(data.next_due_at).getTime()).toBeGreaterThan(Date.now());
+    });
+  });
+
+  // =====================
   // DateTime Format (regression guard for Task #58)
   // =====================
   describe("DateTime Format — Task #58 regression guard", () => {

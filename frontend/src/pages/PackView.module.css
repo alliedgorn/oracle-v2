@@ -4,7 +4,7 @@
   margin: 0 auto;
   padding: 24px;
   gap: 24px;
-  height: calc(100vh - 80px);
+  height: calc(100vh + 420px);
 }
 
 /* Left Panel — Beast Grid */

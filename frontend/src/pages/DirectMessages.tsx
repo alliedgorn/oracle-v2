@@ -437,8 +437,8 @@ export function DirectMessages() {
       <div className={`${styles.main} ${selectedConv ? styles.fullScreen : ''}`}>
         {selectedConv && messages ? (
           <div className={styles.chatView}>
-            <button className={styles.mobileBack} onClick={() => { setSelectedConv(null); setSearchParams({}); }}>← Conversations</button>
             <div className={styles.chatHeader}>
+              <button className={styles.mobileBack} onClick={() => { setSelectedConv(null); setSearchParams({}); }}>←</button>
               <h2>
                 <span className={styles.headerName}>{selectedConv.participants[0]}</span>
                 {' '}&harr;{' '}

@@ -131,8 +131,9 @@ describe("Audit Logging API Integration", () => {
   describe("Actor Extraction — Indirect", () => {
     test("API calls with ?as= param capture actor", async () => {
       // Make a request that should log with actor=pip
+      // (notifications endpoint was removed — use threads listing instead)
       const res = await fetch(
-        `${BASE_URL}/api/notifications/${TEST_BEAST}?as=${TEST_BEAST}`
+        `${BASE_URL}/api/threads?as=${TEST_BEAST}`
       );
       expect(res.ok).toBe(true);
       // We can't read audit logs to verify, but if the request succeeded

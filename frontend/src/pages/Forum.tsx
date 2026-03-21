@@ -161,6 +161,7 @@ export function Forum() {
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [totalMessages, setTotalMessages] = useState(0);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDone = useRef(false);
@@ -176,6 +177,13 @@ export function Forum() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [lightboxSrc]);
+
+  // Scroll-to-top FAB visibility
+  useEffect(() => {
+    const handler = () => setShowScrollTop(window.scrollY > 300);
+    window.addEventListener('scroll', handler, { passive: true });
+    return () => window.removeEventListener('scroll', handler);
+  }, []);
 
   // Load unread counts for gorn
   async function loadUnreadCounts() {
@@ -515,7 +523,7 @@ export function Forum() {
   return (
     <div className={styles.container}>
       {/* Sidebar: Thread List — hidden on mobile when thread is selected */}
-      <div className={`${styles.sidebar} ${selectedThread ? styles.hidden : ''}`}>
+      <div className={`${styles.sidebar} ${selectedThread || showNewThread ? styles.hidden : ''}`}>
         <div className={styles.sidebarHeader}>
           <h2>Threads</h2>
           <button
@@ -613,7 +621,10 @@ export function Forum() {
       <div className={`${styles.main} ${selectedThread || showNewThread ? styles.fullScreen : ''}`}>
         {showNewThread && !selectedThread && (
           <div className={styles.newThread}>
-            <h2>New Thread</h2>
+            <div className={styles.newThreadHeader}>
+              <button className={styles.mobileBack} onClick={() => setSearchParams({})}>←</button>
+              <h2>New Thread</h2>
+            </div>
             <form onSubmit={handleSendMessage} className={styles.form}>
               <input
                 type="text"
@@ -646,11 +657,8 @@ export function Forum() {
 
         {selectedThread && (
           <div className={styles.threadDetail}>
-            <div className={styles.mobileNav}>
-              <button className={styles.mobileBack} onClick={() => { setSelectedThread(null); setSearchParams({}); }}>← Threads</button>
-              <button className={styles.mobileNewBtn} onClick={openNewThread}>+ New</button>
-            </div>
             <div className={styles.threadHeader}>
+              <button className={styles.mobileBack} onClick={() => { setSelectedThread(null); setSearchParams({}); }}>←</button>
               <h2><span className={styles.threadIdHeader}>#{selectedThread.thread.id}</span> {selectedThread.thread.title}</h2>
               <div className={styles.threadActions}>
                 <StatusBadge status={selectedThread.thread.status} />
@@ -828,6 +836,15 @@ export function Forum() {
           </div>
         )}
       </div>
+
+      {/* Scroll to top FAB */}
+      {showScrollTop && (
+        <button
+          className={styles.scrollTopFab}
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          aria-label="Scroll to top"
+        >↑</button>
+      )}
 
       {/* Image Lightbox — portaled to body to avoid layout interference */}
       {lightboxSrc && createPortal(

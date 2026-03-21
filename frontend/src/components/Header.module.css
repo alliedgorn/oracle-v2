@@ -179,6 +179,7 @@
     flex-wrap: wrap;
     gap: 8px;
     padding: 10px 16px;
+    position: static;
   }
 
   .nav {

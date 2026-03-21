@@ -127,6 +127,13 @@ a {
   }
 }
 
+/* Prevent iOS auto-zoom on input focus — requires 16px minimum */
+@media (max-width: 768px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;

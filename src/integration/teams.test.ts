@@ -47,8 +47,13 @@ describe("Teams API Integration", () => {
   });
 
   afterAll(async () => {
-    // Note: no DELETE endpoint found, cleanup may not be possible
-    // Test teams use test_ prefix for identification
+    for (const id of createdTeamIds) {
+      try {
+        await fetch(`${BASE_URL}/api/teams/${id}?as=${TEST_BEAST}`, { method: "DELETE" });
+      } catch {
+        // Best-effort cleanup
+      }
+    }
   });
 
   // =====================
@@ -282,6 +287,51 @@ describe("Teams API Integration", () => {
         }),
       });
       expect(res.ok).toBe(false);
+    });
+
+    test("DELETE /api/teams/:id removes team with cascading delete", async () => {
+      const { data: team } = await createTeam({
+        name: `${TEST_PREFIX}delete_cascade_${Date.now()}`,
+      });
+      const idx = createdTeamIds.indexOf(team.id);
+      if (idx >= 0) createdTeamIds.splice(idx, 1);
+
+      const res = await fetch(`${BASE_URL}/api/teams/${team.id}?as=${TEST_BEAST}`, {
+        method: "DELETE",
+      });
+      expect(res.ok).toBe(true);
+
+      // Verify team is gone
+      const check = await fetch(`${BASE_URL}/api/teams/${team.id}`);
+      expect(check.status).toBe(404);
+    });
+
+    test("DELETE nonexistent team returns 404", async () => {
+      const res = await fetch(`${BASE_URL}/api/teams/999999?as=${TEST_BEAST}`, {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(404);
+    });
+
+    test("DELETE without ?as= is rejected (auth required)", async () => {
+      const { data: team } = await createTeam({
+        name: `${TEST_PREFIX}noauth_${Date.now()}`,
+      });
+      const res = await fetch(`${BASE_URL}/api/teams/${team.id}`, {
+        method: "DELETE",
+      });
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(res.status).toBeLessThan(500);
+    });
+
+    test("DELETE by non-creator is rejected (403)", async () => {
+      const { data: team } = await createTeam({
+        name: `${TEST_PREFIX}idor_delete_${Date.now()}`,
+      });
+      const res = await fetch(`${BASE_URL}/api/teams/${team.id}?as=${OTHER_BEAST}`, {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(403);
     });
   });
 });

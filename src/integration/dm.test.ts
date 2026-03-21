@@ -4,12 +4,13 @@
  *
  * Author: Pip (QA/Chaos Testing)
  */
-import { describe, test, expect, beforeAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 
 const BASE_URL = "http://localhost:47778";
 const TEST_BEAST = "pip";
 const OTHER_BEAST = "bertus";
 const TEST_PREFIX = "test_dm_";
+const createdMessageIds: number[] = [];
 
 async function isServerRunning(): Promise<boolean> {
   try {
@@ -26,13 +27,25 @@ async function sendDM(from: string, to: string, message: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ from, to, message }),
   });
-  return { res, data: await res.json() };
+  const data = await res.json();
+  if (res.ok && data.message_id) createdMessageIds.push(data.message_id);
+  return { res, data };
 }
 
 describe("DM API Integration", () => {
   beforeAll(async () => {
     if (!(await isServerRunning())) {
       throw new Error("Server not running on port 47778");
+    }
+  });
+
+  afterAll(async () => {
+    for (const id of createdMessageIds) {
+      try {
+        await fetch(`${BASE_URL}/api/dm/messages/${id}?as=${TEST_BEAST}`, { method: "DELETE" });
+      } catch {
+        // Best-effort cleanup
+      }
     }
   });
 
@@ -136,6 +149,76 @@ describe("DM API Integration", () => {
         `${BASE_URL}/api/dm/${TEST_BEAST}/nonexistent_beast_xyz`
       );
       expect(res.status).toBeLessThan(500);
+    });
+  });
+
+  // =====================
+  // Delete Messages
+  // =====================
+  describe("Delete Messages", () => {
+    test("DELETE /api/dm/messages/:id removes a message", async () => {
+      const { data } = await sendDM(
+        TEST_BEAST,
+        OTHER_BEAST,
+        `${TEST_PREFIX}delete_test_${Date.now()}`
+      );
+      const idx = createdMessageIds.indexOf(data.message_id);
+      if (idx >= 0) createdMessageIds.splice(idx, 1); // Don't double-delete in cleanup
+
+      const res = await fetch(
+        `${BASE_URL}/api/dm/messages/${data.message_id}?as=${TEST_BEAST}`,
+        { method: "DELETE" }
+      );
+      expect(res.ok).toBe(true);
+    });
+
+    test("DELETE nonexistent message returns 404", async () => {
+      const res = await fetch(`${BASE_URL}/api/dm/messages/99999999?as=${TEST_BEAST}`, {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(404);
+    });
+
+    test("DELETE without ?as= is rejected (auth required)", async () => {
+      const { data } = await sendDM(
+        TEST_BEAST,
+        OTHER_BEAST,
+        `${TEST_PREFIX}auth_test_${Date.now()}`
+      );
+      const res = await fetch(
+        `${BASE_URL}/api/dm/messages/${data.message_id}`,
+        { method: "DELETE" }
+      );
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(res.status).toBeLessThan(500);
+      // Clean up since the delete failed
+      await fetch(
+        `${BASE_URL}/api/dm/messages/${data.message_id}?as=${TEST_BEAST}`,
+        { method: "DELETE" }
+      );
+      const idx = createdMessageIds.indexOf(data.message_id);
+      if (idx >= 0) createdMessageIds.splice(idx, 1);
+    });
+
+    test("DELETE by non-participant is rejected", async () => {
+      const { data } = await sendDM(
+        TEST_BEAST,
+        OTHER_BEAST,
+        `${TEST_PREFIX}idor_test_${Date.now()}`
+      );
+      // Try deleting as a beast not in this conversation
+      const res = await fetch(
+        `${BASE_URL}/api/dm/messages/${data.message_id}?as=gnarl`,
+        { method: "DELETE" }
+      );
+      expect(res.status).toBe(403);
+      // Clean up
+      await fetch(
+        `${BASE_URL}/api/dm/messages/${data.message_id}?as=${TEST_BEAST}`,
+        { method: "DELETE" }
+      );
+      const idx = createdMessageIds.indexOf(data.message_id);
+      if (idx >= 0) createdMessageIds.splice(idx, 1);
     });
   });
 });

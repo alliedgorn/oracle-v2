@@ -2536,6 +2536,26 @@ app.patch('/api/thread/:id/status', async (c) => {
   }
 });
 
+// DELETE /api/thread/:id — delete a thread and all related data
+// Auth: thread creator or Gorn only (for test cleanup)
+app.delete('/api/thread/:id', (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const as = c.req.query('as')?.toLowerCase() || (hasSessionAuth(c) ? 'gorn' : '');
+  if (!as) return c.json({ error: 'as param required for DELETE' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM forum_threads WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Thread not found' }, 404);
+  if (as !== 'gorn' && as !== existing.author?.toLowerCase()) {
+    return c.json({ error: 'Only the thread creator or Gorn can delete a thread' }, 403);
+  }
+  // Cascade: reactions, read state, messages, then thread
+  sqlite.prepare('DELETE FROM forum_reactions WHERE message_id IN (SELECT id FROM forum_messages WHERE thread_id = ?)').run(id);
+  sqlite.prepare('DELETE FROM forum_read_status WHERE thread_id = ?').run(id);
+  sqlite.prepare('DELETE FROM forum_messages WHERE thread_id = ?').run(id);
+  sqlite.prepare('DELETE FROM forum_threads WHERE id = ?').run(id);
+  return c.json({ deleted: id, title: existing.title });
+});
+
 // ============================================================================
 // DM Routes (private one-on-one messaging)
 // ============================================================================
@@ -2697,12 +2717,19 @@ app.patch('/api/dm/:name/:other/read-all', (c) => {
   });
 });
 
-// DELETE /api/dm/messages/:id — delete a single DM message (for test cleanup)
+// DELETE /api/dm/messages/:id — delete a single DM message
+// Auth: conversation participant or Gorn only (Bertus security review)
 app.delete('/api/dm/messages/:id', (c) => {
   const id = parseInt(c.req.param('id'));
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
-  const result = sqlite.prepare('DELETE FROM dm_messages WHERE id = ?').run(id);
-  if (result.changes === 0) return c.json({ error: 'Message not found' }, 404);
+  const as = c.req.query('as')?.toLowerCase() || (hasSessionAuth(c) ? 'gorn' : '');
+  if (!as) return c.json({ error: 'as param required for DELETE' }, 400);
+  const msg = sqlite.prepare('SELECT m.*, c.participant1, c.participant2 FROM dm_messages m JOIN dm_conversations c ON c.id = m.conversation_id WHERE m.id = ?').get(id) as any;
+  if (!msg) return c.json({ error: 'Message not found' }, 404);
+  if (as !== 'gorn' && as !== msg.sender && as !== msg.participant1 && as !== msg.participant2) {
+    return c.json({ error: 'Can only delete messages in your own conversations' }, 403);
+  }
+  sqlite.prepare('DELETE FROM dm_messages WHERE id = ?').run(id);
   return c.json({ deleted: id });
 });
 
@@ -3438,11 +3465,17 @@ app.delete('/api/teams/:id/projects/:projectId', (c) => {
 });
 
 // DELETE /api/teams/:id — delete a team and all related data (members, projects)
+// Auth: team creator or Gorn only (Bertus security review)
 app.delete('/api/teams/:id', (c) => {
   const id = parseInt(c.req.param('id'));
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const as = c.req.query('as')?.toLowerCase() || (hasSessionAuth(c) ? 'gorn' : '');
+  if (!as) return c.json({ error: 'as param required for DELETE' }, 400);
   const existing = sqlite.prepare('SELECT * FROM teams WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Team not found' }, 404);
+  if (as !== 'gorn' && as !== existing.created_by?.toLowerCase()) {
+    return c.json({ error: 'Only the team creator or Gorn can delete a team' }, 403);
+  }
   // Cascade: remove members, projects, then team
   sqlite.prepare('DELETE FROM team_members WHERE team_id = ?').run(id);
   sqlite.prepare('DELETE FROM team_projects WHERE team_id = ?').run(id);

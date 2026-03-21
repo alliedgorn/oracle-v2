@@ -260,6 +260,14 @@ app.use('/api/*', async (c, next) => {
   if (!isMutation && !isSensitiveGet) return next();
   if (AUDIT_SKIP.some(p => path === p)) return next();
 
+  // Clone body BEFORE next() consumes it — extraction after next() fails on consumed streams
+  let bodyData: Record<string, unknown> | null = null;
+  if (isMutation) {
+    try {
+      bodyData = await c.req.raw.clone().json().catch(() => null) as Record<string, unknown> | null;
+    } catch { /* body parse failed */ }
+  }
+
   await next();
 
   // Log after handler completes
@@ -273,16 +281,10 @@ app.use('/api/*', async (c, next) => {
     // 5. X-Beast header (future: Beast-to-API calls)
     // 6. Fallback: "unknown"
     let actor = c.req.query('as') || '';
-    if (!actor) {
-      // Try to extract from request body (cached by Hono)
-      try {
-        if (isMutation) {
-          const body = await c.req.raw.clone().json().catch(() => null) as Record<string, unknown> | null;
-          if (body?.author && typeof body.author === 'string') actor = body.author;
-          else if (body?.beast && typeof body.beast === 'string') actor = body.beast;
-          else if (body?.from && typeof body.from === 'string') actor = body.from;
-        }
-      } catch { /* body parse failed, continue */ }
+    if (!actor && bodyData) {
+      if (bodyData.author && typeof bodyData.author === 'string') actor = bodyData.author;
+      else if (bodyData.beast && typeof bodyData.beast === 'string') actor = bodyData.beast;
+      else if (bodyData.from && typeof bodyData.from === 'string') actor = bodyData.from;
     }
     if (!actor) {
       // Try path patterns: /api/dm/{beast}/..., /api/schedules/{beast}

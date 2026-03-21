@@ -103,6 +103,23 @@ try {
   // Table might not exist yet - that's fine
 }
 
+// Retry helper for SQLite BUSY errors during concurrent writes (task #211)
+async function withRetry<T>(fn: () => T | Promise<T>, maxRetries = 3, delayMs = 100): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const isBusy = err?.message?.includes('SQLITE_BUSY') || err?.message?.includes('database is locked');
+      if (isBusy && attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('withRetry: exhausted retries');
+}
+
 // Configure process lifecycle management
 configure({ dataDir: ORACLE_DATA_DIR, pidFileName: 'oracle-http.pid' });
 
@@ -2008,13 +2025,13 @@ app.post('/api/thread', async (c) => {
     if (!data.author) {
       return c.json({ error: 'Missing required field: author' }, 400);
     }
-    const result = await handleThreadMessage({
+    const result = await withRetry(() => handleThreadMessage({
       message: data.message,
       threadId: data.thread_id,
       title: data.title,
       role: data.role || 'human',
       author: data.author,
-    });
+    }));
     // Store reply_to_id if provided
     if (data.reply_to_id && result.messageId) {
       sqlite.prepare('UPDATE forum_messages SET reply_to_id = ? WHERE id = ?')
@@ -2604,7 +2621,7 @@ app.post('/api/dm', async (c) => {
         return c.json({ error: 'Sender impersonation blocked. as must match from.' }, 403);
       }
     }
-    const result = sendDm(data.from, data.to, data.message);
+    const result = await withRetry(() => sendDm(data.from, data.to, data.message));
     wsBroadcast('new_dm', { from: data.from, to: data.to, conversation_id: result.conversationId });
     return c.json({
       conversation_id: result.conversationId,

@@ -2545,7 +2545,7 @@ app.delete('/api/thread/:id', (c) => {
   if (!as) return c.json({ error: 'as param required for DELETE' }, 400);
   const existing = sqlite.prepare('SELECT * FROM forum_threads WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Thread not found' }, 404);
-  if (as !== 'gorn' && as !== existing.author?.toLowerCase()) {
+  if (as !== 'gorn' && as !== existing.created_by?.toLowerCase()) {
     return c.json({ error: 'Only the thread creator or Gorn can delete a thread' }, 403);
   }
   // Cascade: reactions, read state, messages, then thread

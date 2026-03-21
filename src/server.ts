@@ -2697,6 +2697,15 @@ app.patch('/api/dm/:name/:other/read-all', (c) => {
   });
 });
 
+// DELETE /api/dm/messages/:id — delete a single DM message (for test cleanup)
+app.delete('/api/dm/messages/:id', (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const result = sqlite.prepare('DELETE FROM dm_messages WHERE id = ?').run(id);
+  if (result.changes === 0) return c.json({ error: 'Message not found' }, 404);
+  return c.json({ deleted: id });
+});
+
 // ============================================================================
 // Library — searchable knowledge base
 // ============================================================================
@@ -3426,6 +3435,19 @@ app.delete('/api/teams/:id/projects/:projectId', (c) => {
   const result = sqlite.prepare('DELETE FROM team_projects WHERE team_id = ? AND project_id = ?').run(id, projectId);
   if (result.changes === 0) return c.json({ error: 'Project not linked to team' }, 404);
   return c.json({ removed_project: projectId, team_id: id });
+});
+
+// DELETE /api/teams/:id — delete a team and all related data (members, projects)
+app.delete('/api/teams/:id', (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM teams WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Team not found' }, 404);
+  // Cascade: remove members, projects, then team
+  sqlite.prepare('DELETE FROM team_members WHERE team_id = ?').run(id);
+  sqlite.prepare('DELETE FROM team_projects WHERE team_id = ?').run(id);
+  sqlite.prepare('DELETE FROM teams WHERE id = ?').run(id);
+  return c.json({ deleted: id, name: existing.name });
 });
 
 // GET /api/teams/beast/:beast — list teams for a specific Beast

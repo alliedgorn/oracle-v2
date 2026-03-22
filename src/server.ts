@@ -4317,6 +4317,73 @@ if (fs.existsSync(FRONTEND_DIST)) {
 
 const wsClients = new Set<any>();
 
+// Allowed origins for WebSocket connections
+const WS_ALLOWED_ORIGINS = new Set([
+  'http://localhost:47778',
+  'http://127.0.0.1:47778',
+  'https://denbook.online',
+]);
+
+// Validate WebSocket upgrade request
+function validateWsUpgrade(req: Request, server: any): { allowed: boolean; reason?: string; identity?: string } {
+  // 1. Origin validation — reject cross-origin connections
+  const origin = req.headers.get('origin');
+  if (origin && !WS_ALLOWED_ORIGINS.has(origin)) {
+    return { allowed: false, reason: `Origin rejected: ${origin}` };
+  }
+
+  // 2. Auth check — same as REST: local network OR valid session
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || req.headers.get('x-real-ip')
+    || server.requestIP(req)?.address
+    || '127.0.0.1';
+
+  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost'
+    || ip.startsWith('192.168.') || ip.startsWith('10.')
+    || (ip.startsWith('172.') && (() => {
+      const second = parseInt(ip.split('.')[1], 10);
+      return second >= 16 && second <= 31;
+    })());
+
+  // Check session cookie from Cookie header
+  const cookies = req.headers.get('cookie') || '';
+  const sessionMatch = cookies.match(/(?:^|;\s*)oracle_session=([^;]+)/);
+  const sessionToken = sessionMatch?.[1] || '';
+  let hasSession = false;
+  if (sessionToken) {
+    const colonIdx = sessionToken.indexOf(':');
+    if (colonIdx !== -1) {
+      const expiresStr = sessionToken.substring(0, colonIdx);
+      const signature = sessionToken.substring(colonIdx + 1);
+      const expires = parseInt(expiresStr, 10);
+      if (!isNaN(expires) && expires >= Date.now()) {
+        const expectedSignature = createHmac('sha256', SESSION_SECRET)
+          .update(expiresStr)
+          .digest('hex');
+        const sigBuf = Buffer.from(signature);
+        const expectedBuf = Buffer.from(expectedSignature);
+        if (sigBuf.length === expectedBuf.length && timingSafeEqual(sigBuf, expectedBuf)) {
+          hasSession = true;
+        }
+      }
+    }
+  }
+
+  // Auth check: local bypass (if enabled) or valid session
+  const authEnabled = getSetting('auth_enabled') === 'true';
+  if (authEnabled) {
+    const localBypass = getSetting('auth_local_bypass') !== 'false';
+    if (!isLocal || !localBypass) {
+      if (!hasSession) {
+        return { allowed: false, reason: 'Unauthorized: no valid session' };
+      }
+    }
+  }
+
+  const identity = hasSession ? 'gorn' : (isLocal ? 'local' : 'unknown');
+  return { allowed: true, identity };
+}
+
 // Broadcast an event to all connected WebSocket clients
 export function wsBroadcast(event: string, data: any) {
   const payload = JSON.stringify({ event, data, ts: Date.now() });
@@ -4325,12 +4392,8 @@ export function wsBroadcast(event: string, data: any) {
   }
 }
 
-// WebSocket upgrade route
-app.get('/ws', (c) => {
-  const success = c.env?.upgrade?.(c.req.raw);
-  if (success) return undefined as any;
-  return c.text('WebSocket upgrade failed', 400);
-});
+// WebSocket upgrade is handled in the fetch() handler below (with auth + origin validation)
+// The /ws path is intercepted before Hono routing to validate origin and session.
 
 // ============================================================================
 // Start Server
@@ -4370,7 +4433,12 @@ export default {
   fetch(req: Request, server: any) {
     // Handle WebSocket upgrade
     if (new URL(req.url).pathname === '/ws') {
-      const success = server.upgrade(req);
+      // Validate origin + auth before accepting upgrade
+      const validation = validateWsUpgrade(req, server);
+      if (!validation.allowed) {
+        return new Response(validation.reason || 'Forbidden', { status: 403 });
+      }
+      const success = server.upgrade(req, { data: { identity: validation.identity } });
       if (success) return undefined;
       return new Response('WebSocket upgrade failed', { status: 400 });
     }
@@ -4379,7 +4447,8 @@ export default {
   websocket: {
     open(ws: any) {
       wsClients.add(ws);
-      ws.send(JSON.stringify({ event: 'connected', data: { clients: wsClients.size }, ts: Date.now() }));
+      const identity = ws.data?.identity || 'unknown';
+      ws.send(JSON.stringify({ event: 'connected', data: { clients: wsClients.size, identity }, ts: Date.now() }));
     },
     message(ws: any, message: string) {
       // Clients can send ping, we respond pong

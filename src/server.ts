@@ -4326,7 +4326,11 @@ const WS_ALLOWED_ORIGINS = new Set([
 
 // Validate WebSocket upgrade request
 function validateWsUpgrade(req: Request, server: any): { allowed: boolean; reason?: string; identity?: string } {
-  // 1. Origin validation — reject cross-origin connections
+  // 1. Origin validation — reject cross-origin browser connections.
+  // Design decision: missing Origin is allowed (non-browser clients like curl, wscat, Beast
+  // processes don't send Origin headers). The auth check below gates non-browser access.
+  // Origin validation is specifically anti-CSRF for browsers, which always send Origin on
+  // WebSocket upgrades per the spec.
   const origin = req.headers.get('origin');
   if (origin && !WS_ALLOWED_ORIGINS.has(origin)) {
     return { allowed: false, reason: `Origin rejected: ${origin}` };
@@ -4436,6 +4440,16 @@ export default {
       // Validate origin + auth before accepting upgrade
       const validation = validateWsUpgrade(req, server);
       if (!validation.allowed) {
+        // Audit log rejected WebSocket upgrade attempts
+        const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+          || req.headers.get('x-real-ip')
+          || server.requestIP(req)?.address || 'unknown';
+        try {
+          sqlite.prepare(
+            `INSERT INTO audit_log (actor, actor_type, action, resource_type, resource_id, ip_source, request_method, request_path, status_code)
+             VALUES (?, 'unknown', 'ws_upgrade_rejected', 'websocket', NULL, ?, 'GET', '/ws', 403)`
+          ).run(req.headers.get('origin') || 'no-origin', ip);
+        } catch (e) { console.error('[WS audit]', e); }
         return new Response(validation.reason || 'Forbidden', { status: 403 });
       }
       const success = server.upgrade(req, { data: { identity: validation.identity } });

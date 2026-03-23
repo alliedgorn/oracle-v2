@@ -3708,7 +3708,7 @@ app.patch('/api/schedules/:id', async (c) => {
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
   const data = await c.req.json();
-  const requester = (c.req.query('as') || data.as || data.beast || '').toLowerCase();
+  const requester = (c.req.query('as') || data.as || data.beast || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
   if (!requester) {
     return c.json({ error: 'Identity required: pass ?as=beast or beast in body' }, 400);
   }
@@ -3743,7 +3743,7 @@ app.patch('/api/schedules/:id/run', async (c) => {
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
   const data = await c.req.json().catch(() => ({}));
-  const requester = (c.req.query('as') || data.as || data.beast || '').toLowerCase();
+  const requester = (c.req.query('as') || data.as || data.beast || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
   if (!requester) {
     return c.json({ error: 'Identity required: pass ?as=beast or beast in body' }, 400);
   }
@@ -3791,7 +3791,7 @@ app.delete('/api/schedules/:id', async (c) => {
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
   // Parse body for identity (DELETE can have body)
   const body = await c.req.json().catch(() => ({}));
-  const requester = (c.req.query('as') || body.as || body.beast || '').toLowerCase();
+  const requester = (c.req.query('as') || body.as || body.beast || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
   if (!requester) {
     return c.json({ error: 'Identity required: pass ?as=beast or beast in body' }, 400);
   }
@@ -3810,7 +3810,7 @@ app.patch('/api/schedules/:id/trigger', async (c) => {
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
   const data = await c.req.json().catch(() => ({}));
-  const requester = (c.req.query('as') || data.as || data.beast || '').toLowerCase();
+  const requester = (c.req.query('as') || data.as || data.beast || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
   if (!requester) {
     return c.json({ error: 'Identity required: pass ?as=beast or beast in body' }, 400);
   }

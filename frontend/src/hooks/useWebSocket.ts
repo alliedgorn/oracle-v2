@@ -5,6 +5,9 @@ type EventHandler = (data: any) => void;
 const listeners = new Map<string, Set<EventHandler>>();
 let globalWs: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectDelay = 1000; // Start at 1s, exponential backoff
+const RECONNECT_MAX = 30000; // Cap at 30s
+const RECONNECT_BASE = 1000;
 
 function connect() {
   if (globalWs?.readyState === WebSocket.OPEN) return;
@@ -14,6 +17,11 @@ function connect() {
 
   try {
     globalWs = new WebSocket(url);
+
+    globalWs.onopen = () => {
+      // Reset backoff on successful connection
+      reconnectDelay = RECONNECT_BASE;
+    };
 
     globalWs.onmessage = (e) => {
       try {
@@ -32,12 +40,14 @@ function connect() {
 
     globalWs.onclose = () => {
       globalWs = null;
-      // Reconnect after 5s, but ONLY if page is visible
+      // Reconnect with exponential backoff, only if page is visible
       if (!reconnectTimer) {
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
           if (!document.hidden) connect();
-        }, 5000);
+        }, reconnectDelay);
+        // Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s (capped)
+        reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX);
       }
     };
 
@@ -52,7 +62,10 @@ if (!document.hidden) {
   connect();
 }
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && !globalWs) connect();
+  if (!document.hidden && !globalWs) {
+    reconnectDelay = RECONNECT_BASE; // Reset backoff when user returns
+    connect();
+  }
 });
 
 /**

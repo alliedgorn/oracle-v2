@@ -1101,16 +1101,20 @@ app.get('/api/pack', (c) => {
 
           const pane1 = execSync(captureCmd, { timeout: 2000 }).toString();
 
-          // Bottom of pane = truth. Check last 3 lines.
-          const lines = pane1.split('\n').filter(l => l.trim());
-          const bottomLines = lines.slice(-3).join('\n');
+          // Detect processing by scanning the last ~15 lines for activity indicators.
+          // Claude Code layout has a fixed footer at the bottom (model info + "bypass
+          // permissions" prompt) that is ALWAYS present. Processing status appears ABOVE
+          // the footer as "✻ Crafting…" / "Running…" / "· Doodling…" etc.
+          // Strategy: scan recent lines for processing indicators (verbs with …).
+          const lines = pane1.split('\n');
+          const recentLines = lines.slice(-15).join('\n');
 
-          // Detect processing state from Claude Code status indicators:
-          // - "esc to interrupt" (legacy, may be truncated to "e…" or "es…")
-          // - "· Doodling…" / "· Thinking…" / "· Running…" etc. (current Claude Code)
-          // - "bypass permissions" = idle (waiting for input)
-          // Note: narrow panes truncate text, so match partial patterns too
-          const isProcessing = /esc to interrupt|· e…|· es|· esc|· Doodling|· Thinking|· Running|· Writing|· Reading|· Searching|Running…/.test(bottomLines);
+          // Match active processing indicators:
+          // - ✻/✽/· prefix + verb + … (e.g. "✻ Crafting…", "· Doodling…")
+          // - Standalone "Running…" from tool execution
+          // - "esc to interrupt" (legacy)
+          // Exclude completed states like "Brewed for" (no …)
+          const isProcessing = /[✻✽·] \w+…|Running…|Thinking…|Doodling…|Crafting…|Bunning…|Brewing…|Writing…|Reading…|Searching…|esc to interrupt/.test(recentLines);
 
           if (isProcessing) {
             tmuxStatus.set(session.toLowerCase(), 'processing');

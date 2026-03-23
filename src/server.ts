@@ -1101,20 +1101,35 @@ app.get('/api/pack', (c) => {
 
           const pane1 = execSync(captureCmd, { timeout: 2000 }).toString();
 
-          // Detect processing by scanning the last ~15 lines for activity indicators.
-          // Claude Code layout has a fixed footer at the bottom (model info + "bypass
-          // permissions" prompt) that is ALWAYS present. Processing status appears ABOVE
-          // the footer as "✻ Crafting…" / "Running…" / "· Doodling…" etc.
-          // Strategy: scan recent lines for processing indicators (verbs with …).
+          // Detect processing by checking the line just above the input prompt separator.
+          //
+          // Claude Code pane layout (bottom):
+          //   [active status line]    ← "✻ Crafting…" or "Running…" ONLY during processing
+          //   ───────────             ← separator (one above ❯)
+          //   ❯ [input]              ← prompt line
+          //   ───────────             ← separator (below ❯)
+          //   Beast [Model] branch
+          //   ██░░░ X% | $Y | Zm
+          //   ⏵⏵ bypass permissions
+          //
+          // When idle, the line above the first separator is response text or "✻ Brewed for".
+          // When processing, it's "✻ Crafting…", "Running…", etc.
+          //
+          // Strategy: find the ❯ prompt, check the 2 lines above its separator.
           const lines = pane1.split('\n');
-          const recentLines = lines.slice(-15).join('\n');
 
-          // Match active processing indicators:
-          // - ✻/✽/· prefix + verb + … (e.g. "✻ Crafting…", "· Doodling…")
-          // - Standalone "Running…" from tool execution
-          // - "esc to interrupt" (legacy)
-          // Exclude completed states like "Brewed for" (no …)
-          const isProcessing = /[✻✽·] \w+…|Running…|Thinking…|Doodling…|Crafting…|Bunning…|Brewing…|Writing…|Reading…|Searching…|esc to interrupt/.test(recentLines);
+          // Find the last ❯ prompt line
+          let promptIdx = -1;
+          for (let i = lines.length - 1; i >= 0; i--) {
+            if (/^❯/.test(lines[i].trim())) { promptIdx = i; break; }
+          }
+
+          // Check the 2 lines above the ❯ prompt (skip separator)
+          let isProcessing = false;
+          if (promptIdx > 1) {
+            const abovePrompt = lines.slice(Math.max(promptIdx - 3, 0), promptIdx).join('\n');
+            isProcessing = /[✻✽·] \w+…|Running…|Thinking…|Doodling…|Crafting…|Bunning…|Brewing…|Writing…|Reading…|Searching…|esc to interrupt/.test(abovePrompt);
+          }
 
           if (isProcessing) {
             tmuxStatus.set(session.toLowerCase(), 'processing');

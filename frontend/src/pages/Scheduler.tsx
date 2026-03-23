@@ -222,7 +222,7 @@ export function Scheduler() {
               const status = getStatus(s);
               return (
                 <tr key={s.id} className={styles[status]}>
-                  <td className={styles.idCell}>{s.id}</td>
+                  <td className={styles.idCell}>#{s.id}</td>
                   <td>
                     <span className={styles.statusDot} style={{ background: STATUS_COLORS[status] }} />
                     {status.replace('-', ' ')}

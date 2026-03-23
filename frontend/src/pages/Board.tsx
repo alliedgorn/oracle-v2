@@ -90,7 +90,19 @@ export function Board() {
   const [newComment, setNewComment] = useState('');
 
   useEffect(() => {
-    loadBoard();
+    loadBoard().then(() => {
+      // Auto-open task from URL: /board?task=xxx
+      const params = new URLSearchParams(window.location.search);
+      const taskId = params.get('task');
+      if (taskId) {
+        fetch(`${API_BASE}/tasks/${taskId}`).then(r => r.json()).then(data => {
+          if (data && data.id) {
+            setSelectedTask(data);
+            setTaskComments(data.comments || []);
+          }
+        }).catch(() => {});
+      }
+    });
     fetch(`${API_BASE}/beasts`).then(r => r.json()).then(d => setBeasts(d.beasts || [])).catch(() => {});
   }, []);
 

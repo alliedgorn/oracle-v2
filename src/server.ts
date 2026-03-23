@@ -1105,12 +1105,14 @@ app.get('/api/pack', (c) => {
           const lines = pane1.split('\n').filter(l => l.trim());
           const bottomLines = lines.slice(-3).join('\n');
 
-          // "esc to interrupt" at bottom = actively processing
-          // "bypass permissions" without "esc to interrupt" = idle
-          // Note: narrow panes truncate "esc to interrupt" to "e…" or "es…"
-          const hasEscToInterrupt = /esc to interrupt|· e…|· es|· esc/.test(bottomLines);
+          // Detect processing state from Claude Code status indicators:
+          // - "esc to interrupt" (legacy, may be truncated to "e…" or "es…")
+          // - "· Doodling…" / "· Thinking…" / "· Running…" etc. (current Claude Code)
+          // - "bypass permissions" = idle (waiting for input)
+          // Note: narrow panes truncate text, so match partial patterns too
+          const isProcessing = /esc to interrupt|· e…|· es|· esc|· Doodling|· Thinking|· Running|· Writing|· Reading|· Searching|Running…/.test(bottomLines);
 
-          if (hasEscToInterrupt) {
+          if (isProcessing) {
             tmuxStatus.set(session.toLowerCase(), 'processing');
           } else {
             tmuxStatus.set(session.toLowerCase(), 'idle');

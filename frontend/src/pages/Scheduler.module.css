@@ -131,6 +131,12 @@
   background: var(--bg-secondary);
 }
 
+.idCell {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
 .statusDot {
   display: inline-block;
   width: 8px;

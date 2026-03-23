@@ -202,6 +202,7 @@ export function Scheduler() {
         <table className={styles.table}>
           <thead>
             <tr>
+              <th>ID</th>
               <th>Status</th>
               <th>Beast</th>
               <th>Task</th>
@@ -215,12 +216,13 @@ export function Scheduler() {
           </thead>
           <tbody>
             {schedules.length === 0 && (
-              <tr><td colSpan={9} className={styles.empty}>No schedules yet</td></tr>
+              <tr><td colSpan={10} className={styles.empty}>No schedules yet</td></tr>
             )}
             {schedules.map(s => {
               const status = getStatus(s);
               return (
                 <tr key={s.id} className={styles[status]}>
+                  <td className={styles.idCell}>{s.id}</td>
                   <td>
                     <span className={styles.statusDot} style={{ background: STATUS_COLORS[status] }} />
                     {status.replace('-', ' ')}

@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import styles from './Header.module.css';
@@ -49,6 +49,7 @@ interface HeaderProps {
 
 export function Header({ onRemoteToggle }: HeaderProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { isAuthenticated, authEnabled, logout } = useAuth();
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
@@ -116,6 +117,13 @@ export function Header({ onRemoteToggle }: HeaderProps) {
             key={item.path}
             to={item.path}
             className={`${styles.navLink} ${location.pathname === item.path ? styles.active : ''}`}
+            onClick={(e) => {
+              // Force navigation when already on the same path (clears search params)
+              if (location.pathname === item.path && location.search) {
+                e.preventDefault();
+                navigate(item.path);
+              }
+            }}
           >
             {item.label}
           </Link>

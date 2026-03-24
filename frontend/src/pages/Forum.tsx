@@ -246,7 +246,8 @@ export function Forum() {
       // Auto-select first thread only on initial load, desktop only
       threadsLoadedRef.current = true;
       setSearchParams({ thread: threads[0].id.toString() });
-    } else if (threads.length === 0) {
+    } else if (!threadIdParam && selectedThread) {
+      // No thread param — clear selection (e.g. user clicked Forum nav link)
       setSelectedThread(null);
     }
   }, [threadIdParam, threads]);

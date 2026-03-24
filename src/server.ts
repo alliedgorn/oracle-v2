@@ -1287,8 +1287,12 @@ app.get('/api/remote/status', (c) => {
   return c.json({ session_exists: !!attachedBeastName, attached_beast: attachedBeastName });
 });
 
-// POST /api/remote/attach — attach a beast's claude window
+// POST /api/remote/attach — attach a beast's claude window (local only — requires tmux)
 app.post('/api/remote/attach', async (c) => {
+  // Remote attach requires local tmux access — reject non-local requests cleanly
+  if (!isLocalNetwork(c) && !hasSessionAuth(c)) {
+    return c.json({ error: 'Remote attach requires local access' }, 403);
+  }
   try {
     const data = await c.req.json();
     const beastName = data.beast?.toLowerCase();
@@ -1345,7 +1349,7 @@ app.post('/api/remote/attach', async (c) => {
   }
 });
 
-// POST /api/remote/detach — detach current beast
+// POST /api/remote/detach — detach current beast (local only — requires tmux)
 app.post('/api/remote/detach', (_c) => {
   try {
     execSync(`tmux unlink-window -k -t ${JSON.stringify(REMOTE_SESSION)}:1`, { timeout: 2000 });

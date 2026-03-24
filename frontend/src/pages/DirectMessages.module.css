@@ -594,3 +594,29 @@
     padding: 8px;
   }
 }
+
+/* Scroll to top FAB — hidden on desktop */
+.scrollTopFab {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .scrollTopFab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    bottom: 80px;
+    right: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    z-index: 60;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+}

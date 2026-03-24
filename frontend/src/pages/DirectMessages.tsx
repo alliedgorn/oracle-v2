@@ -86,6 +86,7 @@ export function DirectMessages() {
   const [totalMessages, setTotalMessages] = useState(0);
   const totalMessagesRef = useRef(0);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDone = useRef(false);
@@ -128,6 +129,13 @@ export function DirectMessages() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [lightboxSrc]);
+
+  // Scroll-to-top FAB visibility
+  useEffect(() => {
+    const handler = () => setShowScrollTop(window.scrollY > 300);
+    window.addEventListener('scroll', handler, { passive: true });
+    return () => window.removeEventListener('scroll', handler);
+  }, []);
 
   useEffect(() => {
     loadDashboard();
@@ -509,6 +517,15 @@ export function DirectMessages() {
           </div>
         )}
       </div>
+
+      {/* Scroll to top FAB */}
+      {showScrollTop && (
+        <button
+          className={styles.scrollTopFab}
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          aria-label="Scroll to top"
+        >↑</button>
+      )}
 
       {/* Image Lightbox — portaled to body to avoid expanding chat container */}
       {lightboxSrc && createPortal(

@@ -114,7 +114,10 @@ export function Library() {
   if (selectedDoc) {
     return (
       <div className={styles.detail}>
-        <button className={styles.backLink} onClick={() => { setSearchParams({}); setEditing(false); }}>
+        <button className={styles.backLink} onClick={() => {
+          if (editing && !window.confirm('Discard unsaved changes?')) return;
+          setSearchParams({}); setEditing(false);
+        }}>
           ← Back to Library
         </button>
         {editing ? (
@@ -136,6 +139,7 @@ export function Library() {
                 <option value="architecture">Architecture</option>
                 <option value="research">Research</option>
                 <option value="decision">Decision</option>
+                <option value="guide">Guide</option>
               </select>
               <label className={styles.editLabel}>Tags (comma-separated)</label>
               <input

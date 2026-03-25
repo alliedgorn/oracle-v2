@@ -369,4 +369,8 @@
   .detailTitle {
     font-size: 22px;
   }
+
+  .detailTitleRow {
+    flex-direction: column;
+  }
 }

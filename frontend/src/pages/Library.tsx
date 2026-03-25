@@ -40,6 +40,12 @@ export function Library() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editType, setEditType] = useState('');
+  const [editTags, setEditTags] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const docId = searchParams.get('doc');
 
@@ -71,44 +77,126 @@ export function Library() {
     return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
+  function startEditing() {
+    if (!selectedDoc) return;
+    setEditTitle(selectedDoc.title);
+    setEditContent(selectedDoc.content);
+    setEditType(selectedDoc.type || selectedDoc.category || 'learning');
+    setEditTags(selectedDoc.tags?.join(', ') || '');
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setEditing(false);
+  }
+
+  async function saveEdit() {
+    if (!selectedDoc) return;
+    setSaving(true);
+    try {
+      const tags = editTags.split(',').map(t => t.trim()).filter(Boolean);
+      const res = await fetch(`${API_BASE}/library/${selectedDoc.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editTitle, content: editContent, type: editType, tags }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      const updated = await res.json();
+      const updatedDoc = updated.doc || updated;
+      setSelectedDoc(updatedDoc);
+      setEditing(false);
+      loadDocs();
+    } catch { /* ignore */ }
+    setSaving(false);
+  }
+
   // Detail view
   if (selectedDoc) {
     return (
       <div className={styles.detail}>
-        <button className={styles.backLink} onClick={() => setSearchParams({})}>
+        <button className={styles.backLink} onClick={() => { setSearchParams({}); setEditing(false); }}>
           ← Back to Library
         </button>
-        <div className={styles.detailHeader}>
-          <h1 className={styles.detailTitle}>{selectedDoc.title}</h1>
-          <div className={styles.detailMeta}>
-            <span className={styles.author}>
-              <span className={styles.authorDot} style={{ backgroundColor: 'var(--text-muted)' }} />
-              {selectedDoc.author}
-            </span>
-            <span>{formatDate(selectedDoc.created_at)}</span>
-            {selectedDoc.category && <span>{selectedDoc.category}</span>}
-          </div>
-        </div>
-        <div className={styles.detailContent}>
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              code({ className, children, ...props }) {
-                const match = /language-(\w+)/.exec(className || '');
-                const inline = !match && !String(children).includes('\n');
-                return inline ? (
-                  <code className={className} {...props}>{children}</code>
-                ) : (
-                  <SyntaxHighlighter style={oneDark} language={match?.[1] || 'text'} PreTag="div">
-                    {String(children).replace(/\n$/, '')}
-                  </SyntaxHighlighter>
-                );
-              },
-            }}
-          >
-            {selectedDoc.content}
-          </ReactMarkdown>
-        </div>
+        {editing ? (
+          <>
+            <div className={styles.editForm}>
+              <label className={styles.editLabel}>Title</label>
+              <input
+                className={styles.editInput}
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+              />
+              <label className={styles.editLabel}>Type</label>
+              <select
+                className={styles.editSelect}
+                value={editType}
+                onChange={e => setEditType(e.target.value)}
+              >
+                <option value="learning">Learning</option>
+                <option value="architecture">Architecture</option>
+                <option value="research">Research</option>
+                <option value="decision">Decision</option>
+              </select>
+              <label className={styles.editLabel}>Tags (comma-separated)</label>
+              <input
+                className={styles.editInput}
+                value={editTags}
+                onChange={e => setEditTags(e.target.value)}
+                placeholder="tag1, tag2, tag3"
+              />
+              <label className={styles.editLabel}>Content (Markdown)</label>
+              <textarea
+                className={styles.editTextarea}
+                value={editContent}
+                onChange={e => setEditContent(e.target.value)}
+                rows={20}
+              />
+              <div className={styles.editActions}>
+                <button className={styles.editSave} onClick={saveEdit} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button className={styles.editCancel} onClick={cancelEditing}>Cancel</button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className={styles.detailHeader}>
+              <div className={styles.detailTitleRow}>
+                <h1 className={styles.detailTitle}>{selectedDoc.title}</h1>
+                <button className={styles.editButton} onClick={startEditing}>Edit</button>
+              </div>
+              <div className={styles.detailMeta}>
+                <span className={styles.author}>
+                  <span className={styles.authorDot} style={{ backgroundColor: 'var(--text-muted)' }} />
+                  {selectedDoc.author}
+                </span>
+                <span>{formatDate(selectedDoc.created_at)}</span>
+                {selectedDoc.category && <span>{selectedDoc.category}</span>}
+              </div>
+            </div>
+            <div className={styles.detailContent}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code({ className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || '');
+                    const inline = !match && !String(children).includes('\n');
+                    return inline ? (
+                      <code className={className} {...props}>{children}</code>
+                    ) : (
+                      <SyntaxHighlighter style={oneDark} language={match?.[1] || 'text'} PreTag="div">
+                        {String(children).replace(/\n$/, '')}
+                      </SyntaxHighlighter>
+                    );
+                  },
+                }}
+              >
+                {selectedDoc.content}
+              </ReactMarkdown>
+            </div>
+          </>
+        )}
       </div>
     );
   }

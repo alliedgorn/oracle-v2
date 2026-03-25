@@ -223,6 +223,123 @@
   padding: 0;
 }
 
+/* Detail title row with edit button */
+.detailTitleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-md);
+}
+
+.editButton {
+  flex-shrink: 0;
+  padding: var(--space-xs) var(--space-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.editButton:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+/* Edit form */
+.editForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.editLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: var(--space-sm);
+}
+
+.editInput,
+.editSelect {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.editInput:focus,
+.editSelect:focus,
+.editTextarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.editTextarea {
+  padding: var(--space-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: var(--font-mono);
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 300px;
+}
+
+.editActions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.editSave {
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--accent);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.editSave:hover {
+  opacity: 0.9;
+}
+
+.editSave:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.editCancel {
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.editCancel:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
 /* Loading */
 .loading {
   text-align: center;

@@ -32,7 +32,7 @@ const FILTERS = [
 
 export function SpecReview() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [specs, setSpecs] = useState<Spec[]>([]);
+  const [allSpecs, setAllSpecs] = useState<Spec[]>([]);
   const [selectedSpec, setSelectedSpec] = useState<Spec | null>(null);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(false);
@@ -44,14 +44,14 @@ export function SpecReview() {
   const loadSpecs = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (filter !== 'all') params.set('status', filter);
-      const res = await fetch(`${API_BASE}/specs?${params}`);
+      const res = await fetch(`${API_BASE}/specs`);
       const data = await res.json();
-      setSpecs(data.specs || []);
+      setAllSpecs(data.specs || []);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [filter]);
+  }, []);
+
+  const specs = filter === 'all' ? allSpecs : allSpecs.filter(s => s.status === filter);
 
   useEffect(() => { loadSpecs(); }, [loadSpecs]);
 
@@ -223,7 +223,7 @@ export function SpecReview() {
             {f.label}
             {f.id !== 'all' && (
               <span className={styles.filterCount}>
-                {specs.filter(s => f.id === 'all' || s.status === f.id).length}
+                {allSpecs.filter(s => s.status === f.id).length}
               </span>
             )}
           </button>

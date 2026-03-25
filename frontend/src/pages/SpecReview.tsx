@@ -241,7 +241,15 @@ export function SpecReview() {
             <p className={styles.versionEmpty}>No version history found.</p>
           )}
           {diffText !== null && (
-            <pre className={styles.diffBlock}>{diffText || 'No changes between versions.'}</pre>
+            <pre className={styles.diffBlock}>
+              {diffText ? diffText.split('\n').map((line, i) => {
+                const cls = line.startsWith('+') && !line.startsWith('+++') ? styles.diffAdd
+                  : line.startsWith('-') && !line.startsWith('---') ? styles.diffDel
+                  : line.startsWith('@@') ? styles.diffHunk
+                  : '';
+                return <div key={i} className={cls}>{line}</div>;
+              }) : 'No changes between versions.'}
+            </pre>
           )}
         </div>
 

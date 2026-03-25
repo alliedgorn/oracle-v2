@@ -399,6 +399,20 @@
   overflow-y: auto;
 }
 
+.diffAdd {
+  color: #22c55e;
+  background: #22c55e10;
+}
+
+.diffDel {
+  color: #ef4444;
+  background: #ef444410;
+}
+
+.diffHunk {
+  color: #60a5fa;
+}
+
 /* Review controls */
 .reviewControls {
   border-top: 1px solid var(--border);

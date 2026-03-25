@@ -3731,6 +3731,32 @@ app.patch('/api/schedules/:id', async (c) => {
   }
   if (data.enabled !== undefined) { updates.push('enabled = ?'); params.push(data.enabled ? 1 : 0); }
   if (data.source !== undefined) { updates.push('source = ?'); params.push(data.source); }
+  if (data.schedule_time !== undefined) {
+    if (data.schedule_time !== null && !/^([01]\d|2[0-3]):[0-5]\d$/.test(data.schedule_time)) {
+      return c.json({ error: 'schedule_time must be HH:MM format (00:00-23:59) or null to clear' }, 400);
+    }
+    const effectiveInterval = data.interval || existing.interval;
+    if (data.schedule_time !== null && effectiveInterval !== '1d' && effectiveInterval !== '7d') {
+      return c.json({ error: 'schedule_time requires interval of 1d (daily) or 7d (weekly)' }, 400);
+    }
+    if (existing.once && data.schedule_time !== null) {
+      return c.json({ error: 'schedule_time cannot be used with one-off schedules' }, 400);
+    }
+    updates.push('schedule_time = ?'); params.push(data.schedule_time);
+    // Recompute next_due_at if setting a new schedule_time
+    if (data.schedule_time !== null) {
+      const intervalDays = (data.interval || existing.interval) === '7d' ? 7 : 1;
+      const nextDue = computeNextFixedTime(data.schedule_time, intervalDays);
+      updates.push('next_due_at = ?'); params.push(nextDue);
+    }
+  }
+  if (data.timezone !== undefined) {
+    const VALID_TIMEZONES = ['Asia/Bangkok', 'UTC', 'America/New_York', 'Europe/London', 'Asia/Tokyo', 'Asia/Singapore'];
+    if (!VALID_TIMEZONES.includes(data.timezone)) {
+      return c.json({ error: `Invalid timezone. Valid: ${VALID_TIMEZONES.join(', ')}` }, 400);
+    }
+    updates.push('timezone = ?'); params.push(data.timezone);
+  }
   if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
   updates.push("updated_at = datetime('now')");
   params.push(id);

@@ -2945,7 +2945,7 @@ app.post('/api/tasks', async (c) => {
   const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type } = data;
   if (!title || !created_by) return c.json({ error: 'title and created_by required' }, 400);
 
-  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked'];
+  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   const validPriorities = ['critical', 'high', 'medium', 'low'];
   const taskStatus = validStatuses.includes(status) ? status : 'todo';
   const taskPriority = validPriorities.includes(priority) ? priority : 'medium';
@@ -2981,7 +2981,7 @@ app.patch('/api/tasks/:id', async (c) => {
 
   const data = await c.req.json();
 
-  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked'];
+  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   const validPriorities = ['critical', 'high', 'medium', 'low'];
   if (data.status && !validStatuses.includes(data.status)) return c.json({ error: `Invalid status. Valid: ${validStatuses.join(', ')}` }, 400);
   if (data.priority && !validPriorities.includes(data.priority)) return c.json({ error: `Invalid priority. Valid: ${validPriorities.join(', ')}` }, 400);
@@ -3016,7 +3016,7 @@ app.post('/api/tasks/bulk-status', async (c) => {
   const { task_ids, status } = data;
   if (!Array.isArray(task_ids) || !status) return c.json({ error: 'task_ids and status required' }, 400);
 
-  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked'];
+  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   if (!validStatuses.includes(status)) return c.json({ error: 'Invalid status' }, 400);
 
   const now = new Date().toISOString();
@@ -3098,7 +3098,7 @@ app.get('/api/board', (c) => {
   const tasks = sqlite.prepare(query).all(...params) as any[];
 
   const columns: Record<string, any[]> = {
-    todo: [], in_progress: [], in_review: [], done: [], blocked: [],
+    todo: [], in_progress: [], in_review: [], done: [], blocked: [], cancelled: [],
   };
   for (const task of tasks) {
     if (columns[task.status]) columns[task.status].push(task);

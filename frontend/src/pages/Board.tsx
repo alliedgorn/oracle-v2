@@ -46,13 +46,14 @@ interface BoardData {
 
 const API_BASE = '/api';
 
-const STATUSES = ['todo', 'in_progress', 'in_review', 'done', 'blocked'] as const;
+const STATUSES = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'] as const;
 const STATUS_LABELS: Record<string, string> = {
   todo: 'To Do',
   in_progress: 'In Progress',
   in_review: 'In Review',
   done: 'Done',
   blocked: 'Blocked',
+  cancelled: 'Cancelled',
 };
 
 const PRIORITIES = ['critical', 'high', 'medium', 'low'] as const;

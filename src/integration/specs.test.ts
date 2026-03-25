@@ -28,10 +28,9 @@ describe("Specs API Integration", () => {
   });
 
   afterAll(async () => {
-    // Clean up test specs
     for (const id of createdSpecIds) {
       try {
-        // No DELETE endpoint exists, so we leave them — they're test data
+        await fetch(`${BASE_URL}/api/specs/${id}?as=pip`, { method: "DELETE" });
       } catch {}
     }
   });

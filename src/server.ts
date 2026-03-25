@@ -2912,7 +2912,11 @@ app.patch('/api/library/:id', async (c) => {
     params.push(id);
     sqlite.prepare(`UPDATE library SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    return c.json({ success: true, id });
+    const updated = sqlite.prepare('SELECT * FROM library WHERE id = ?').get(id) as any;
+    if (updated?.tags) {
+      try { updated.tags = JSON.parse(updated.tags); } catch { updated.tags = []; }
+    }
+    return c.json(updated);
   } catch (e) {
     return c.json({ error: 'Invalid JSON' }, 400);
   }

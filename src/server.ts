@@ -4405,6 +4405,54 @@ app.get('/api/specs/:id/content', (c) => {
   }
 });
 
+// GET /api/specs/:id/history — git log for spec file
+app.get('/api/specs/:id/history', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const spec = sqlite.prepare('SELECT repo, file_path FROM spec_reviews WHERE id = ?').get(id) as any;
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+  const repoDir = path.resolve(`/home/gorn/workspace/${spec.repo}`);
+  if (!ALLOWED_SPEC_REPOS.includes(spec.repo)) return c.json({ error: 'Invalid repo' }, 400);
+  try {
+    const { execSync } = require('child_process');
+    const log = execSync(
+      `git log --format='{"hash":"%H","short":"%h","date":"%aI","subject":"%s","author":"%an"}' -- "${spec.file_path}"`,
+      { cwd: repoDir, encoding: 'utf-8', timeout: 5000 }
+    ).trim();
+    const versions = log ? log.split('\n').map((line: string) => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean) : [];
+    return c.json({ versions, file_path: spec.file_path, repo: spec.repo });
+  } catch {
+    return c.json({ versions: [], file_path: spec.file_path, repo: spec.repo });
+  }
+});
+
+// GET /api/specs/:id/diff — diff between two versions of spec file
+app.get('/api/specs/:id/diff', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const spec = sqlite.prepare('SELECT repo, file_path FROM spec_reviews WHERE id = ?').get(id) as any;
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+  if (!ALLOWED_SPEC_REPOS.includes(spec.repo)) return c.json({ error: 'Invalid repo' }, 400);
+  const from = c.req.query('from');
+  const to = c.req.query('to') || 'HEAD';
+  if (!from) return c.json({ error: 'from query param required (commit hash)' }, 400);
+  // Validate hashes are hex only (prevent injection)
+  if (!/^[a-f0-9]+$/i.test(from) || !/^[a-f0-9]+$/i.test(to) && to !== 'HEAD') {
+    return c.json({ error: 'Invalid commit hash' }, 400);
+  }
+  const repoDir = path.resolve(`/home/gorn/workspace/${spec.repo}`);
+  try {
+    const { execSync } = require('child_process');
+    const diff = execSync(
+      `git diff ${from} ${to} -- "${spec.file_path}"`,
+      { cwd: repoDir, encoding: 'utf-8', timeout: 5000 }
+    );
+    return c.json({ diff, from, to, file_path: spec.file_path, repo: spec.repo });
+  } catch {
+    return c.json({ diff: '', from, to, file_path: spec.file_path, repo: spec.repo });
+  }
+});
+
 // POST /api/specs — register a spec for review
 app.post('/api/specs', async (c) => {
   try {

@@ -6,6 +6,14 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import styles from './SpecReview.module.css';
 
+interface SpecVersion {
+  hash: string;
+  short: string;
+  date: string;
+  subject: string;
+  author: string;
+}
+
 interface Spec {
   id: number;
   repo: string;
@@ -38,6 +46,9 @@ export function SpecReview() {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [reviewing, setReviewing] = useState(false);
+  const [versions, setVersions] = useState<SpecVersion[]>([]);
+  const [diffText, setDiffText] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const specParam = searchParams.get('spec');
 
@@ -78,6 +89,22 @@ export function SpecReview() {
       : status === 'approved' ? 'Approved'
       : 'Rejected';
     return <span className={cls}>{label}</span>;
+  }
+
+  async function loadHistory(specId: number) {
+    try {
+      const res = await fetch(`${API_BASE}/specs/${specId}/history`);
+      const data = await res.json();
+      setVersions(data.versions || []);
+    } catch { setVersions([]); }
+  }
+
+  async function loadDiff(specId: number, from: string, to: string) {
+    try {
+      const res = await fetch(`${API_BASE}/specs/${specId}/diff?from=${from}&to=${to}`);
+      const data = await res.json();
+      setDiffText(data.diff || '');
+    } catch { setDiffText(null); }
   }
 
   async function handleReview(action: 'approve' | 'reject') {
@@ -172,6 +199,51 @@ export function SpecReview() {
             </div>
           </div>
         )}
+
+        {/* Version history */}
+        <div className={styles.versionSection}>
+          <button
+            className={styles.versionToggle}
+            onClick={() => {
+              if (!showHistory) {
+                loadHistory(selectedSpec.id);
+                setShowHistory(true);
+              } else {
+                setShowHistory(false);
+                setDiffText(null);
+              }
+            }}
+          >
+            {showHistory ? '▾ Hide Version History' : '▸ Version History'}
+          </button>
+          {showHistory && versions.length > 0 && (
+            <div className={styles.versionList}>
+              {versions.map((v, i) => (
+                <div key={v.hash} className={styles.versionItem}>
+                  <div className={styles.versionMeta}>
+                    <code className={styles.versionHash}>{v.short}</code>
+                    <span>{v.subject}</span>
+                    <span className={styles.versionDate}>{formatDate(v.date)}</span>
+                  </div>
+                  {i < versions.length - 1 && (
+                    <button
+                      className={styles.diffBtn}
+                      onClick={() => loadDiff(selectedSpec.id, versions[i + 1].hash, v.hash)}
+                    >
+                      diff
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {showHistory && versions.length === 0 && (
+            <p className={styles.versionEmpty}>No version history found.</p>
+          )}
+          {diffText !== null && (
+            <pre className={styles.diffBlock}>{diffText || 'No changes between versions.'}</pre>
+          )}
+        </div>
 
         {/* Review controls — only for pending specs */}
         {selectedSpec.status === 'pending' && (

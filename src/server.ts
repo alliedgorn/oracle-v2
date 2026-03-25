@@ -4434,6 +4434,222 @@ app.post('/api/specs/:id/resubmit', async (c) => {
 });
 
 // ============================================================================
+// Prowl — Personal Task Manager for Gorn (T#279)
+// ============================================================================
+
+const ALLOWED_PROWL_CREATORS = ['gorn', 'sable', 'zaghnal', 'leonard', 'karo'];
+
+try { sqlite.prepare(`
+  CREATE TABLE IF NOT EXISTS prowl_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    category TEXT DEFAULT 'general',
+    due_date TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    notes TEXT,
+    source TEXT,
+    source_id INTEGER,
+    created_by TEXT NOT NULL DEFAULT 'gorn',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT
+  )
+`).run(); } catch { /* exists */ }
+
+// GET /api/prowl — list tasks with filters
+app.get('/api/prowl', (c) => {
+  const status = c.req.query('status') || 'pending';
+  const priority = c.req.query('priority');
+  const category = c.req.query('category');
+  const due = c.req.query('due');
+
+  let query = 'SELECT * FROM prowl_tasks WHERE 1=1';
+  const params: any[] = [];
+
+  if (status !== 'all') {
+    query += ' AND status = ?';
+    params.push(status);
+  }
+  if (priority) {
+    query += ' AND priority = ?';
+    params.push(priority);
+  }
+  if (category) {
+    query += ' AND category = ?';
+    params.push(category);
+  }
+  if (due === 'overdue') {
+    query += " AND due_date < date('now') AND status = 'pending'";
+  } else if (due === 'today') {
+    query += " AND due_date = date('now')";
+  } else if (due === 'week') {
+    query += " AND due_date BETWEEN date('now') AND date('now', '+7 days')";
+  }
+
+  query += ' ORDER BY CASE priority WHEN \'high\' THEN 0 WHEN \'medium\' THEN 1 WHEN \'low\' THEN 2 END, created_at DESC';
+
+  const tasks = sqlite.prepare(query).all(...params);
+
+  // Counts
+  const counts = {
+    pending: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE status = 'pending'").get() as any).c,
+    done: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE status = 'done'").get() as any).c,
+    overdue: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE due_date < date('now') AND status = 'pending'").get() as any).c,
+    high: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE priority = 'high' AND status = 'pending'").get() as any).c,
+    medium: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE priority = 'medium' AND status = 'pending'").get() as any).c,
+    low: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE priority = 'low' AND status = 'pending'").get() as any).c,
+  };
+
+  const categories = (sqlite.prepare("SELECT DISTINCT category FROM prowl_tasks WHERE category IS NOT NULL ORDER BY category").all() as any[]).map(r => r.category);
+
+  return c.json({ tasks, counts, categories });
+});
+
+// GET /api/prowl/categories — unique categories with counts
+app.get('/api/prowl/categories', (c) => {
+  const rows = sqlite.prepare("SELECT category, COUNT(*) as count FROM prowl_tasks WHERE category IS NOT NULL GROUP BY category ORDER BY count DESC").all();
+  return c.json({ categories: rows });
+});
+
+// POST /api/prowl — create task
+app.post('/api/prowl', async (c) => {
+  try {
+    const data = await c.req.json();
+    if (!data.title?.trim()) return c.json({ error: 'title required' }, 400);
+
+    const requester = (c.req.query('as') || data.created_by || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+    if (!requester || !ALLOWED_PROWL_CREATORS.includes(requester)) {
+      return c.json({ error: `Only ${ALLOWED_PROWL_CREATORS.join(', ')} can create Prowl tasks` }, 403);
+    }
+
+    const priority = ['high', 'medium', 'low'].includes(data.priority) ? data.priority : 'medium';
+    const now = new Date().toISOString();
+
+    const result = sqlite.prepare(
+      'INSERT INTO prowl_tasks (title, priority, category, due_date, status, notes, source, source_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      data.title.trim(),
+      priority,
+      data.category || 'general',
+      data.due_date || null,
+      'pending',
+      data.notes || null,
+      data.source || 'manual',
+      data.source_id ?? null,
+      requester,
+      now,
+      now
+    );
+
+    const task = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get((result as any).lastInsertRowid);
+    wsBroadcast('prowl_update', { action: 'create', task });
+    return c.json(task, 201);
+  } catch (e: any) {
+    return c.json({ error: e?.message || 'Invalid request' }, 400);
+  }
+});
+
+// PATCH /api/prowl/:id — update task fields (Gorn-only, no status changes)
+app.patch('/api/prowl/:id', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Task not found' }, 404);
+
+  try {
+    const data = await c.req.json();
+    if ('status' in data) return c.json({ error: 'Use PATCH /api/prowl/:id/status to change status' }, 400);
+
+    const allowed = ['title', 'priority', 'category', 'due_date', 'notes'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const field of allowed) {
+      if (field in data) {
+        updates.push(`${field} = ?`);
+        values.push(data[field]);
+      }
+    }
+    if (updates.length === 0) return c.json({ error: 'No valid fields to update' }, 400);
+
+    updates.push("updated_at = ?");
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    sqlite.prepare(`UPDATE prowl_tasks SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    const task = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id);
+    wsBroadcast('prowl_update', { action: 'update', task });
+    return c.json(task);
+  } catch {
+    return c.json({ error: 'Invalid request' }, 400);
+  }
+});
+
+// PATCH /api/prowl/:id/status — change status (Gorn-only)
+app.patch('/api/prowl/:id/status', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Task not found' }, 404);
+
+  try {
+    const data = await c.req.json();
+    const newStatus = data.status;
+    if (!['pending', 'done'].includes(newStatus)) return c.json({ error: 'status must be pending or done' }, 400);
+
+    const now = new Date().toISOString();
+    const completedAt = newStatus === 'done' ? now : null;
+
+    sqlite.prepare('UPDATE prowl_tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?')
+      .run(newStatus, completedAt, now, id);
+    const task = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id);
+    wsBroadcast('prowl_update', { action: 'status', task });
+    return c.json(task);
+  } catch {
+    return c.json({ error: 'Invalid request' }, 400);
+  }
+});
+
+// POST /api/prowl/:id/toggle — quick toggle pending ↔ done (Gorn-only)
+app.post('/api/prowl/:id/toggle', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Task not found' }, 404);
+
+  const now = new Date().toISOString();
+  const newStatus = existing.status === 'pending' ? 'done' : 'pending';
+  const completedAt = newStatus === 'done' ? now : null;
+
+  sqlite.prepare('UPDATE prowl_tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?')
+    .run(newStatus, completedAt, now, id);
+  const task = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id);
+  wsBroadcast('prowl_update', { action: 'toggle', task });
+  return c.json(task);
+});
+
+// DELETE /api/prowl/:id — delete task (Gorn or Sable)
+app.delete('/api/prowl/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+
+  const requester = (c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+  if (requester !== 'gorn' && requester !== 'sable') {
+    return c.json({ error: 'Only Gorn or Sable can delete Prowl tasks' }, 403);
+  }
+
+  const existing = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Task not found' }, 404);
+
+  sqlite.prepare('DELETE FROM prowl_tasks WHERE id = ?').run(id);
+  wsBroadcast('prowl_update', { action: 'delete', task: existing });
+  return c.json({ deleted: true, id });
+});
+
+// ============================================================================
 // Static Frontend (production build)
 // ============================================================================
 

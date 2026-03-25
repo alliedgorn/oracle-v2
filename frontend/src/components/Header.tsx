@@ -8,7 +8,6 @@ const topNavItems = [
   { path: '/', label: 'Pack' },
   { path: '/forum', label: 'Forum' },
   { path: '/dms', label: 'DMs' },
-  { path: '/mindlink', label: 'Mindlink' },
   { path: '/board', label: 'Board' },
   { path: '/specs', label: 'Specs' },
 ];

@@ -25,7 +25,7 @@ import { Playbook } from './pages/Playbook';
 import { GornQueue } from './pages/GornQueue';
 import { RemoteControl } from './pages/RemoteControl';
 import { RemotePanel } from './components/RemotePanel';
-import { Mindlink } from './pages/Mindlink';
+// Mindlink removed — replaced by Prowl (T#279/T#280)
 import { Library } from './pages/Library';
 import { Board } from './pages/Board';
 import { Scheduler } from './pages/Scheduler';
@@ -81,7 +81,7 @@ function AppContent() {
         <Route path="/groups" element={<RequireAuth><Groups /></RequireAuth>} />
         <Route path="/playbook" element={<RequireAuth><Playbook /></RequireAuth>} />
         <Route path="/queue" element={<RequireAuth><GornQueue /></RequireAuth>} />
-        <Route path="/mindlink" element={<RequireAuth><Mindlink /></RequireAuth>} />
+        <Route path="/mindlink" element={<Navigate to="/" replace />} />
         <Route path="/remote" element={<RequireAuth><RemoteControl /></RequireAuth>} />
         <Route path="/library" element={<RequireAuth><Library /></RequireAuth>} />
         <Route path="/board" element={<RequireAuth><Board /></RequireAuth>} />

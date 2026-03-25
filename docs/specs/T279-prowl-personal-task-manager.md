@@ -2,12 +2,12 @@
 
 **Task**: Full revamp of Mindlink into Prowl — Gorn's personal task manager
 **Author**: Karo
-**Status**: PENDING REVIEW
+**Status**: REVISION 2
 **Design**: Dex (thread #18 msg #3317), Quill (thread #18)
 
 ## Overview
 
-Replace the Mindlink page with **Prowl** — a personal to-do/task manager for Gorn. Priorities, categories, due dates, clean modern UX. Existing Mindlink data migrates into Prowl.
+**Prowl** — a personal to-do/task manager for Gorn. Priorities, categories, due dates, clean modern UX. Tasks can originate from Gorn manually, from Beasts requesting things outside Den Book functionality, from spec approvals, or from PM Board links.
 
 ## Database Schema
 
@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS prowl_tasks (
   notes TEXT,
   source TEXT,
   source_id INTEGER,
+  created_by TEXT NOT NULL DEFAULT 'gorn',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   completed_at TEXT
@@ -34,8 +35,9 @@ CREATE TABLE IF NOT EXISTS prowl_tasks (
 - `due_date`: ISO date string (optional)
 - `status`: `pending`, `done`
 - `notes`: optional markdown notes
-- `source`: origin — `manual` (Gorn created), `beast` (from Beast mindlink), `board` (linked to PM task)
-- `source_id`: original mindlink ID or task ID for traceability
+- `source`: origin — `manual` (Gorn created), `beast` (Beast request for something outside Den Book, e.g. "Tell Gorn to update his Facebook profile"), `board` (linked to PM Board task), `spec` (from spec approval)
+- `source_id`: reference ID for traceability (task ID, spec ID, etc.) — **nullable** (null when no Den Book reference exists, e.g. beast requests for external actions)
+- `created_by`: who created the task — `gorn`, `sable`, `zaghnal`, `leonard`, or `karo`
 
 ## API Endpoints
 
@@ -79,7 +81,7 @@ List tasks with filters.
 
 ### POST /api/prowl
 
-Create a task. Gorn-only (session auth).
+Create a task. Allowed: Gorn (session auth), Sable, Zaghnal, Leonard, Karo (via `?as=<beast>` or `created_by` in body).
 
 **Body:**
 ```json
@@ -88,25 +90,41 @@ Create a task. Gorn-only (session auth).
   "priority": "high",
   "category": "supply-chain",
   "due_date": "2026-03-26",
-  "notes": "Flint submitted spec, needs review"
+  "notes": "Flint submitted spec, needs review",
+  "source": "spec",
+  "source_id": 5,
+  "created_by": "karo"
 }
 ```
 
+**Auth:** Gorn (session), or `created_by` must be one of: `sable`, `zaghnal`, `leonard`, `karo`. Other beasts cannot create tasks.
+
 ### PATCH /api/prowl/:id
 
-Update a task. Gorn-only.
+Update task fields. Gorn-only.
 
-**Body:** Any subset of `title`, `priority`, `category`, `due_date`, `status`, `notes`.
+**Body:** Any subset of `title`, `priority`, `category`, `due_date`, `notes`.
 
-When `status` changes to `done`, auto-set `completed_at`.
+**Note:** Status changes are NOT allowed via this endpoint. Use the dedicated status endpoints below.
 
-### DELETE /api/prowl/:id
+### PATCH /api/prowl/:id/status
 
-Delete a task permanently. Gorn-only.
+Change task status. **Gorn-only.**
+
+**Body:**
+```json
+{ "status": "done" }
+```
+
+When `status` changes to `done`, auto-set `completed_at`. When changed back to `pending`, clear `completed_at`.
 
 ### POST /api/prowl/:id/toggle
 
-Quick toggle: pending ↔ done. Gorn-only.
+Quick toggle: pending ↔ done. **Gorn-only.**
+
+### DELETE /api/prowl/:id
+
+Delete a task permanently. Allowed: Gorn (session auth) or Sable (`?as=sable`).
 
 ### GET /api/prowl/categories
 
@@ -149,35 +167,30 @@ Per Dex + Quill design specs:
 - Full-width, padding reduced
 - Priority selector in quick add becomes icon-only
 
-## Migration
-
-Migrate existing `mindlinks` table data:
-```sql
-INSERT INTO prowl_tasks (title, priority, category, status, source, source_id, created_at, updated_at)
-SELECT message, 'medium', 'general',
-  CASE WHEN status = 'decided' THEN 'done' ELSE 'pending' END,
-  'beast', id,
-  datetime(created_at/1000, 'unixepoch'),
-  datetime(created_at/1000, 'unixepoch')
-FROM mindlinks;
-```
-
 ## Test Stubs
 
 ### API Tests
 ```
 test_create_prowl_task — POST creates task with all fields
-test_create_requires_auth — unauthenticated POST returns 403
+test_create_by_gorn — Gorn (session auth) can create
+test_create_by_allowed_beast — Sable/Zaghnal/Leonard/Karo can create via ?as=
+test_create_by_unauthorized_beast — Other beasts get 403
 test_list_pending — GET /api/prowl returns pending by default
 test_filter_by_priority — ?priority=high filters correctly
 test_filter_by_category — ?category=den filters correctly
-test_toggle_done — POST /api/prowl/:id/toggle flips status
+test_toggle_done — POST /api/prowl/:id/toggle flips status (Gorn-only)
 test_toggle_sets_completed_at — toggling to done sets timestamp
-test_update_task — PATCH updates fields, sets updated_at
-test_delete_task — DELETE removes task
+test_status_change_via_dedicated_endpoint — PATCH /api/prowl/:id/status changes status
+test_status_change_rejected_on_update — PATCH /api/prowl/:id rejects status field
+test_update_task — PATCH updates fields, sets updated_at (Gorn-only)
+test_delete_by_gorn — Gorn can delete
+test_delete_by_sable — Sable can delete
+test_delete_by_other_beast — Other beasts get 403
 test_overdue_filter — ?due=overdue returns past-due tasks
 test_categories_endpoint — GET /api/prowl/categories returns unique list
 test_counts_in_response — response includes counts object
+test_source_spec_approval — task created with source=spec, source_id=spec_id
+test_source_beast_null_source_id — beast source with null source_id works
 ```
 
 ### Frontend Tests
@@ -194,6 +207,6 @@ test_counts_in_response — response includes counts object
 ```
 
 ## Dependencies
-- Replaces Mindlink page entirely
-- Update Header nav: Mindlink → Prowl
-- Update App.tsx route: /mindlink → /prowl (keep /mindlink as redirect)
+- New page (Mindlink already removed)
+- Add "Prowl" to Header nav
+- Add `/prowl` route in App.tsx

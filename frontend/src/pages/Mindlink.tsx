@@ -25,6 +25,7 @@ export function Mindlink() {
   const [filter, setFilter] = useState<string>('pending');
   const [loading, setLoading] = useState(false);
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
+  const [newTodo, setNewTodo] = useState('');
 
   // Check current attached beast
   useEffect(() => {
@@ -75,11 +76,35 @@ export function Mindlink() {
     return `${Math.floor(diff / 86400000)}d ago`;
   }
 
+  async function addTodo() {
+    if (!newTodo.trim()) return;
+    try {
+      await fetch(`${API_BASE}/mindlink`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ beast: 'gorn', message: newTodo.trim() }),
+      });
+      setNewTodo('');
+      await loadMindlinks();
+    } catch { /* ignore */ }
+  }
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <h1>Mindlink</h1>
-        <p className={styles.subtitle}>Beasts that need your attention</p>
+        <p className={styles.subtitle}>Your to-do list — what's left, what's next</p>
+      </div>
+
+      <div className={styles.addTodo}>
+        <input
+          className={styles.todoInput}
+          value={newTodo}
+          onChange={e => setNewTodo(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addTodo()}
+          placeholder="Add a to-do..."
+        />
+        <button className={styles.addBtn} onClick={addTodo} disabled={!newTodo.trim()}>Add</button>
       </div>
 
       <FilterTabs

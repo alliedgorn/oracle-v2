@@ -20,6 +20,50 @@
   font-size: 0.9em;
 }
 
+.addTodo {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: 20px;
+}
+
+.todoInput {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.todoInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.addBtn {
+  padding: 10px 20px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.addBtn:hover {
+  opacity: 0.9;
+}
+
+.addBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .filters {
   display: flex;
   gap: 8px;

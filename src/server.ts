@@ -4456,11 +4456,11 @@ app.post('/api/specs/:id/review', async (c) => {
     ).run(status, feedback || null, now, now, id);
     const updated = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
     wsBroadcast('spec_reviewed', { spec: updated, action });
-    // Auto-comment on associated PM Board task
+    // Auto-comment on associated PM Board task + notify assignee
     if (spec.task_id) {
       const taskIdNum = parseInt(spec.task_id.replace(/\D/g, ''), 10);
       if (!isNaN(taskIdNum)) {
-        const task = sqlite.prepare('SELECT id FROM tasks WHERE id = ?').get(taskIdNum);
+        const task = sqlite.prepare('SELECT id, assigned_to, created_by, title FROM tasks WHERE id = ?').get(taskIdNum) as any;
         if (task) {
           const commentContent = action === 'approve'
             ? `Spec approved by Gorn. Implementation unblocked.`
@@ -4468,6 +4468,23 @@ app.post('/api/specs/:id/review', async (c) => {
           sqlite.prepare(
             'INSERT INTO task_comments (task_id, author, content, created_at) VALUES (?, ?, ?, ?)'
           ).run(taskIdNum, 'gorn', commentContent, now);
+          // Notify assignee and creator
+          try {
+            const { notifyMentioned } = await import('./forum/mentions.ts');
+            const toNotify = new Set<string>();
+            if (task.assigned_to) toNotify.add(task.assigned_to.toLowerCase());
+            if (task.created_by) toNotify.add(task.created_by.toLowerCase());
+            toNotify.delete('gorn');
+            if (toNotify.size > 0) {
+              notifyMentioned(
+                [...toNotify],
+                0,
+                `Task #${taskIdNum}: ${task.title || 'Untitled'}`,
+                'gorn',
+                `Spec ${action}d: ${commentContent.slice(0, 100)}`
+              );
+            }
+          } catch { /* notification failure is non-critical */ }
         }
       }
     }

@@ -150,7 +150,7 @@ export function SpecReview() {
             <span className={styles.metaItem}>{selectedSpec.repo}</span>
             <span className={styles.metaItem}>{selectedSpec.file_path}</span>
             <span className={styles.metaItem}>{selectedSpec.author}</span>
-            {selectedSpec.task_id && <span className={styles.metaItem}>{selectedSpec.task_id}</span>}
+            {selectedSpec.task_id && <a href={`/board?task=${selectedSpec.task_id.replace(/\D/g, '')}`} className={styles.taskLink}>{selectedSpec.task_id}</a>}
             <span className={styles.metaItem}>{formatDate(selectedSpec.created_at)}</span>
           </div>
         </div>

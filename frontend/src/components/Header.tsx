@@ -38,6 +38,11 @@ const navGroups = [
   },
 ];
 
+interface NavBadges {
+  specs: number;
+  prowl: number;
+}
+
 interface SessionStats {
   searches: number;
   learnings: number;
@@ -54,6 +59,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   const { isAuthenticated, authEnabled, logout } = useAuth();
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [badges, setBadges] = useState<NavBadges>({ specs: 0, prowl: 0 });
   const isTouchDevice = 'ontouchstart' in window;
   const [sessionStartTime] = useState(() => {
     const stored = localStorage.getItem('oracle_session_start');
@@ -89,6 +95,26 @@ export function Header({ onRemoteToggle }: HeaderProps) {
     }
   }
 
+  useEffect(() => {
+    async function loadBadges() {
+      try {
+        const [specsRes, prowlRes] = await Promise.all([
+          fetch('/api/specs?status=pending'),
+          fetch('/api/prowl?status=pending'),
+        ]);
+        const specsData = await specsRes.json();
+        const prowlData = await prowlRes.json();
+        setBadges({
+          specs: specsData.specs?.length || 0,
+          prowl: prowlData.counts?.pending || 0,
+        });
+      } catch {}
+    }
+    loadBadges();
+    const interval = setInterval(loadBadges, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   function formatDuration(ms: number): string {
     const minutes = Math.floor(ms / 60000);
     if (minutes < 60) return `${minutes}m`;
@@ -113,22 +139,27 @@ export function Header({ onRemoteToggle }: HeaderProps) {
       </Link>
 
       <nav className={styles.nav}>
-        {topNavItems.map(item => (
-          <Link
-            key={item.path}
-            to={item.path}
-            className={`${styles.navLink} ${location.pathname === item.path ? styles.active : ''}`}
-            onClick={(e) => {
-              // Force navigation when already on the same path (clears search params)
-              if (location.pathname === item.path && location.search) {
-                e.preventDefault();
-                navigate(item.path);
-              }
-            }}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {topNavItems.map(item => {
+          const badgeCount = item.path === '/specs' ? badges.specs
+            : item.path === '/prowl' ? badges.prowl
+            : 0;
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`${styles.navLink} ${location.pathname === item.path ? styles.active : ''}`}
+              onClick={(e) => {
+                if (location.pathname === item.path && location.search) {
+                  e.preventDefault();
+                  navigate(item.path);
+                }
+              }}
+            >
+              {item.label}
+              {badgeCount > 0 && <span className={styles.navBadge}>{badgeCount}</span>}
+            </Link>
+          );
+        })}
         {navGroups.map(group => (
           <div
             key={group.label}

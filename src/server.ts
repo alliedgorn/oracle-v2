@@ -3229,6 +3229,8 @@ app.get('/api/board', (c) => {
   for (const task of tasks) {
     if (columns[task.status]) columns[task.status].push(task);
   }
+  // Done column: sort by updated_at DESC (most recently completed first)
+  columns.done.sort((a: any, b: any) => (b.updated_at || '').localeCompare(a.updated_at || ''));
 
   const projects = sqlite.prepare('SELECT * FROM projects WHERE status = ? ORDER BY name').all('active') as any[];
 

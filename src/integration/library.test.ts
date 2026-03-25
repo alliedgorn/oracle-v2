@@ -281,13 +281,15 @@ describe("Library API Integration", () => {
   // Types
   // =====================
   describe("Types", () => {
-    // BUG: /api/library/types is shadowed by /api/library/:id route
-    // The :id param catches "types" before the explicit /types route.
-    // This test documents the bug — when fixed, change expect to 200.
-    test("GET /api/library/types is shadowed by /:id route (known bug)", async () => {
+    test("GET /api/library/types returns type counts", async () => {
       const res = await fetch(`${BASE_URL}/api/library/types`);
-      // Currently returns 404 because /:id catches "types" as an id
-      expect(res.status).toBe(404);
+      expect(res.ok).toBe(true);
+      const data = await res.json();
+      expect(data.types).toBeInstanceOf(Array);
+      for (const t of data.types) {
+        expect(t.type).toBeTruthy();
+        expect(typeof t.count).toBe("number");
+      }
     });
   });
 });

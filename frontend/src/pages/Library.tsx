@@ -260,9 +260,9 @@ export function Library() {
                 {doc.author}
               </span>
               {doc.category && <span>{doc.category}</span>}
-              {doc.tags.length > 0 && (
+              {(Array.isArray(doc.tags) ? doc.tags : []).length > 0 && (
                 <div className={styles.tags}>
-                  {doc.tags.slice(0, 3).map(tag => (
+                  {(Array.isArray(doc.tags) ? doc.tags : []).slice(0, 3).map(tag => (
                     <span key={tag} className={styles.tag}>{tag}</span>
                   ))}
                 </div>

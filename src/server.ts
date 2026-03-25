@@ -2840,7 +2840,7 @@ app.get('/api/library', (c) => {
       type: r.type,
       category: r.type,
       author: r.author,
-      tags: JSON.parse(r.tags || '[]'),
+      tags: (() => { try { const t = JSON.parse(r.tags || '[]'); return Array.isArray(t) ? t : []; } catch { return typeof r.tags === 'string' && r.tags ? r.tags.split(',').map((s: string) => s.trim()) : []; } })(),
       created_at: new Date(r.created_at).toISOString(),
       updated_at: new Date(r.updated_at).toISOString(),
     })),

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-// Link removed — BeastCard handles name clicks
+import { useSearchParams } from 'react-router-dom';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -23,8 +23,10 @@ interface Beast {
 const API_BASE = '/api';
 
 export function PackView() {
+  const [searchParams] = useSearchParams();
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [selected, setSelected] = useState<Beast | null>(null);
+  const autoSelectRef = useRef(searchParams.get('beast'));
   const [interactive, setInteractive] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,7 +41,13 @@ export function PackView() {
     try {
       const res = await fetch(`${API_BASE}/pack`);
       const data = await res.json();
-      setBeasts(data.beasts || []);
+      const beastList = data.beasts || [];
+      setBeasts(beastList);
+      // Auto-select beast from URL param (?beast=name)
+      if (autoSelectRef.current && !selected) {
+        const match = beastList.find((b: Beast) => b.name === autoSelectRef.current);
+        if (match) { setSelected(match); autoSelectRef.current = null; }
+      }
     } catch { /* ignore */ }
   }, []);
 

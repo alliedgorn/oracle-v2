@@ -31,6 +31,7 @@ import { Board } from './pages/Board';
 import { Scheduler } from './pages/Scheduler';
 import { Teams } from './pages/Teams';
 import { AuditLog } from './pages/AuditLog';
+import { SpecReview } from './pages/SpecReview';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
@@ -93,6 +94,7 @@ function AppContent() {
         <Route path="/scheduler" element={<RequireAuth><Scheduler /></RequireAuth>} />
         <Route path="/teams" element={<RequireAuth><Teams /></RequireAuth>} />
         <Route path="/audit" element={<RequireAuth><AuditLog /></RequireAuth>} />
+        <Route path="/specs" element={<RequireAuth><SpecReview /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       </Routes>
       {!isLoginPage && <QuickLearn />}

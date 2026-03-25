@@ -4329,6 +4329,155 @@ app.post('/api/learn', async (c) => {
 });
 
 // ============================================================================
+// Spec Review — SDD Workflow
+// ============================================================================
+
+// Create spec_reviews table
+try { sqlite.prepare(`
+  CREATE TABLE IF NOT EXISTS spec_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    task_id TEXT,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    reviewer_feedback TEXT,
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(repo, file_path)
+  )
+`).run(); } catch { /* exists */ }
+
+const ALLOWED_SPEC_REPOS = ['oracle-v2', 'supply-chain-tool', 'karo', 'zaghnal', 'gnarl', 'bertus', 'flint', 'pip', 'dex', 'talon', 'quill', 'sable', 'nyx', 'vigil', 'rax', 'leonard', 'mara', 'snap'];
+
+function resolveSpecPath(repo: string, filePath: string): string | null {
+  if (!ALLOWED_SPEC_REPOS.includes(repo)) return null;
+  if (!filePath.endsWith('.md')) return null;
+  const baseDir = path.resolve(`/home/gorn/workspace/${repo}`);
+  const resolved = path.resolve(baseDir, filePath);
+  if (!resolved.startsWith(baseDir + '/')) return null;
+  const relative = resolved.slice(baseDir.length + 1);
+  if (!relative.startsWith('docs/specs/')) return null;
+  return resolved;
+}
+
+// GET /api/specs — list all specs
+app.get('/api/specs', (c) => {
+  const status = c.req.query('status');
+  const repo = c.req.query('repo');
+  let query = 'SELECT * FROM spec_reviews WHERE 1=1';
+  const params: any[] = [];
+  if (status) { query += ' AND status = ?'; params.push(status); }
+  if (repo) { query += ' AND repo = ?'; params.push(repo); }
+  query += ' ORDER BY CASE status WHEN \'pending\' THEN 0 WHEN \'rejected\' THEN 1 WHEN \'approved\' THEN 2 END, updated_at DESC';
+  const specs = sqlite.prepare(query).all(...params);
+  return c.json({ specs });
+});
+
+// GET /api/specs/:id — get spec detail
+app.get('/api/specs/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+  const resolved = resolveSpecPath(spec.repo, spec.file_path);
+  if (resolved) {
+    try { spec.content = fs.readFileSync(resolved, 'utf-8'); } catch { spec.content = null; }
+  }
+  return c.json(spec);
+});
+
+// GET /api/specs/:id/content — raw markdown content from repo
+app.get('/api/specs/:id/content', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const spec = sqlite.prepare('SELECT repo, file_path FROM spec_reviews WHERE id = ?').get(id) as any;
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+  const resolved = resolveSpecPath(spec.repo, spec.file_path);
+  if (!resolved) return c.json({ error: 'Invalid spec path' }, 400);
+  try {
+    const content = fs.readFileSync(resolved, 'utf-8');
+    return c.json({ content, file_path: spec.file_path, repo: spec.repo });
+  } catch {
+    return c.json({ error: 'Spec file not found on disk' }, 404);
+  }
+});
+
+// POST /api/specs — register a spec for review
+app.post('/api/specs', async (c) => {
+  try {
+    const data = await c.req.json();
+    const { repo, file_path, task_id, title, author } = data;
+    if (!repo || !file_path || !title || !author) {
+      return c.json({ error: 'repo, file_path, title, author required' }, 400);
+    }
+    if (!ALLOWED_SPEC_REPOS.includes(repo)) {
+      return c.json({ error: `Invalid repo. Allowed: ${ALLOWED_SPEC_REPOS.join(', ')}` }, 400);
+    }
+    const requester = (c.req.query('as') || data.as || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+    if (requester && requester !== 'gorn' && requester !== author.toLowerCase()) {
+      return c.json({ error: 'Author must match requesting identity' }, 403);
+    }
+    const now = new Date().toISOString();
+    const result = sqlite.prepare(
+      'INSERT INTO spec_reviews (repo, file_path, task_id, title, author, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(repo, file_path, task_id || null, title, author, 'pending', now, now);
+    const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get((result as any).lastInsertRowid);
+    wsBroadcast('spec_submitted', { spec });
+    return c.json(spec, 201);
+  } catch (e: any) {
+    if (e?.message?.includes('UNIQUE')) return c.json({ error: 'Spec already registered for this repo + path' }, 409);
+    return c.json({ error: 'Invalid JSON' }, 400);
+  }
+});
+
+// POST /api/specs/:id/review — approve or reject (Gorn only)
+app.post('/api/specs/:id/review', async (c) => {
+  if (!hasSessionAuth(c)) {
+    return c.json({ error: 'Spec review requires Gorn authentication' }, 403);
+  }
+  const id = parseInt(c.req.param('id'), 10);
+  const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+  if (spec.status !== 'pending') return c.json({ error: 'Only pending specs can be reviewed' }, 400);
+  try {
+    const data = await c.req.json();
+    const { action, feedback } = data;
+    if (!action || !['approve', 'reject'].includes(action)) {
+      return c.json({ error: 'action must be approve or reject' }, 400);
+    }
+    if (action === 'reject' && !feedback?.trim()) {
+      return c.json({ error: 'Feedback required when rejecting a spec' }, 400);
+    }
+    const now = new Date().toISOString();
+    const status = action === 'approve' ? 'approved' : 'rejected';
+    sqlite.prepare(
+      'UPDATE spec_reviews SET status = ?, reviewer_feedback = ?, reviewed_at = ?, updated_at = ? WHERE id = ?'
+    ).run(status, feedback || null, now, now, id);
+    const updated = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id);
+    wsBroadcast('spec_reviewed', { spec: updated, action });
+    return c.json(updated);
+  } catch {
+    return c.json({ error: 'Invalid JSON' }, 400);
+  }
+});
+
+// POST /api/specs/:id/resubmit — reset rejected spec to pending
+app.post('/api/specs/:id/resubmit', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+  if (spec.status !== 'rejected') return c.json({ error: 'Only rejected specs can be resubmitted' }, 400);
+  const now = new Date().toISOString();
+  sqlite.prepare(
+    'UPDATE spec_reviews SET status = ?, reviewer_feedback = NULL, reviewed_at = NULL, updated_at = ? WHERE id = ?'
+  ).run('pending', now, id);
+  const updated = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id);
+  wsBroadcast('spec_resubmitted', { spec: updated });
+  return c.json(updated);
+});
+
+// ============================================================================
 // Static Frontend (production build)
 // ============================================================================
 

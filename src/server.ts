@@ -4433,6 +4433,18 @@ app.post('/api/specs/:id/resubmit', async (c) => {
   return c.json(updated);
 });
 
+// DELETE /api/specs/:id — delete spec (Gorn only)
+app.delete('/api/specs/:id', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Spec not found' }, 404);
+  sqlite.prepare('DELETE FROM spec_reviews WHERE id = ?').run(id);
+  wsBroadcast('spec_deleted', { spec: existing });
+  return c.json({ deleted: true, id });
+});
+
 // ============================================================================
 // Prowl — Personal Task Manager for Gorn (T#279)
 // ============================================================================

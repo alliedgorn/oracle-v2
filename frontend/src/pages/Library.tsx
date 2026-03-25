@@ -82,7 +82,7 @@ export function Library() {
     setEditTitle(selectedDoc.title);
     setEditContent(selectedDoc.content);
     setEditType(selectedDoc.type || selectedDoc.category || 'learning');
-    setEditTags(selectedDoc.tags?.join(', ') || '');
+    setEditTags(Array.isArray(selectedDoc.tags) ? selectedDoc.tags.join(', ') : (selectedDoc.tags || ''));
     setEditing(true);
   }
 

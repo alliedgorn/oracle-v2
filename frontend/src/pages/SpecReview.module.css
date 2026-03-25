@@ -76,6 +76,7 @@
 .specCard {
   background: var(--bg-card);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
   border-radius: var(--radius-md);
   padding: var(--space-md) 20px;
   cursor: pointer;
@@ -132,9 +133,15 @@
   border-radius: var(--radius-sm);
   font-size: 12px;
   font-weight: 600;
-  background: #f59e0b20;
-  color: #f59e0b;
-  border: 1px solid #f59e0b40;
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 .badgeApproved {
@@ -143,9 +150,9 @@
   border-radius: var(--radius-sm);
   font-size: 12px;
   font-weight: 600;
-  background: #22c55e20;
-  color: #22c55e;
-  border: 1px solid #22c55e40;
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 25%, transparent);
 }
 
 .badgeRejected {
@@ -154,9 +161,9 @@
   border-radius: var(--radius-sm);
   font-size: 12px;
   font-weight: 600;
-  background: #ef444420;
-  color: #ef4444;
-  border: 1px solid #ef444440;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
 }
 
 /* Detail view */
@@ -400,17 +407,17 @@
 }
 
 .diffAdd {
-  color: #22c55e;
-  background: #22c55e10;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 6%, transparent);
 }
 
 .diffDel {
-  color: #ef4444;
-  background: #ef444410;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
 }
 
 .diffHunk {
-  color: #60a5fa;
+  color: var(--accent);
 }
 
 /* Review controls */
@@ -446,7 +453,7 @@
 
 .approveBtn {
   padding: var(--space-sm) var(--space-lg);
-  background: #22c55e;
+  background: var(--success);
   color: #fff;
   border: none;
   border-radius: var(--radius-sm);
@@ -461,6 +468,10 @@
   opacity: 0.9;
 }
 
+.approveBtn:active {
+  transform: scale(0.97);
+}
+
 .approveBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -469,8 +480,8 @@
 .rejectBtn {
   padding: var(--space-sm) var(--space-lg);
   background: transparent;
-  color: #ef4444;
-  border: 1px solid #ef4444;
+  color: var(--danger);
+  border: 1px solid var(--danger);
   border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
@@ -480,8 +491,12 @@
 }
 
 .rejectBtn:hover {
-  background: #ef4444;
+  background: var(--danger);
   color: #fff;
+}
+
+.rejectBtn:active {
+  transform: scale(0.97);
 }
 
 .rejectBtn:disabled {

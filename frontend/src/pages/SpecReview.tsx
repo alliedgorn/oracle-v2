@@ -86,8 +86,8 @@ export function SpecReview() {
       : status === 'approved' ? styles.badgeApproved
       : styles.badgeRejected;
     const label = status === 'pending' ? 'Pending'
-      : status === 'approved' ? 'Approved'
-      : 'Rejected';
+      : status === 'approved' ? '\u2713 Approved'
+      : '\u2717 Rejected';
     return <span className={cls}>{label}</span>;
   }
 

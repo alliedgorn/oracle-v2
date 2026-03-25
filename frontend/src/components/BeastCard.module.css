@@ -178,3 +178,7 @@
   opacity: 1;
   background: var(--bg-secondary);
 }
+
+.terminalBtn {
+  color: #fff;
+}

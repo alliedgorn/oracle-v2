@@ -64,7 +64,7 @@ export function BeastCard({
       {(onProfileClick || onDmClick) && (
         <div className={styles.actions}>
           {onProfileClick && (
-            <button className={styles.dmButton} title={`Open ${displayName}'s terminal`} onClick={onProfileClick}>&#9002;</button>
+            <button className={`${styles.dmButton} ${styles.terminalBtn}`} title={`Open ${displayName}'s terminal`} onClick={onProfileClick}>&#9002;</button>
           )}
           {onDmClick && (
             <button className={styles.dmButton} title={`DM ${displayName}`} onClick={onDmClick}>💬</button>

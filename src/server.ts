@@ -4454,8 +4454,23 @@ app.post('/api/specs/:id/review', async (c) => {
     sqlite.prepare(
       'UPDATE spec_reviews SET status = ?, reviewer_feedback = ?, reviewed_at = ?, updated_at = ? WHERE id = ?'
     ).run(status, feedback || null, now, now, id);
-    const updated = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id);
+    const updated = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
     wsBroadcast('spec_reviewed', { spec: updated, action });
+    // Auto-comment on associated PM Board task
+    if (spec.task_id) {
+      const taskIdNum = parseInt(spec.task_id.replace(/\D/g, ''), 10);
+      if (!isNaN(taskIdNum)) {
+        const task = sqlite.prepare('SELECT id FROM tasks WHERE id = ?').get(taskIdNum);
+        if (task) {
+          const commentContent = action === 'approve'
+            ? `Spec approved by Gorn. Implementation unblocked.`
+            : `Spec rejected by Gorn: ${feedback}`;
+          sqlite.prepare(
+            'INSERT INTO task_comments (task_id, author, content, created_at) VALUES (?, ?, ?, ?)'
+          ).run(taskIdNum, 'gorn', commentContent, now);
+        }
+      }
+    }
     return c.json(updated);
   } catch {
     return c.json({ error: 'Invalid JSON' }, 400);

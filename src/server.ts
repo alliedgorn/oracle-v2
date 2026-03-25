@@ -2722,6 +2722,12 @@ app.get('/api/library', (c) => {
   });
 });
 
+// GET /api/library/types — list available types and counts (must be before /:id)
+app.get('/api/library/types', (c) => {
+  const rows = sqlite.prepare('SELECT type, COUNT(*) as count FROM library GROUP BY type ORDER BY count DESC').all() as any[];
+  return c.json({ types: rows });
+});
+
 // GET /api/library/:id — get single entry
 app.get('/api/library/:id', (c) => {
   const id = parseInt(c.req.param('id'), 10);
@@ -2794,12 +2800,6 @@ app.patch('/api/library/:id', async (c) => {
   } catch (e) {
     return c.json({ error: 'Invalid JSON' }, 400);
   }
-});
-
-// GET /api/library/types — list available types and counts
-app.get('/api/library/types', (c) => {
-  const rows = sqlite.prepare('SELECT type, COUNT(*) as count FROM library GROUP BY type ORDER BY count DESC').all() as any[];
-  return c.json({ types: rows });
 });
 
 // ============================================================================

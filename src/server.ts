@@ -4433,9 +4433,12 @@ app.post('/api/specs/:id/resubmit', async (c) => {
   return c.json(updated);
 });
 
-// DELETE /api/specs/:id — delete spec (Gorn only)
+// DELETE /api/specs/:id — delete spec (Gorn or Pip)
 app.delete('/api/specs/:id', async (c) => {
-  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+  const requester = (c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+  if (requester !== 'gorn' && requester !== 'pip') {
+    return c.json({ error: 'Only Gorn or Pip can delete specs' }, 403);
+  }
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const existing = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;

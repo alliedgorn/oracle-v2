@@ -2926,10 +2926,17 @@ try {
 
 // GET /api/projects — list projects
 app.get('/api/projects', (c) => {
-  const status = c.req.query('status') || 'active';
-  const rows = sqlite.prepare(
-    'SELECT * FROM projects WHERE status = ? ORDER BY created_at DESC'
-  ).all(status) as any[];
+  const status = c.req.query('status');
+  let rows;
+  if (status) {
+    rows = sqlite.prepare(
+      'SELECT * FROM projects WHERE status = ? ORDER BY created_at DESC'
+    ).all(status) as any[];
+  } else {
+    rows = sqlite.prepare(
+      "SELECT * FROM projects ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 WHEN 'completed' THEN 2 END, created_at DESC"
+    ).all() as any[];
+  }
   return c.json({ projects: rows });
 });
 

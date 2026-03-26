@@ -1,0 +1,299 @@
+.container {
+  max-width: var(--width-full);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.header h1 {
+  font-family: var(--font-heading);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  margin: 4px 0 0;
+  font-size: 0.9em;
+}
+
+/* Risk Matrix Heatmap */
+.matrix {
+  margin-bottom: 24px;
+  overflow-x: auto;
+}
+
+.matrixGrid {
+  display: grid;
+  grid-template-columns: 100px repeat(5, 1fr);
+  grid-template-rows: repeat(6, 40px);
+  gap: 2px;
+  min-width: 500px;
+}
+
+.matrixLabel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  padding: 4px;
+}
+
+.matrixLabelY {
+  justify-content: flex-end;
+  padding-right: 8px;
+  text-transform: capitalize;
+}
+
+.matrixCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  border: 1px solid transparent;
+}
+
+.matrixCell:hover {
+  opacity: 0.8;
+  border-color: var(--text-muted);
+}
+
+.matrixCellEmpty {
+  background: var(--bg-elevated);
+  color: transparent;
+  cursor: default;
+}
+
+.matrixCellEmpty:hover {
+  opacity: 1;
+  border-color: transparent;
+}
+
+.matrixActive {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Score colors */
+.score1to4 { background: var(--success-muted, #2d5a3d); color: var(--text-primary); }
+.score5to9 { background: var(--warning-muted, #5a5a2d); color: var(--text-primary); }
+.score10to15 { background: var(--warning, #b8860b); color: #fff; }
+.score16to25 { background: var(--danger, #dc3545); color: #fff; }
+
+/* Summary Bar */
+.summary {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.summaryPill {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.85em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.summaryPill:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.summaryActive {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.pillBadge {
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.8em;
+}
+
+.pillDanger {
+  color: var(--danger);
+}
+
+/* Filters */
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.filterSelect {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.85em;
+}
+
+/* Risk List */
+.riskList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.riskItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-left: 4px solid transparent;
+}
+
+.riskItem:hover {
+  background: var(--bg-elevated);
+}
+
+.riskCritical { border-left-color: var(--danger); }
+.riskHigh { border-left-color: var(--warning); }
+.riskMedium { border-left-color: var(--warning-muted, #b8860b); }
+.riskLow { border-left-color: var(--success); }
+.riskInfo { border-left-color: var(--text-muted); }
+
+.riskContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.riskTitle {
+  color: var(--text-primary);
+  font-size: 0.95em;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.riskMeta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.severityBadge {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.sevCritical { background: var(--danger); color: #fff; }
+.sevHigh { background: var(--warning); color: #fff; }
+.sevMedium { background: var(--warning-muted, #5a5a2d); color: var(--text-primary); }
+.sevLow { background: var(--success-muted, #2d5a3d); color: var(--text-primary); }
+.sevInfo { background: var(--bg-muted); color: var(--text-secondary); }
+
+.statusBadge {
+  font-size: 0.75em;
+  color: var(--text-secondary);
+  background: var(--bg-muted);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.categoryTag {
+  font-size: 0.75em;
+  color: var(--text-muted);
+}
+
+.ownerTag {
+  font-size: 0.75em;
+  color: var(--text-muted);
+}
+
+.scoreTag {
+  font-size: 0.75em;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.staleTag {
+  font-size: 0.7em;
+  color: var(--danger);
+  font-weight: 500;
+}
+
+/* Expanded Risk */
+.riskExpanded {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.riskDescription {
+  font-size: 0.9em;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+
+.riskField {
+  margin-bottom: 8px;
+}
+
+.riskField label {
+  display: block;
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.riskField span {
+  font-size: 0.9em;
+  color: var(--text-secondary);
+}
+
+.riskSource {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+/* Empty State */
+.empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-size: 0.95em;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .container {
+    padding: 16px;
+  }
+
+  .matrixGrid {
+    min-width: 400px;
+  }
+}

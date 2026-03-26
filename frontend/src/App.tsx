@@ -26,6 +26,7 @@ import { GornQueue } from './pages/GornQueue';
 import { RemoteControl } from './pages/RemoteControl';
 import { RemotePanel } from './components/RemotePanel';
 import { Prowl } from './pages/Prowl';
+import { Risk } from './pages/Risk';
 import { Library } from './pages/Library';
 import { Board } from './pages/Board';
 import { Scheduler } from './pages/Scheduler';
@@ -82,6 +83,7 @@ function AppContent() {
         <Route path="/playbook" element={<RequireAuth><Playbook /></RequireAuth>} />
         <Route path="/queue" element={<RequireAuth><GornQueue /></RequireAuth>} />
         <Route path="/prowl" element={<RequireAuth><Prowl /></RequireAuth>} />
+        <Route path="/risk" element={<RequireAuth><Risk /></RequireAuth>} />
         <Route path="/mindlink" element={<Navigate to="/prowl" replace />} />
         <Route path="/remote" element={<RequireAuth><RemoteControl /></RequireAuth>} />
         <Route path="/library" element={<RequireAuth><Library /></RequireAuth>} />

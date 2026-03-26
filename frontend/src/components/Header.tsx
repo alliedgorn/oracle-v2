@@ -11,6 +11,7 @@ const topNavItems = [
   { path: '/board', label: 'Board' },
   { path: '/specs', label: 'Specs' },
   { path: '/prowl', label: 'Prowl' },
+  { path: '/risk', label: 'Risk' },
 ];
 
 // Grouped navigation (dropdowns for secondary items)

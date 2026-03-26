@@ -4449,6 +4449,240 @@ app.delete('/api/specs/:id', async (c) => {
 });
 
 // ============================================================================
+// Risk Register (T#316)
+// ============================================================================
+
+const ALLOWED_RISK_CREATORS = ['gorn', 'bertus', 'talon'];
+
+try { sqlite.prepare(`
+  CREATE TABLE IF NOT EXISTS risks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    category TEXT NOT NULL DEFAULT 'security',
+    severity TEXT NOT NULL DEFAULT 'medium',
+    likelihood TEXT NOT NULL DEFAULT 'possible',
+    risk_score INTEGER GENERATED ALWAYS AS (
+      CASE severity
+        WHEN 'critical' THEN 5 WHEN 'high' THEN 4
+        WHEN 'medium' THEN 3 WHEN 'low' THEN 2 ELSE 1
+      END *
+      CASE likelihood
+        WHEN 'almost_certain' THEN 5 WHEN 'likely' THEN 4
+        WHEN 'possible' THEN 3 WHEN 'unlikely' THEN 2 ELSE 1
+      END
+    ) STORED,
+    impact_notes TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    mitigation TEXT,
+    owner TEXT,
+    source TEXT,
+    source_type TEXT DEFAULT 'scan',
+    risk_type TEXT DEFAULT 'threat',
+    thread_id INTEGER,
+    created_by TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at DATETIME,
+    closed_at DATETIME,
+    deleted_at DATETIME
+  )
+`).run(); } catch { /* exists */ }
+
+// GET /api/risks — list risks
+app.get('/api/risks', (c) => {
+  const status = c.req.query('status');
+  const category = c.req.query('category');
+  const severity = c.req.query('severity');
+  const likelihood = c.req.query('likelihood');
+  const owner = c.req.query('owner');
+  const risk_type = c.req.query('risk_type');
+  const includeDeleted = c.req.query('deleted') === 'true';
+
+  let query = 'SELECT * FROM risks WHERE 1=1';
+  const params: any[] = [];
+
+  if (!includeDeleted) {
+    query += ' AND deleted_at IS NULL';
+  }
+  if (status) { query += ' AND status = ?'; params.push(status); }
+  if (category) { query += ' AND category = ?'; params.push(category); }
+  if (severity) { query += ' AND severity = ?'; params.push(severity); }
+  if (likelihood) { query += ' AND likelihood = ?'; params.push(likelihood); }
+  if (owner) { query += ' AND owner = ?'; params.push(owner); }
+  if (risk_type) { query += ' AND risk_type = ?'; params.push(risk_type); }
+
+  query += ' ORDER BY risk_score DESC, updated_at DESC';
+
+  const risks = sqlite.prepare(query).all(...params);
+  return c.json({ risks });
+});
+
+// GET /api/risks/summary — dashboard summary
+app.get('/api/risks/summary', (c) => {
+  const base = 'FROM risks WHERE deleted_at IS NULL';
+  const total = (sqlite.prepare(`SELECT COUNT(*) as c ${base}`).get() as any).c;
+
+  const bySeverity: any = {};
+  for (const s of ['critical', 'high', 'medium', 'low', 'info']) {
+    bySeverity[s] = (sqlite.prepare(`SELECT COUNT(*) as c ${base} AND severity = ?`).get(s) as any).c;
+  }
+
+  const byStatus: any = {};
+  for (const s of ['open', 'mitigating', 'accepted', 'mitigated', 'closed']) {
+    byStatus[s] = (sqlite.prepare(`SELECT COUNT(*) as c ${base} AND status = ?`).get(s) as any).c;
+  }
+
+  const byCategory: any = {};
+  const catRows = sqlite.prepare(`SELECT category, COUNT(*) as c ${base} GROUP BY category`).all() as any[];
+  for (const r of catRows) byCategory[r.category] = r.c;
+
+  const staleCount = (sqlite.prepare(
+    `SELECT COUNT(*) as c ${base} AND status IN ('open','mitigating') AND (reviewed_at IS NULL OR reviewed_at < datetime('now', '-7 days'))`
+  ).get() as any).c;
+
+  // Matrix data: count of risks per severity × likelihood
+  const matrixRows = sqlite.prepare(
+    `SELECT severity, likelihood, COUNT(*) as count ${base} AND status NOT IN ('closed','mitigated') GROUP BY severity, likelihood`
+  ).all() as any[];
+
+  return c.json({ total, by_severity: bySeverity, by_status: byStatus, by_category: byCategory, stale_count: staleCount, matrix: matrixRows });
+});
+
+// GET /api/risks/stale — risks not reviewed in >7 days
+app.get('/api/risks/stale', (c) => {
+  const risks = sqlite.prepare(
+    "SELECT * FROM risks WHERE deleted_at IS NULL AND status IN ('open','mitigating') AND (reviewed_at IS NULL OR reviewed_at < datetime('now', '-7 days')) ORDER BY risk_score DESC"
+  ).all();
+  return c.json({ risks });
+});
+
+// GET /api/risks/:id — single risk
+app.get('/api/risks/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const risk = sqlite.prepare('SELECT * FROM risks WHERE id = ? AND deleted_at IS NULL').get(id);
+  if (!risk) return c.json({ error: 'Risk not found' }, 404);
+  return c.json(risk);
+});
+
+// POST /api/risks — create risk (Gorn, Bertus, Talon)
+app.post('/api/risks', async (c) => {
+  try {
+    const data = await c.req.json();
+    if (!data.title?.trim()) return c.json({ error: 'title required' }, 400);
+
+    const requester = (c.req.query('as') || data.created_by || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+    if (!requester || !ALLOWED_RISK_CREATORS.includes(requester)) {
+      return c.json({ error: `Only ${ALLOWED_RISK_CREATORS.join(', ')} can create risks` }, 403);
+    }
+
+    const validSeverity = ['critical', 'high', 'medium', 'low', 'info'];
+    const validLikelihood = ['almost_certain', 'likely', 'possible', 'unlikely', 'rare'];
+    const validStatus = ['open', 'mitigating', 'accepted', 'mitigated', 'closed'];
+    const validSourceType = ['scan', 'audit', 'thread', 'directive', 'external'];
+    const validRiskType = ['vulnerability', 'threat', 'operational', 'compliance', 'project'];
+
+    const now = new Date().toISOString();
+    const result = sqlite.prepare(
+      `INSERT INTO risks (title, description, category, severity, likelihood, impact_notes, status, mitigation, owner, source, source_type, risk_type, thread_id, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      data.title.trim(),
+      data.description || null,
+      data.category || 'security',
+      validSeverity.includes(data.severity) ? data.severity : 'medium',
+      validLikelihood.includes(data.likelihood) ? data.likelihood : 'possible',
+      data.impact_notes || null,
+      validStatus.includes(data.status) ? data.status : 'open',
+      data.mitigation || null,
+      data.owner || null,
+      data.source || null,
+      validSourceType.includes(data.source_type) ? data.source_type : 'scan',
+      validRiskType.includes(data.risk_type) ? data.risk_type : 'threat',
+      data.thread_id ?? null,
+      requester,
+      now, now
+    );
+
+    const risk = sqlite.prepare('SELECT * FROM risks WHERE id = ?').get((result as any).lastInsertRowid);
+    wsBroadcast('risk_update', { action: 'create', risk });
+    return c.json(risk, 201);
+  } catch (e: any) {
+    return c.json({ error: e?.message || 'Invalid request' }, 400);
+  }
+});
+
+// PATCH /api/risks/:id — update risk
+app.patch('/api/risks/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM risks WHERE id = ? AND deleted_at IS NULL').get(id) as any;
+  if (!existing) return c.json({ error: 'Risk not found' }, 404);
+
+  const requester = (c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+  if (!requester) return c.json({ error: 'Identity required' }, 400);
+
+  try {
+    const data = await c.req.json();
+
+    // Gorn-only fields
+    const gornOnly = ['status', 'severity', 'likelihood'];
+    for (const field of gornOnly) {
+      if (field in data && requester !== 'gorn') {
+        return c.json({ error: `Only Gorn can change ${field}` }, 403);
+      }
+    }
+
+    const allowed = ['title', 'description', 'category', 'severity', 'likelihood', 'impact_notes', 'status', 'mitigation', 'owner', 'source', 'source_type', 'risk_type', 'thread_id', 'reviewed_at'];
+    const updates: string[] = [];
+    const values: any[] = [];
+
+    for (const field of allowed) {
+      if (field in data) {
+        updates.push(`${field} = ?`);
+        values.push(data[field]);
+      }
+    }
+    if (updates.length === 0) return c.json({ error: 'No valid fields to update' }, 400);
+
+    // Auto-set closed_at when status changes to closed
+    if (data.status === 'closed' && existing.status !== 'closed') {
+      updates.push('closed_at = ?');
+      values.push(new Date().toISOString());
+    } else if (data.status && data.status !== 'closed' && existing.closed_at) {
+      updates.push('closed_at = ?');
+      values.push(null);
+    }
+
+    updates.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    sqlite.prepare(`UPDATE risks SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    const risk = sqlite.prepare('SELECT * FROM risks WHERE id = ?').get(id);
+    wsBroadcast('risk_update', { action: 'update', risk });
+    return c.json(risk);
+  } catch {
+    return c.json({ error: 'Invalid request' }, 400);
+  }
+});
+
+// DELETE /api/risks/:id — soft delete (Gorn only)
+app.delete('/api/risks/:id', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM risks WHERE id = ? AND deleted_at IS NULL').get(id) as any;
+  if (!existing) return c.json({ error: 'Risk not found' }, 404);
+
+  const now = new Date().toISOString();
+  sqlite.prepare('UPDATE risks SET deleted_at = ?, updated_at = ? WHERE id = ?').run(now, now, id);
+  wsBroadcast('risk_update', { action: 'delete', risk: existing });
+  return c.json({ deleted: true, id });
+});
+
+// ============================================================================
 // Prowl — Personal Task Manager for Gorn (T#279)
 // ============================================================================
 

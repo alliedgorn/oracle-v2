@@ -3840,7 +3840,8 @@ app.post('/api/schedules/:id/execute', async (c) => {
 
   // Send notification to Beast (same as auto-trigger daemon)
   const safeTask = schedule.task.replace(/[^a-zA-Z0-9 _./-]/g, '');
-  const notification = `# [Scheduler] Due now: ${safeTask} (schedule #${schedule.id})`;
+  const safeCommand = schedule.command ? schedule.command.replace(/[^a-zA-Z0-9 _./:@=-]/g, '') : '';
+  const notification = `# [Scheduler] Due now: ${safeTask} (schedule #${schedule.id})${safeCommand ? ` | Command: ${safeCommand}` : ''}`;
 
   try {
     execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(notification)}`, { timeout: 2000 });
@@ -3930,7 +3931,8 @@ function runSchedulerCycle() {
       // Send comment notification to Beast (NOT a command — Option 1 per Gnarl's review)
       // Sanitize task name: strip any chars that could be interpreted by tmux/shell
       const safeTask = schedule.task.replace(/[^a-zA-Z0-9 _./-]/g, '');
-      const notification = `# [Scheduler] Due now: ${safeTask} (schedule #${schedule.id})`;
+      const safeCommand = schedule.command ? schedule.command.replace(/[^a-zA-Z0-9 _./:@=-]/g, '') : '';
+      const notification = `# [Scheduler] Due now: ${safeTask} (schedule #${schedule.id})${safeCommand ? ` | Command: ${safeCommand}` : ''}`;
 
       try {
         execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(notification)}`, { timeout: 2000 });

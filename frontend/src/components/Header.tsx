@@ -157,7 +157,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
     setSearchQuery(value);
     clearTimeout(debounceRef.current);
     if (value.trim().length < 2) { setSearchResults([]); return; }
-    debounceRef.current = setTimeout(() => fetchQuickResults(value), 150);
+    debounceRef.current = setTimeout(() => fetchQuickResults(value), 50);
   }
 
   function selectResult(r: QuickResult) {

@@ -35,6 +35,7 @@ export function Search() {
   const [total, setTotal] = useState(0);
   const [searched, setSearched] = useState(false);
   const [typeFilter, setTypeFilter] = useState(searchParams.get('type') || '');
+  const [engine, setEngine] = useState('');
 
   useEffect(() => {
     const q = searchParams.get('q');
@@ -57,6 +58,7 @@ export function Search() {
       const data = await res.json();
       setResults(data.results || []);
       setTotal(data.total || 0);
+      setEngine(data.engine || '');
     } catch {
       setResults([]);
       setTotal(0);
@@ -121,7 +123,10 @@ export function Search() {
 
       {!loading && searched && (
         <div className={styles.results}>
-          <p className={styles.meta}>{total} results for "{searchParams.get('q')}"</p>
+          <p className={styles.meta}>
+            {total} results for "{searchParams.get('q')}"
+            {engine && <span style={{ marginLeft: 8, opacity: 0.6 }}>via {engine}</span>}
+          </p>
 
           {results.length > 0 ? (
             <div className={styles.list}>

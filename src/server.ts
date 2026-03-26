@@ -379,7 +379,7 @@ app.post('/api/auth/login', async (c) => {
   const isHttps = c.req.url.startsWith('https') || c.req.header('x-forwarded-proto') === 'https';
   setCookie(c, SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: isHttps,
+    secure: true, // Always behind HTTPS via Caddy
     sameSite: 'None',
     maxAge: SESSION_DURATION_MS / 1000,
     path: '/'

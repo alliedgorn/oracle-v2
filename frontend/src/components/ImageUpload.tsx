@@ -11,8 +11,8 @@ interface ImageUploadProps {
 }
 
 const API_BASE = '/api';
-const MAX_WIDTH = 1200;
-const QUALITY = 0.8;
+const MAX_WIDTH = 800;
+const QUALITY = 0.75;
 
 function compressImage(file: File): Promise<File> {
   return new Promise((resolve) => {
@@ -22,7 +22,7 @@ function compressImage(file: File): Promise<File> {
     }
     const img = new Image();
     img.onload = () => {
-      if (img.width <= MAX_WIDTH && file.size < 500000) {
+      if (img.width <= MAX_WIDTH) {
         resolve(file);
         return;
       }

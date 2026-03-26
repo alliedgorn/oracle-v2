@@ -449,8 +449,8 @@
   }
 
   .terminalPanel {
-    height: 55vh;
-    min-height: 300px;
+    height: 75vh;
+    min-height: 400px;
   }
 
   .terminalHeader {

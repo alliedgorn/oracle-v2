@@ -154,8 +154,12 @@ export function SpecReview() {
         body: JSON.stringify({ content: commentText.trim() }),
       });
       if (res.ok) {
+        const newComment = await res.json();
         setCommentText('');
-        loadComments(specId);
+        if (newComment.id) {
+          setComments(prev => prev.some(c => c.id === newComment.id) ? prev : [...prev, newComment]);
+          setCommentTotal(prev => prev + 1);
+        }
       }
     } finally {
       setSubmittingComment(false);

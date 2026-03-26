@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './Risk.module.css';
+import { EmojiButton } from '../components/EmojiButton';
 
 interface RiskItem {
   id: number;
@@ -396,6 +397,7 @@ export function Risk() {
                         onChange={(e) => setCommentText(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && submitComment(risk.id)}
                       />
+                      <EmojiButton onSelect={(e) => setCommentText(prev => prev + e)} />
                       <button
                         className={styles.commentSubmit}
                         onClick={() => submitComment(risk.id)}

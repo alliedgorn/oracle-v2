@@ -6,6 +6,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import styles from './Library.module.css';
 import { FilterTabs } from '../components/FilterTabs';
+import { EmojiButton } from '../components/EmojiButton';
 
 interface Suggestion {
   id: number;
@@ -295,6 +296,7 @@ export function Library() {
                 rows={20}
               />
               <div className={styles.editActions}>
+                <EmojiButton onSelect={(e) => setEditContent(prev => prev + e)} />
                 <button className={styles.editSave} onClick={saveEdit} disabled={saving}>
                   {saving ? 'Saving...' : 'Save'}
                 </button>

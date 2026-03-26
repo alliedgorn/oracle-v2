@@ -6,6 +6,7 @@ import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import styles from './DirectMessages.module.css';
 import { SearchInput } from '../components/SearchInput';
 import { ImageUpload } from '../components/ImageUpload';
+import { EmojiButton } from '../components/EmojiButton';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { autolinkIds } from '../utils/autolink';
@@ -80,7 +81,6 @@ export function DirectMessages() {
   const [newMessage, setNewMessage] = useState('');
   const [_replyAs, setReplyAs] = useState('gorn');
   const [loading, setLoading] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [showNewDm, setShowNewDm] = useState(false);
   const [beasts, setBeasts] = useState<{ name: string; displayName: string }[]>([]);
@@ -499,26 +499,7 @@ export function DirectMessages() {
                     rows={3}
                   />
                   <div className={styles.replyActions}>
-                    <div style={{ position: 'relative' }}>
-                      <button
-                        type="button"
-                        className={styles.emojiBtn}
-                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                        title="Insert emoji"
-                      >😀</button>
-                      {showEmojiPicker && (
-                        <div className={styles.emojiPicker}>
-                          {['😀','😂','😢','🤔','😍','👍','👎','❤️','🔥','👀','✅','❌','💪','🎉','🙏','👏','💯','🚀','⭐','💡','🤝','🫡','📦','⚠️','🏆'].map(e => (
-                            <button
-                              key={e}
-                              type="button"
-                              className={styles.emojiOption}
-                              onClick={() => { setNewMessage(prev => prev + e); setShowEmojiPicker(false); }}
-                            >{e}</button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <EmojiButton onSelect={(e) => setNewMessage(prev => prev + e)} />
                     <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
                     <button
                       type="submit"

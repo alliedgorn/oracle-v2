@@ -3,6 +3,7 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './Board.module.css';
 import ReactMarkdown from 'react-markdown';
 import { autolinkIds } from '../utils/autolink';
+import { EmojiButton } from '../components/EmojiButton';
 
 interface Project {
   id: number;
@@ -533,7 +534,10 @@ export function Board() {
                     className={styles.formTextarea}
                     rows={2}
                   />
-                  <button type="submit" className={styles.newTaskBtn} disabled={!newComment.trim()}>Comment</button>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <EmojiButton onSelect={(e) => setNewComment(prev => prev + e)} />
+                    <button type="submit" className={styles.newTaskBtn} disabled={!newComment.trim()}>Comment</button>
+                  </div>
                 </form>
               </div>
             </div>

@@ -6,6 +6,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { ImageUpload } from '../components/ImageUpload';
+import { EmojiButton } from '../components/EmojiButton';
 import styles from './SpecReview.module.css';
 
 interface SpecVersion {
@@ -413,6 +414,7 @@ export function SpecReview() {
             />
             <div className={styles.commentActions}>
               <ImageUpload onUploadComplete={(md) => setCommentText(prev => prev + md)} />
+              <EmojiButton onSelect={(e) => setCommentText(prev => prev + e)} />
               <button
                 className={styles.commentSubmit}
                 onClick={() => selectedSpec && submitComment(selectedSpec.id)}

@@ -5437,15 +5437,49 @@ app.get('/api/search', async (c) => {
   let q = c.req.query('q')?.trim();
   if (!q) return c.json({ results: [], total: 0, query: '' });
 
-  let type = c.req.query('type');
+  let type = c.req.query('type') || undefined;
   const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') || '20', 10)));
   const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10));
 
-  // Type-prefix syntax: "forum:websocket" → type=forum, q=websocket (T#351)
+  // Type aliases: "thread" → "forum", "post" → "forum", "entry" → "library", etc.
+  const TYPE_ALIASES: Record<string, string> = {
+    thread: 'forum', post: 'forum', message: 'forum',
+    entry: 'library', doc: 'library', document: 'library',
+    issue: 'task', ticket: 'task',
+    specification: 'spec',
+  };
+
+  // Type-prefix syntax: "forum:websocket" or "type:forum websocket" (T#351/T#352)
   const prefixMatch = q.match(/^(\w+):\s*(.+)$/);
-  if (prefixMatch && VALID_SOURCE_TYPES.includes(prefixMatch[1].toLowerCase())) {
-    type = prefixMatch[1].toLowerCase();
-    q = prefixMatch[2].trim();
+  if (prefixMatch) {
+    const prefix = prefixMatch[1].toLowerCase();
+    const rest = prefixMatch[2].trim();
+    if (prefix === 'type') {
+      // "type:forum test" or "type:thread test" — split on first space
+      const spaceIdx = rest.indexOf(' ');
+      if (spaceIdx > 0) {
+        const typeName = rest.slice(0, spaceIdx).toLowerCase();
+        const resolved = TYPE_ALIASES[typeName] || typeName;
+        if (VALID_SOURCE_TYPES.includes(resolved)) {
+          type = resolved;
+          q = rest.slice(spaceIdx + 1).trim();
+        }
+      } else {
+        // "type:forum" with no query — resolve type, search for everything
+        const resolved = TYPE_ALIASES[rest.toLowerCase()] || rest.toLowerCase();
+        if (VALID_SOURCE_TYPES.includes(resolved)) {
+          type = resolved;
+          q = '*';
+        }
+      }
+    } else {
+      // Direct prefix: "forum:websocket", "thread:websocket"
+      const resolved = TYPE_ALIASES[prefix] || prefix;
+      if (VALID_SOURCE_TYPES.includes(resolved)) {
+        type = resolved;
+        q = rest;
+      }
+    }
   }
 
   // Try Meilisearch first

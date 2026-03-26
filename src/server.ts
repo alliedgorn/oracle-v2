@@ -2840,9 +2840,21 @@ try {
   try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN type TEXT DEFAULT 'task'`).run(); } catch { /* exists */ }
   // Backfill existing tasks with no type
   sqlite.prepare(`UPDATE tasks SET type = 'task' WHERE type IS NULL`).run();
+  // v3: SDD enforcement columns (T#317)
+  try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN approval_required INTEGER NOT NULL DEFAULT 0`).run(); } catch { /* exists */ }
+  try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN spec_id INTEGER`).run(); } catch { /* exists */ }
 } catch { /* already exists */ }
 
 const VALID_TASK_TYPES = ['bug', 'feature', 'improvement', 'chore', 'task'];
+
+// SDD enforcement: check if task can transition to in_progress or done
+function checkApprovalGate(task: any): string | null {
+  if (!task.approval_required) return null;
+  if (!task.spec_id) return "Gorn's spec approval required before starting. Submit a spec via /spec submit and wait for approval at /specs.";
+  const spec = sqlite.prepare('SELECT status FROM spec_reviews WHERE id = ?').get(task.spec_id) as any;
+  if (!spec || spec.status !== 'approved') return "Spec not yet approved. Wait for Gorn's approval at /specs before starting.";
+  return null;
+}
 
 // Create task_comments table
 try {
@@ -2954,9 +2966,10 @@ app.post('/api/tasks', async (c) => {
   const taskType = type || 'task';
 
   const now = new Date().toISOString();
+  const approvalRequired = data.approval_required ? 1 : 0;
   const result = sqlite.prepare(
-    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, now, now);
+    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, approval_required, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, now, now);
 
   const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid);
   wsBroadcast('task_created', task);
@@ -2988,9 +3001,15 @@ app.patch('/api/tasks/:id', async (c) => {
   if (data.priority && !validPriorities.includes(data.priority)) return c.json({ error: `Invalid priority. Valid: ${validPriorities.join(', ')}` }, 400);
   if (data.type && !VALID_TASK_TYPES.includes(data.type)) return c.json({ error: `Invalid type. Valid: ${VALID_TASK_TYPES.join(', ')}` }, 400);
 
+  // SDD enforcement: block forward transitions if approval_required and no approved spec
+  if (data.status && ['in_progress', 'in_review', 'done'].includes(data.status)) {
+    const gateError = checkApprovalGate(existing);
+    if (gateError) return c.json({ error: gateError }, 400);
+  }
+
   const updates: string[] = [];
   const params: any[] = [];
-  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type']) {
+  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type', 'approval_required', 'spec_id']) {
     if (data[field] !== undefined) { updates.push(`${field} = ?`); params.push(data[field]); }
   }
   if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
@@ -3019,6 +3038,19 @@ app.post('/api/tasks/bulk-status', async (c) => {
 
   const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   if (!validStatuses.includes(status)) return c.json({ error: 'Invalid status' }, 400);
+
+  // SDD enforcement for bulk status
+  if (['in_progress', 'in_review', 'done'].includes(status)) {
+    const blocked: { id: number; error: string }[] = [];
+    for (const id of task_ids) {
+      const task = sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as any;
+      if (task) {
+        const gateError = checkApprovalGate(task);
+        if (gateError) blocked.push({ id, error: gateError });
+      }
+    }
+    if (blocked.length > 0) return c.json({ error: 'Some tasks blocked by SDD approval gate', blocked }, 400);
+  }
 
   const now = new Date().toISOString();
   const stmt = sqlite.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?');
@@ -4347,7 +4379,14 @@ app.post('/api/specs', async (c) => {
     const result = sqlite.prepare(
       'INSERT INTO spec_reviews (repo, file_path, task_id, title, author, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(repo, file_path, task_id || null, title, author, 'pending', now, now);
-    const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get((result as any).lastInsertRowid);
+    const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get((result as any).lastInsertRowid) as any;
+    // Auto-link spec to task if task_id provided
+    if (task_id) {
+      const taskIdNum = parseInt(String(task_id).replace(/\D/g, ''), 10);
+      if (!isNaN(taskIdNum)) {
+        sqlite.prepare('UPDATE tasks SET spec_id = ?, updated_at = ? WHERE id = ?').run(spec.id, now, taskIdNum);
+      }
+    }
     wsBroadcast('spec_submitted', { spec });
     return c.json(spec, 201);
   } catch (e: any) {

@@ -48,17 +48,17 @@ Identity via `?as=beast` query param, `author` in body, or session auth (Gorn).
 
 ### Notifications
 
-On new comment, notify:
+On new comment, notify all of the following (deduplicated):
 1. **Spec author** — the beast who submitted the spec
 2. **Previous commenters** — all distinct authors of prior comments on this spec
-3. **@mentioned beasts** — parsed from comment content
+3. **@mentioned beasts** — any beast @mentioned in the comment content, even if they have never participated in the spec discussion before. This ensures that tagging a new beast (e.g., "@bertus can you review this?") sends them a notification.
 
 Uses `notifyMentioned()` with context parameter:
 - type: `"Spec comment"`
 - label: `"spec #<id>"`
 - hint: `"View at /specs?spec=<id> to see comments."`
 
-Excludes self-notification and Gorn (uses frontend).
+Notification recipients are merged into a single deduplicated set. Excludes self-notification and Gorn (uses frontend).
 
 ## Frontend
 

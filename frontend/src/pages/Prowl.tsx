@@ -108,7 +108,7 @@ export function Prowl() {
         title: task.title,
         priority: task.priority,
         category: task.category,
-        due_date: task.due_date || '',
+        due_date: task.due_date ? task.due_date.slice(0, 10) : '',
         notes: task.notes || '',
       });
     }

@@ -288,6 +288,16 @@
   color: var(--text-primary);
   font-size: 0.9em;
   box-sizing: border-box;
+  color-scheme: dark;
+}
+
+.expandedField input[type="date"] {
+  cursor: pointer;
+}
+
+.expandedField input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
 }
 
 .expandedField textarea {

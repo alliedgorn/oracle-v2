@@ -34,7 +34,7 @@ Add global full-text search across all Den Book content using SQLite FTS5. One s
 CREATE VIRTUAL TABLE search_index USING fts5(
   title,
   content,
-  source_type,    -- 'forum', 'library', 'spec', 'risk'
+  source_type,    -- 'forum', 'library', 'spec', 'risk', 'task'
   source_id,      -- ID in the source table
   author,
   created_at,
@@ -52,6 +52,7 @@ FTS5 virtual tables are not regular tables — they maintain their own inverted 
 | Library entries | library | title | content |
 | Spec reviews | spec_reviews | title | description/content |
 | Risks | risks | title | description |
+| PM Board tasks | tasks | title | description |
 
 ### What Is EXCLUDED (privacy)
 
@@ -140,7 +141,9 @@ On first startup with the feature, backfill all existing content:
 INSERT INTO search_index SELECT title, content, 'library', id, author, created_at FROM library;
 INSERT INTO search_index SELECT t.title, m.content, 'forum', m.id, m.author, m.created_at
   FROM thread_messages m JOIN threads t ON m.thread_id = t.id;
--- etc for specs, risks
+INSERT INTO search_index SELECT title, description, 'spec', id, author, created_at FROM spec_reviews;
+INSERT INTO search_index SELECT title, description, 'risk', id, created_by, created_at FROM risks;
+INSERT INTO search_index SELECT title, description, 'task', id, assigned_to, created_at FROM tasks;
 ```
 
 Only run backfill if `search_index` is empty (first migration).
@@ -150,7 +153,7 @@ Only run backfill if `search_index` is empty (first migration).
 ### Phase 1 (this spec)
 
 1. **Search bar in nav** — global, always visible, routes to `/search?q=...`
-2. **Search results page** (`/search`) — results grouped by type with tabs (All / Forum / Library / Specs / Risks)
+2. **Search results page** (`/search`) — results grouped by type with tabs (All / Forum / Library / Specs / Risks / Tasks)
 3. **Result cards** — title, snippet with highlighting, author, source type badge, clickable link to source
 
 ### Phase 2 (future, not this spec)
@@ -162,7 +165,7 @@ Only run backfill if `search_index` is empty (first migration).
 
 1. FTS5 virtual table creation + backfill migration
 2. `GET /api/search` endpoint with sanitization + auth
-3. Index-on-write hooks (forum, library, specs, risks)
+3. Index-on-write hooks (forum, library, specs, risks, tasks)
 4. Frontend: search bar in nav + search results page
 5. Testing: verify excluded content not indexed, sanitization works
 

@@ -5322,18 +5322,11 @@ function validateWsUpgrade(req: Request, server: any): { allowed: boolean; reaso
     }
   }
 
-  // Auth check: local bypass (if enabled) or valid session
-  const authEnabled = getSetting('auth_enabled') === 'true';
-  if (authEnabled) {
-    const localBypass = getSetting('auth_local_bypass') !== 'false';
-    if (!isLocal || !localBypass) {
-      if (!hasSession) {
-        return { allowed: false, reason: 'Unauthorized: no valid session' };
-      }
-    }
-  }
+  // WS is read-only (broadcast only) — origin check above is sufficient security.
+  // Session auth is not required for WS since cookies may not be sent with WS upgrades
+  // in all browsers (SameSite restrictions). The origin whitelist prevents cross-site abuse.
 
-  const identity = hasSession ? 'gorn' : (isLocal ? 'local' : 'unknown');
+  const identity = hasSession ? 'gorn' : (isLocal ? 'local' : (origin ? 'browser' : 'unknown'));
   return { allowed: true, identity };
 }
 

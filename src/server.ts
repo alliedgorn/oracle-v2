@@ -4635,6 +4635,15 @@ app.get('/api/specs/:id/comments', (c) => {
   return c.json({ comments });
 });
 
+// GET /api/spec-comments/:commentId — single comment by ID
+app.get('/api/spec-comments/:commentId', (c) => {
+  const commentId = parseInt(c.req.param('commentId'), 10);
+  if (isNaN(commentId)) return c.json({ error: 'Invalid ID' }, 400);
+  const comment = sqlite.prepare('SELECT * FROM spec_comments WHERE id = ?').get(commentId);
+  if (!comment) return c.json({ error: 'Comment not found' }, 404);
+  return c.json(comment);
+});
+
 // POST /api/specs/:id/comments
 app.post('/api/specs/:id/comments', async (c) => {
   const id = parseInt(c.req.param('id'), 10);

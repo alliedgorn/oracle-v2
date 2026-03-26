@@ -115,21 +115,23 @@ export function SpecReview() {
     else { setComments([]); setCommentTotal(0); }
   }, [selectedSpec, loadComments]);
 
-  // Real-time updates — fetch only the new comment and append
+  // Real-time updates — fetch single new comment and append
   useWebSocket('spec_comment', async (data: any) => {
-    const specId = data?.spec_id || selectedSpec?.id;
-    if (!specId || specId !== selectedSpec?.id) return;
+    const specId = data?.spec_id;
     const commentId = data?.comment_id;
-    if (!commentId || comments.some(c => c.id === commentId)) return;
+    if (!specId || !commentId) return;
+    // Only care about comments for the currently viewed spec
+    if (selectedSpec && specId !== selectedSpec.id) return;
     try {
       const res = await fetch(`${API_BASE}/spec-comments/${commentId}`);
       if (res.ok) {
         const newComment = await res.json();
         if (newComment.id) {
           setComments(prev => prev.some(c => c.id === newComment.id) ? prev : [...prev, newComment]);
+          setCommentTotal(prev => prev + 1);
         }
       }
-    } catch { /* fallback to full reload */ loadComments(specId); }
+    } catch { /* ignore — don't fallback to full reload */ }
   });
   useWebSocket('spec_reviewed', () => {
     loadSpecs();

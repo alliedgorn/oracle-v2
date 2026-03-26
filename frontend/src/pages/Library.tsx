@@ -60,6 +60,14 @@ export function Library() {
   const [editTags, setEditTags] = useState('');
   const [editShelfId, setEditShelfId] = useState<string>('');
   const [saving, setSaving] = useState(false);
+  const [shelfModal, setShelfModal] = useState<'create' | 'edit' | null>(null);
+  const [editingShelf, setEditingShelf] = useState<Shelf | null>(null);
+  const [shelfName, setShelfName] = useState('');
+  const [shelfDesc, setShelfDesc] = useState('');
+  const [shelfIcon, setShelfIcon] = useState('');
+  const [shelfColor, setShelfColor] = useState('');
+  const [shelfSaving, setShelfSaving] = useState(false);
+  const [shelfError, setShelfError] = useState('');
 
   const docId = searchParams.get('doc');
 
@@ -133,6 +141,40 @@ export function Library() {
       loadDocs();
     } catch { /* ignore */ }
     setSaving(false);
+  }
+
+  function openCreateShelf() {
+    setShelfName(''); setShelfDesc(''); setShelfIcon(''); setShelfColor('');
+    setShelfError(''); setEditingShelf(null); setShelfModal('create');
+  }
+
+  function openEditShelf(shelf: Shelf) {
+    setShelfName(shelf.name); setShelfDesc(shelf.description || ''); setShelfIcon(shelf.icon || ''); setShelfColor(shelf.color || '');
+    setShelfError(''); setEditingShelf(shelf); setShelfModal('edit');
+  }
+
+  async function saveShelf() {
+    if (!shelfName.trim()) { setShelfError('Name is required'); return; }
+    setShelfSaving(true); setShelfError('');
+    try {
+      const body = { name: shelfName.trim(), description: shelfDesc.trim() || null, icon: shelfIcon.trim() || null, color: shelfColor.trim() || null };
+      const url = shelfModal === 'edit' && editingShelf ? `${API_BASE}/library/shelves/${editingShelf.id}` : `${API_BASE}/library/shelves`;
+      const method = shelfModal === 'edit' ? 'PATCH' : 'POST';
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(shelfModal === 'create' ? { ...body, created_by: 'gorn' } : body) });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Failed to save shelf'); }
+      setShelfModal(null); loadShelves(); loadDocs();
+    } catch (e: any) { setShelfError(e.message); }
+    setShelfSaving(false);
+  }
+
+  async function deleteShelf(shelf: Shelf) {
+    if (!window.confirm(`Delete shelf "${shelf.name}"? Entries will become ungrouped.`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/library/shelves/${shelf.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      if (shelfFilter === String(shelf.id)) setShelfFilter('');
+      setShelfModal(null); loadShelves(); loadDocs();
+    } catch { /* ignore */ }
   }
 
   // Detail view
@@ -259,27 +301,63 @@ export function Library() {
         />
       </div>
 
-      {shelves.length > 0 && (
-        <div className={styles.shelfBar}>
+      <div className={styles.shelfBar}>
+        <button
+          className={`${styles.shelfPill} ${!shelfFilter ? styles.shelfActive : ''}`}
+          onClick={() => setShelfFilter('')}
+        >All</button>
+        {shelves.map(s => (
           <button
-            className={`${styles.shelfPill} ${!shelfFilter ? styles.shelfActive : ''}`}
-            onClick={() => setShelfFilter('')}
-          >All</button>
-          {shelves.map(s => (
-            <button
-              key={s.id}
-              className={`${styles.shelfPill} ${shelfFilter === String(s.id) ? styles.shelfActive : ''}`}
-              onClick={() => setShelfFilter(shelfFilter === String(s.id) ? '' : String(s.id))}
-              style={s.color ? { borderColor: shelfFilter === String(s.id) ? s.color : undefined } : undefined}
-            >
-              {s.icon ? `${s.icon} ` : ''}{s.name}
-              <span className={styles.shelfCount}>{s.entry_count}</span>
-            </button>
-          ))}
+            key={s.id}
+            className={`${styles.shelfPill} ${shelfFilter === String(s.id) ? styles.shelfActive : ''}`}
+            onClick={() => setShelfFilter(shelfFilter === String(s.id) ? '' : String(s.id))}
+            onContextMenu={e => { e.preventDefault(); openEditShelf(s); }}
+            style={s.color ? { borderColor: shelfFilter === String(s.id) ? s.color : undefined } : undefined}
+          >
+            {s.icon ? `${s.icon} ` : ''}{s.name}
+            <span className={styles.shelfCount}>{s.entry_count}</span>
+          </button>
+        ))}
+        {shelves.length > 0 && (
           <button
             className={`${styles.shelfPill} ${shelfFilter === 'ungrouped' ? styles.shelfActive : ''}`}
             onClick={() => setShelfFilter(shelfFilter === 'ungrouped' ? '' : 'ungrouped')}
           >Ungrouped</button>
+        )}
+        <button className={styles.shelfAdd} onClick={openCreateShelf} title="Create shelf">+</button>
+      </div>
+
+      {shelfModal && (
+        <div className={styles.modalOverlay} onClick={() => setShelfModal(null)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <h3 className={styles.modalTitle}>{shelfModal === 'create' ? 'Create Shelf' : 'Edit Shelf'}</h3>
+            {shelfError && <div className={styles.modalError}>{shelfError}</div>}
+            <label className={styles.editLabel}>Name *</label>
+            <input className={styles.editInput} value={shelfName} onChange={e => setShelfName(e.target.value)} placeholder="e.g. Architecture Decisions" autoFocus />
+            <label className={styles.editLabel}>Description</label>
+            <input className={styles.editInput} value={shelfDesc} onChange={e => setShelfDesc(e.target.value)} placeholder="What goes on this shelf?" />
+            <div className={styles.shelfFormRow}>
+              <div className={styles.shelfFormField}>
+                <label className={styles.editLabel}>Icon (emoji)</label>
+                <input className={styles.editInput} value={shelfIcon} onChange={e => setShelfIcon(e.target.value)} placeholder="📚" style={{ width: 80 }} />
+              </div>
+              <div className={styles.shelfFormField}>
+                <label className={styles.editLabel}>Color</label>
+                <div className={styles.colorPicker}>
+                  {['#ef4444','#f59e0b','#22c55e','#3b82f6','#8b5cf6','#ec4899','#06b6d4','#f97316'].map(c => (
+                    <button key={c} className={`${styles.colorDot} ${shelfColor === c ? styles.colorDotActive : ''}`} style={{ backgroundColor: c }} onClick={() => setShelfColor(shelfColor === c ? '' : c)} />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className={styles.modalActions}>
+              <button className={styles.editSave} onClick={saveShelf} disabled={shelfSaving}>{shelfSaving ? 'Saving...' : shelfModal === 'create' ? 'Create' : 'Save'}</button>
+              <button className={styles.editCancel} onClick={() => setShelfModal(null)}>Cancel</button>
+              {shelfModal === 'edit' && editingShelf && (
+                <button className={styles.shelfDelete} onClick={() => deleteShelf(editingShelf)}>Delete Shelf</button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

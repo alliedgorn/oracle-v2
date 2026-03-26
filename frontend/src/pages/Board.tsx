@@ -139,10 +139,18 @@ export function Board() {
 
   async function loadBoard() {
     const params = new URLSearchParams();
-    if (projectFilter) params.set('project_id', projectFilter);
+    if (projectFilter && projectFilter !== '__active__') params.set('project_id', projectFilter);
     if (assigneeFilter) params.set('assigned_to', assigneeFilter);
     const res = await fetch(`${API_BASE}/board?${params}`);
     const data = await res.json();
+    // Filter to active projects only when "All Active" is selected
+    if (projectFilter === '__active__' && data.columns) {
+      const activeIds = new Set(data.projects.filter((p: any) => p.status === 'active').map((p: any) => p.id));
+      for (const col of Object.keys(data.columns)) {
+        data.columns[col] = data.columns[col].filter((t: any) => t.project_id && activeIds.has(t.project_id));
+      }
+      data.total = Object.values(data.columns).reduce((sum: number, col: any) => sum + col.length, 0);
+    }
     setBoard(data);
   }
 
@@ -270,7 +278,8 @@ export function Board() {
           onChange={e => setProjectFilter(e.target.value)}
         >
           <option value="">All Projects</option>
-          {(['active', 'paused', 'completed'] as const).map(status => {
+          <option value="__active__">All Active</option>
+          {(['active', 'paused'] as const).map(status => {
             const group = board.projects.filter(p => p.status === status);
             return group.length > 0 ? (
               <optgroup key={status} label={status.charAt(0).toUpperCase() + status.slice(1)}>
@@ -292,7 +301,7 @@ export function Board() {
           ))}
           <option value="gorn">Gorn</option>
         </select>
-        {projectFilter && (() => {
+        {projectFilter && projectFilter !== '__active__' && (() => {
           const proj = board.projects.find(p => String(p.id) === projectFilter);
           return proj ? (
             <>

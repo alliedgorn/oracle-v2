@@ -302,6 +302,27 @@
 
 /* Tablet */
 @media (max-width: 900px) {
+  .quickSearch {
+    position: static;
+  }
+
+  .quickSearchInput {
+    width: 160px;
+  }
+
+  .quickSearchResults {
+    position: fixed;
+    top: auto;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: 60vh;
+    z-index: 300;
+  }
+
+  .quickSearchHint {
+    display: none;
+  }
   .header {
     flex-wrap: wrap;
     gap: 8px;
@@ -356,6 +377,15 @@
 
 /* Mobile */
 @media (max-width: 480px) {
+  .quickSearchInput {
+    width: 120px;
+    font-size: 12px;
+  }
+
+  .quickSearchToggle {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
   .header {
     padding: 8px 12px;
   }

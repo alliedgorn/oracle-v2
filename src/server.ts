@@ -2669,6 +2669,118 @@ try {
   )`).run();
 } catch { /* already exists */ }
 
+// Library Shelves table (T#330)
+try { sqlite.prepare(`
+  CREATE TABLE IF NOT EXISTS library_shelves (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    icon TEXT,
+    color TEXT,
+    created_by TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`).run(); } catch { /* exists */ }
+
+// Add shelf_id to library table
+try { sqlite.prepare(`ALTER TABLE library ADD COLUMN shelf_id INTEGER REFERENCES library_shelves(id) ON DELETE SET NULL`).run(); } catch { /* exists */ }
+// Index for efficient shelf filtering
+try { sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_library_shelf_id ON library(shelf_id)`).run(); } catch { /* exists */ }
+
+// --- Shelf CRUD ---
+
+// GET /api/library/shelves — list all shelves with entry counts
+app.get('/api/library/shelves', (c) => {
+  const shelves = sqlite.prepare(`
+    SELECT s.*, COUNT(l.id) as entry_count
+    FROM library_shelves s
+    LEFT JOIN library l ON l.shelf_id = s.id
+    GROUP BY s.id
+    ORDER BY s.name
+  `).all();
+  return c.json({ shelves });
+});
+
+// GET /api/library/shelves/:id — single shelf with entries
+app.get('/api/library/shelves/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const shelf = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get(id);
+  if (!shelf) return c.json({ error: 'Shelf not found' }, 404);
+  const entryCount = (sqlite.prepare('SELECT COUNT(*) as c FROM library WHERE shelf_id = ?').get(id) as any).c;
+  return c.json({ ...shelf as any, entry_count: entryCount });
+});
+
+// POST /api/library/shelves — create shelf
+app.post('/api/library/shelves', async (c) => {
+  try {
+    const data = await c.req.json();
+    if (!data.name?.trim()) return c.json({ error: 'name required' }, 400);
+    const author = (c.req.query('as') || data.created_by || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+    if (!author) return c.json({ error: 'Identity required' }, 400);
+
+    // Check duplicate
+    const existing = sqlite.prepare('SELECT id FROM library_shelves WHERE name = ?').get(data.name.trim());
+    if (existing) return c.json({ error: 'A shelf with this name already exists' }, 409);
+
+    const now = new Date().toISOString();
+    const result = sqlite.prepare(
+      'INSERT INTO library_shelves (name, description, icon, color, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(data.name.trim(), data.description || null, data.icon || null, data.color || null, author, now, now);
+    const shelf = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get((result as any).lastInsertRowid);
+    return c.json(shelf, 201);
+  } catch (e: any) {
+    return c.json({ error: e?.message || 'Invalid request' }, 400);
+  }
+});
+
+// PATCH /api/library/shelves/:id — update shelf
+app.patch('/api/library/shelves/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get(id);
+  if (!existing) return c.json({ error: 'Shelf not found' }, 404);
+  try {
+    const data = await c.req.json();
+    const allowed = ['name', 'description', 'icon', 'color'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const field of allowed) {
+      if (field in data) {
+        if (field === 'name' && data.name?.trim()) {
+          const dup = sqlite.prepare('SELECT id FROM library_shelves WHERE name = ? AND id != ?').get(data.name.trim(), id);
+          if (dup) return c.json({ error: 'A shelf with this name already exists' }, 409);
+        }
+        updates.push(`${field} = ?`);
+        values.push(data[field]);
+      }
+    }
+    if (updates.length === 0) return c.json({ error: 'No valid fields to update' }, 400);
+    updates.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+    sqlite.prepare(`UPDATE library_shelves SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    const shelf = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get(id);
+    return c.json(shelf);
+  } catch {
+    return c.json({ error: 'Invalid request' }, 400);
+  }
+});
+
+// DELETE /api/library/shelves/:id — delete shelf, entries become ungrouped (Gorn only)
+app.delete('/api/library/shelves/:id', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get(id);
+  if (!existing) return c.json({ error: 'Shelf not found' }, 404);
+  // Ungroup entries (ON DELETE SET NULL handles this, but be explicit)
+  sqlite.prepare('UPDATE library SET shelf_id = NULL WHERE shelf_id = ?').run(id);
+  sqlite.prepare('DELETE FROM library_shelves WHERE id = ?').run(id);
+  return c.json({ deleted: true, id });
+});
+
 // GET /api/library — list/search library entries
 app.get('/api/library', (c) => {
   const q = c.req.query('q');
@@ -2697,6 +2809,13 @@ app.get('/api/library', (c) => {
     query += ' AND tags LIKE ?';
     params.push(`%"${tag}"%`);
   }
+  const shelfId = c.req.query('shelf_id');
+  if (shelfId === 'null') {
+    query += ' AND shelf_id IS NULL';
+  } else if (shelfId) {
+    query += ' AND shelf_id = ?';
+    params.push(parseInt(shelfId, 10));
+  }
 
   // Count
   const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as count');
@@ -2716,6 +2835,7 @@ app.get('/api/library', (c) => {
       category: r.type,
       author: r.author,
       tags: (() => { try { const t = JSON.parse(r.tags || '[]'); return Array.isArray(t) ? t : []; } catch { return typeof r.tags === 'string' && r.tags ? r.tags.split(',').map((s: string) => s.trim()) : []; } })(),
+      shelf_id: r.shelf_id || null,
       created_at: new Date(r.created_at).toISOString(),
       updated_at: new Date(r.updated_at).toISOString(),
     })),
@@ -2761,9 +2881,10 @@ app.post('/api/library', async (c) => {
     const tags = JSON.stringify(data.tags || []);
     const now = Date.now();
 
+    const shelfId = data.shelf_id !== undefined ? (data.shelf_id || null) : null;
     const result = sqlite.prepare(
-      'INSERT INTO library (title, content, type, author, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(data.title, data.content, type, data.author, tags, now, now);
+      'INSERT INTO library (title, content, type, author, tags, shelf_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(data.title, data.content, type, data.author, tags, shelfId, now, now);
 
     return c.json({
       id: (result as any).lastInsertRowid,
@@ -2789,6 +2910,7 @@ app.patch('/api/library/:id', async (c) => {
     if (data.content) { updates.push('content = ?'); params.push(data.content); }
     if (data.type) { updates.push('type = ?'); params.push(data.type); }
     if (data.tags) { updates.push('tags = ?'); params.push(JSON.stringify(data.tags)); }
+    if ('shelf_id' in data) { updates.push('shelf_id = ?'); params.push(data.shelf_id || null); }
 
     params.push(id);
     sqlite.prepare(`UPDATE library SET ${updates.join(', ')} WHERE id = ?`).run(...params);

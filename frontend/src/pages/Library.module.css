@@ -24,6 +24,53 @@
   margin-bottom: var(--space-md);
 }
 
+.shelfBar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.shelfPill {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shelfPill:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.shelfActive {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.shelfCount {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  background: var(--bg-muted);
+  padding: 0 5px;
+  border-radius: 8px;
+}
+
+.shelfBadge {
+  font-size: 0.7em;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
 .filters {
   margin-bottom: var(--space-lg);
 }

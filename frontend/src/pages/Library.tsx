@@ -18,8 +18,19 @@ interface LibraryDoc {
   authorColor?: string;
   preview?: string;
   tags: string[];
+  shelf_id: number | null;
   created_at: string;
   updated_at: string;
+}
+
+interface Shelf {
+  id: number;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  entry_count: number;
+  created_by: string;
 }
 
 const API_BASE = '/api';
@@ -40,14 +51,25 @@ export function Library() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [loading, setLoading] = useState(false);
+  const [shelves, setShelves] = useState<Shelf[]>([]);
+  const [shelfFilter, setShelfFilter] = useState<string>('');
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [editType, setEditType] = useState('');
   const [editTags, setEditTags] = useState('');
+  const [editShelfId, setEditShelfId] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
   const docId = searchParams.get('doc');
+
+  const loadShelves = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/library/shelves`);
+      const data = await res.json();
+      setShelves(data.shelves || []);
+    } catch { /* ignore */ }
+  }, []);
 
   const loadDocs = useCallback(async () => {
     setLoading(true);
@@ -55,14 +77,16 @@ export function Library() {
       const params = new URLSearchParams();
       if (search.trim()) params.set('q', search.trim());
       if (category !== 'all') params.set('category', category);
+      if (shelfFilter === 'ungrouped') params.set('shelf_id', 'null');
+      else if (shelfFilter) params.set('shelf_id', shelfFilter);
       const res = await fetch(`${API_BASE}/library?${params}`);
       const data = await res.json();
       setDocs(data.entries || data.docs || []);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [search, category]);
+  }, [search, category, shelfFilter]);
 
-  useEffect(() => { loadDocs(); }, [loadDocs]);
+  useEffect(() => { loadDocs(); loadShelves(); }, [loadDocs, loadShelves]);
 
   // Load single doc when docId is in URL
   useEffect(() => {
@@ -83,6 +107,7 @@ export function Library() {
     setEditContent(selectedDoc.content);
     setEditType(selectedDoc.type || selectedDoc.category || 'learning');
     setEditTags(Array.isArray(selectedDoc.tags) ? selectedDoc.tags.join(', ') : (selectedDoc.tags || ''));
+    setEditShelfId(selectedDoc.shelf_id ? String(selectedDoc.shelf_id) : '');
     setEditing(true);
   }
 
@@ -98,7 +123,7 @@ export function Library() {
       const res = await fetch(`${API_BASE}/library/${selectedDoc.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: editTitle, content: editContent, type: editType, tags }),
+        body: JSON.stringify({ title: editTitle, content: editContent, type: editType, tags, shelf_id: editShelfId ? parseInt(editShelfId, 10) : null }),
       });
       if (!res.ok) throw new Error('Save failed');
       const updated = await res.json();
@@ -140,6 +165,17 @@ export function Library() {
                 <option value="research">Research</option>
                 <option value="decision">Decision</option>
                 <option value="guide">Guide</option>
+              </select>
+              <label className={styles.editLabel}>Shelf</label>
+              <select
+                className={styles.editSelect}
+                value={editShelfId}
+                onChange={e => setEditShelfId(e.target.value)}
+              >
+                <option value="">No shelf</option>
+                {shelves.map(s => (
+                  <option key={s.id} value={s.id}>{s.icon ? `${s.icon} ` : ''}{s.name}</option>
+                ))}
               </select>
               <label className={styles.editLabel}>Tags (comma-separated)</label>
               <input
@@ -223,6 +259,30 @@ export function Library() {
         />
       </div>
 
+      {shelves.length > 0 && (
+        <div className={styles.shelfBar}>
+          <button
+            className={`${styles.shelfPill} ${!shelfFilter ? styles.shelfActive : ''}`}
+            onClick={() => setShelfFilter('')}
+          >All</button>
+          {shelves.map(s => (
+            <button
+              key={s.id}
+              className={`${styles.shelfPill} ${shelfFilter === String(s.id) ? styles.shelfActive : ''}`}
+              onClick={() => setShelfFilter(shelfFilter === String(s.id) ? '' : String(s.id))}
+              style={s.color ? { borderColor: shelfFilter === String(s.id) ? s.color : undefined } : undefined}
+            >
+              {s.icon ? `${s.icon} ` : ''}{s.name}
+              <span className={styles.shelfCount}>{s.entry_count}</span>
+            </button>
+          ))}
+          <button
+            className={`${styles.shelfPill} ${shelfFilter === 'ungrouped' ? styles.shelfActive : ''}`}
+            onClick={() => setShelfFilter(shelfFilter === 'ungrouped' ? '' : 'ungrouped')}
+          >Ungrouped</button>
+        </div>
+      )}
+
       <div className={styles.filters}>
         <FilterTabs
           items={CATEGORIES}
@@ -260,6 +320,14 @@ export function Library() {
                 {doc.author}
               </span>
               {doc.category && <span>{doc.category}</span>}
+              {doc.shelf_id && (() => {
+                const shelf = shelves.find(s => s.id === doc.shelf_id);
+                return shelf ? (
+                  <span className={styles.shelfBadge} style={shelf.color ? { borderColor: shelf.color, color: shelf.color } : undefined}>
+                    {shelf.icon ? `${shelf.icon} ` : ''}{shelf.name}
+                  </span>
+                ) : null;
+              })()}
               {(Array.isArray(doc.tags) ? doc.tags : []).length > 0 && (
                 <div className={styles.tags}>
                   {(Array.isArray(doc.tags) ? doc.tags : []).slice(0, 3).map(tag => (

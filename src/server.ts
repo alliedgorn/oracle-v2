@@ -2736,7 +2736,8 @@ app.post('/api/library/shelves', async (c) => {
     const result = sqlite.prepare(
       'INSERT INTO library_shelves (name, description, icon, color, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(data.name.trim(), data.description || null, data.icon || null, data.color || null, author, now, now);
-    const shelf = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get((result as any).lastInsertRowid);
+    const shelf = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get((result as any).lastInsertRowid) as any;
+    searchIndexUpsert('shelf', shelf.id, shelf.name, shelf.description || '', author, now, '/library');
     return c.json(shelf, 201);
   } catch (e: any) {
     return c.json({ error: e?.message || 'Invalid request' }, 400);
@@ -2769,7 +2770,8 @@ app.patch('/api/library/shelves/:id', async (c) => {
     values.push(new Date().toISOString());
     values.push(id);
     sqlite.prepare(`UPDATE library_shelves SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    const shelf = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get(id);
+    const shelf = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get(id) as any;
+    if (shelf) searchIndexUpsert('shelf', id, shelf.name, shelf.description || '', shelf.created_by, shelf.created_at, '/library');
     return c.json(shelf);
   } catch {
     return c.json({ error: 'Invalid request' }, 400);
@@ -2786,6 +2788,7 @@ app.delete('/api/library/shelves/:id', async (c) => {
   // Ungroup entries (ON DELETE SET NULL handles this, but be explicit)
   sqlite.prepare('UPDATE library SET shelf_id = NULL WHERE shelf_id = ?').run(id);
   sqlite.prepare('DELETE FROM library_shelves WHERE id = ?').run(id);
+  searchIndexDelete('shelf', id);
   return c.json({ deleted: true, id });
 });
 
@@ -5375,6 +5378,10 @@ async function backfillMeilisearch() {
   const riskRows = sqlite.prepare('SELECT id, title, description, created_by, created_at FROM risks').all() as any[];
   for (const r of riskRows) docs.push({ search_id: `risk_${r.id}`, title: r.title, content: r.description || '', source_type: 'risk', source_id: r.id, author: r.created_by, created_at: r.created_at, url: '/risk' });
 
+  // Shelves (T#351)
+  const shelfRows = sqlite.prepare('SELECT id, name, description, icon, color, created_by, created_at FROM library_shelves').all() as any[];
+  for (const r of shelfRows) docs.push({ search_id: `shelf_${r.id}`, title: r.name, content: r.description || '', source_type: 'shelf', source_id: r.id, author: r.created_by, created_at: r.created_at, url: `/library` });
+
   if (docs.length > 0) {
     const task = await index.addDocuments(docs);
     console.log(`[MEILI] Backfill queued: ${docs.length} docs (task: ${task.taskUid})`);
@@ -5427,6 +5434,8 @@ if (searchCount === 0) {
      SELECT title, COALESCE(description,''), 'risk', id, created_by, created_at FROM risks`,
     `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
      SELECT title, COALESCE(description,''), 'task', id, COALESCE(assigned_to,''), created_at FROM tasks`,
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT name, COALESCE(description,''), 'shelf', id, created_by, created_at FROM library_shelves`,
   ];
   for (const stmt of backfillStmts) {
     try { sqlite.prepare(stmt).run(); } catch (e) { console.log(`[SEARCH] Backfill warning: ${e}`); }
@@ -5466,7 +5475,7 @@ function sanitizeFtsQuery(raw: string): string {
 }
 
 // FTS5 search (used as fallback)
-const VALID_SOURCE_TYPES = ['forum', 'library', 'task', 'spec', 'risk'];
+const VALID_SOURCE_TYPES = ['forum', 'library', 'task', 'spec', 'risk', 'shelf'];
 function fts5Search(q: string, type: string | undefined, limit: number, offset: number) {
   const sanitized = sanitizeFtsQuery(q);
   if (!sanitized) return { results: [], total: 0, query: q, engine: 'fts5' as const };
@@ -5502,12 +5511,19 @@ app.get('/api/search', async (c) => {
     return c.json({ error: 'Authentication required' }, 401);
   }
 
-  const q = c.req.query('q')?.trim();
+  let q = c.req.query('q')?.trim();
   if (!q) return c.json({ results: [], total: 0, query: '' });
 
-  const type = c.req.query('type');
+  let type = c.req.query('type');
   const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') || '20', 10)));
   const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10));
+
+  // Type-prefix syntax: "forum:websocket" → type=forum, q=websocket (T#351)
+  const prefixMatch = q.match(/^(\w+):\s*(.+)$/);
+  if (prefixMatch && VALID_SOURCE_TYPES.includes(prefixMatch[1].toLowerCase())) {
+    type = prefixMatch[1].toLowerCase();
+    q = prefixMatch[2].trim();
+  }
 
   // Try Meilisearch first
   if (meili && meiliAvailable) {
@@ -5555,6 +5571,8 @@ app.post('/api/search/reindex', async (c) => {
      SELECT title, COALESCE(description,''), 'risk', id, created_by, created_at FROM risks`,
     `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
      SELECT title, COALESCE(description,''), 'task', id, COALESCE(assigned_to,''), created_at FROM tasks`,
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT name, COALESCE(description,''), 'shelf', id, created_by, created_at FROM library_shelves`,
   ];
   for (const stmt of stmts) {
     try { sqlite.prepare(stmt).run(); } catch { /* skip */ }
@@ -5592,6 +5610,7 @@ app.get('/api/search/status', async (c) => {
   source.spec = (sqlite.prepare('SELECT COUNT(*) as c FROM spec_reviews').get() as any)?.c || 0;
   source.risk = (sqlite.prepare('SELECT COUNT(*) as c FROM risks').get() as any)?.c || 0;
   source.task = (sqlite.prepare('SELECT COUNT(*) as c FROM tasks').get() as any)?.c || 0;
+  source.shelf = (sqlite.prepare('SELECT COUNT(*) as c FROM library_shelves').get() as any)?.c || 0;
 
   const drift = Object.keys(source).some(k => (indexed[k] || 0) !== source[k]);
 

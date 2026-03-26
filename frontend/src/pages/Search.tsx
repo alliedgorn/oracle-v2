@@ -20,10 +20,11 @@ const TYPE_TABS = [
   { id: 'task', label: 'Tasks' },
   { id: 'spec', label: 'Specs' },
   { id: 'risk', label: 'Risks' },
+  { id: 'shelf', label: 'Shelves' },
 ];
 
 const TYPE_ICONS: Record<string, string> = {
-  forum: '💬', library: '📚', task: '✅', spec: '📋', risk: '⚠️',
+  forum: '💬', library: '📚', task: '✅', spec: '📋', risk: '⚠️', shelf: '📚',
 };
 
 export function Search() {

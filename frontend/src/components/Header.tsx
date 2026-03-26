@@ -12,7 +12,7 @@ interface QuickResult {
 }
 
 const TYPE_ICONS: Record<string, string> = {
-  forum: '💬', library: '📚', task: '✅', spec: '📋', risk: '⚠️',
+  forum: '💬', library: '📚', task: '✅', spec: '📋', risk: '⚠️', shelf: '📚',
 };
 
 // Top-level nav items (always visible, not grouped)

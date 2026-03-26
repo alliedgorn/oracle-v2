@@ -95,6 +95,7 @@ export function Risk() {
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [severityFilter, setSeverityFilter] = useState<string>('');
   const [matrixFilter, setMatrixFilter] = useState<{ sev: string; lik: string } | null>(null);
+  const [staleFilter, setStaleFilter] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [comments, setComments] = useState<RiskComment[]>([]);
   const [commentText, setCommentText] = useState('');
@@ -140,6 +141,12 @@ export function Risk() {
   };
 
   const loadRisks = useCallback(async () => {
+    if (staleFilter) {
+      const res = await fetch('/api/risks/stale');
+      const data = await res.json();
+      setRisks(data.risks);
+      return;
+    }
     const params = new URLSearchParams();
     if (statusFilter) params.set('status', statusFilter);
     if (categoryFilter) params.set('category', categoryFilter);
@@ -151,7 +158,7 @@ export function Risk() {
     const res = await fetch(`/api/risks?${params}`);
     const data = await res.json();
     setRisks(data.risks);
-  }, [statusFilter, categoryFilter, severityFilter, matrixFilter]);
+  }, [statusFilter, categoryFilter, severityFilter, matrixFilter, staleFilter]);
 
   const loadSummary = useCallback(async () => {
     const res = await fetch('/api/risks/summary');
@@ -178,6 +185,7 @@ export function Risk() {
   }
 
   function clickMatrix(sev: string, lik: string) {
+    setStaleFilter(false);
     if (matrixFilter?.sev === sev && matrixFilter?.lik === lik) {
       setMatrixFilter(null);
       setSeverityFilter('');
@@ -190,6 +198,7 @@ export function Risk() {
   }
 
   function clickStatus(s: string) {
+    setStaleFilter(false);
     setMatrixFilter(null);
     setStatusFilter(statusFilter === s ? '' : s);
   }
@@ -250,8 +259,8 @@ export function Risk() {
         ))}
         {summary && summary.stale_count > 0 && (
           <button
-            className={`${styles.summaryPill} ${styles.pillDanger}`}
-            onClick={() => { setMatrixFilter(null); setStatusFilter(''); setSeverityFilter(''); }}
+            className={`${styles.summaryPill} ${styles.pillDanger} ${staleFilter ? styles.summaryActive : ''}`}
+            onClick={() => { setStaleFilter(!staleFilter); setMatrixFilter(null); setStatusFilter(''); setSeverityFilter(''); setCategoryFilter(''); }}
           >
             Stale <span className={styles.pillBadge}>{summary.stale_count}</span>
           </button>
@@ -262,14 +271,14 @@ export function Risk() {
       <div className={styles.tabBar}>
         <button
           className={`${styles.tab} ${tab === 'active' ? styles.tabActive : ''}`}
-          onClick={() => { setTab('active'); setStatusFilter(''); }}
+          onClick={() => { setTab('active'); setStatusFilter(''); setStaleFilter(false); }}
         >
           Active
           <span className={styles.tabBadge}>{(summary?.total || 0) - (summary?.by_status?.closed || 0)}</span>
         </button>
         <button
           className={`${styles.tab} ${tab === 'archive' ? styles.tabActive : ''}`}
-          onClick={() => { setTab('archive'); setStatusFilter(''); setMatrixFilter(null); }}
+          onClick={() => { setTab('archive'); setStatusFilter(''); setMatrixFilter(null); setStaleFilter(false); }}
         >
           Archive
           <span className={styles.tabBadge}>{summary?.by_status?.closed || 0}</span>
@@ -278,11 +287,11 @@ export function Risk() {
 
       {/* Filters */}
       <div className={styles.filters}>
-        <select className={styles.filterSelect} value={severityFilter} onChange={e => { setSeverityFilter(e.target.value); setMatrixFilter(null); }}>
+        <select className={styles.filterSelect} value={severityFilter} onChange={e => { setSeverityFilter(e.target.value); setMatrixFilter(null); setStaleFilter(false); }}>
           <option value="">All Severities</option>
           {SEVERITIES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select className={styles.filterSelect} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+        <select className={styles.filterSelect} value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setStaleFilter(false); }}>
           <option value="">All Categories</option>
           {Object.keys(summary?.by_category || {}).map(c => <option key={c} value={c}>{c}</option>)}
         </select>

@@ -66,7 +66,7 @@ const BEAST_COLORS: Record<string, string> = {
 
 export function Board() {
   const [board, setBoard] = useState<BoardData | null>(null);
-  const [projectFilter, setProjectFilter] = useState<string>('');
+  const [projectFilter, setProjectFilter] = useState<string>('__active__');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [showNewTask, setShowNewTask] = useState(false);

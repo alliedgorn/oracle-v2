@@ -156,7 +156,10 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   function handleSearchInput(value: string) {
     setSearchQuery(value);
     clearTimeout(debounceRef.current);
-    if (value.trim().length < 2) { setSearchResults([]); return; }
+    // Don't search while typing a type prefix (e.g. "forum:" with no query yet)
+    const prefixMatch = value.match(/^(\w+):\s*(.*)$/);
+    const searchText = prefixMatch ? prefixMatch[2] : value;
+    if (searchText.trim().length < 2) { setSearchResults([]); return; }
     debounceRef.current = setTimeout(() => fetchQuickResults(value), 50);
   }
 

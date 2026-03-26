@@ -112,10 +112,13 @@ export function SpecReview() {
     return () => clearInterval(interval);
   }, [selectedSpec, loadComments]);
 
-  // Real-time updates
+  // Real-time updates — only re-fetch if we don't already have the comment
   useWebSocket('spec_comment', (data: any) => {
     const specId = data?.spec_id || selectedSpec?.id;
-    if (specId) loadComments(specId);
+    if (!specId || specId !== selectedSpec?.id) return;
+    const commentId = data?.comment_id;
+    if (commentId && comments.some(c => c.id === commentId)) return;
+    loadComments(specId);
   });
   useWebSocket('spec_reviewed', () => {
     loadSpecs();

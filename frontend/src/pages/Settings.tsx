@@ -15,12 +15,41 @@ export function Settings() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [authEnabled, setAuthEnabled] = useState(false);
   const [localBypass, setLocalBypass] = useState(true);
+  const [reindexing, setReindexing] = useState(false);
+  const [indexStatus, setIndexStatus] = useState<{ total_indexed: number; drift: boolean } | null>(null);
 
   const { checkAuth, isLocal } = useAuth();
 
   useEffect(() => {
     loadSettings();
+    loadIndexStatus();
   }, []);
+
+  async function loadIndexStatus() {
+    try {
+      const res = await fetch('/api/search/status');
+      if (res.ok) setIndexStatus(await res.json());
+    } catch {}
+  }
+
+  async function handleReindex() {
+    if (!confirm('Rebuild the entire search index? This may take a moment.')) return;
+    setReindexing(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/search/reindex', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage({ type: 'success', text: `Search index rebuilt: ${data.total} documents indexed` });
+        loadIndexStatus();
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Reindex failed' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Reindex failed' });
+    }
+    setReindexing(false);
+  }
 
   async function loadSettings() {
     try {
@@ -278,6 +307,33 @@ export function Settings() {
           <span className={`${styles.infoBadge} ${isLocal ? styles.local : styles.remote}`}>
             {isLocal ? 'Local Network' : 'Remote'}
           </span>
+        </div>
+      </div>
+
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}>Search Index</h2>
+        <p className={styles.sectionDesc}>
+          Global full-text search powered by SQLite FTS5. The index is updated automatically on content changes.
+        </p>
+
+        {indexStatus && (
+          <div className={styles.info}>
+            <span className={styles.infoLabel}>Documents indexed:</span>
+            <span className={styles.infoBadge}>{indexStatus.total_indexed.toLocaleString()}</span>
+            {indexStatus.drift && (
+              <span className={`${styles.infoBadge} ${styles.remote}`}>Drift detected</span>
+            )}
+          </div>
+        )}
+
+        <div className={styles.actions}>
+          <button
+            onClick={handleReindex}
+            disabled={reindexing}
+            className={styles.button}
+          >
+            {reindexing ? 'Rebuilding...' : 'Rebuild Search Index'}
+          </button>
         </div>
       </div>
     </div>

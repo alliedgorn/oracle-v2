@@ -2949,6 +2949,21 @@ app.patch('/api/library/:id', async (c) => {
   }
 });
 
+// DELETE /api/library/:id — delete entry (Gorn or Pip)
+app.delete('/api/library/:id', (c) => {
+  const requester = (c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+  if (requester !== 'gorn' && requester !== 'pip') {
+    return c.json({ error: 'Only Gorn or Pip can delete library entries' }, 403);
+  }
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT id FROM library WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Entry not found' }, 404);
+  sqlite.prepare('DELETE FROM library WHERE id = ?').run(id);
+  wsBroadcast('library_entry_deleted', { id });
+  return c.json({ deleted: true, id });
+});
+
 // ============================================================================
 // PM Board — Projects + Tasks + Task Comments
 // ============================================================================
@@ -3064,6 +3079,24 @@ app.patch('/api/projects/:id', async (c) => {
   sqlite.prepare(`UPDATE projects SET ${updates.join(', ')} WHERE id = ?`).run(...params);
   const project = sqlite.prepare('SELECT * FROM projects WHERE id = ?').get(id);
   return c.json(project);
+});
+
+// DELETE /api/projects/:id — delete project (Gorn or Pip)
+app.delete('/api/projects/:id', (c) => {
+  const requester = (c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+  if (requester !== 'gorn' && requester !== 'pip') {
+    return c.json({ error: 'Only Gorn or Pip can delete projects' }, 403);
+  }
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT id FROM projects WHERE id = ?').get(id) as any;
+  if (!existing) return c.json({ error: 'Project not found' }, 404);
+  // Unlink tasks (set project_id to null) rather than deleting them
+  sqlite.prepare('UPDATE tasks SET project_id = NULL WHERE project_id = ?').run(id);
+  sqlite.prepare('DELETE FROM team_projects WHERE project_id = ?').run(id);
+  sqlite.prepare('DELETE FROM projects WHERE id = ?').run(id);
+  wsBroadcast('project_deleted', { id });
+  return c.json({ deleted: true, id });
 });
 
 // --- Tasks CRUD ---

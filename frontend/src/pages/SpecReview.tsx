@@ -325,6 +325,7 @@ export function SpecReview() {
           >
             <div className={styles.cardHeader}>
               <div className={styles.cardTitleRow}>
+                <span className={styles.cardSpecId}>#{spec.id}</span>
                 {spec.task_id && <span className={styles.cardTaskId}>{spec.task_id}</span>}
                 <span className={styles.cardTitle}>{spec.title}</span>
               </div>

@@ -375,10 +375,11 @@ app.post('/api/auth/login', async (c) => {
 
   // Set session cookie
   const token = generateSessionToken();
+  const isHttps = c.req.url.startsWith('https') || c.req.header('x-forwarded-proto') === 'https';
   setCookie(c, SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: false, // Allow HTTP for local dev
-    sameSite: 'Lax',
+    secure: isHttps,
+    sameSite: 'None',
     maxAge: SESSION_DURATION_MS / 1000,
     path: '/'
   });

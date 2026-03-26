@@ -60,6 +60,7 @@ export function SpecReview() {
   const [diffText, setDiffText] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [comments, setComments] = useState<SpecComment[]>([]);
+  const [commentTotal, setCommentTotal] = useState(0);
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
 
@@ -90,13 +91,19 @@ export function SpecReview() {
       .catch(() => setSelectedSpec(null));
   }, [specParam]);
 
-  const loadComments = useCallback(async (specId: number) => {
-    const res = await fetch(`${API_BASE}/specs/${specId}/comments`);
+  const loadComments = useCallback(async (specId: number, loadMore = false) => {
+    const offset = loadMore ? comments.length : 0;
+    const res = await fetch(`${API_BASE}/specs/${specId}/comments?limit=30&offset=${offset}`);
     if (res.ok) {
       const data = await res.json();
-      setComments(data.comments || []);
+      setCommentTotal(data.total || 0);
+      if (loadMore) {
+        setComments(prev => [...(data.comments || []), ...prev]);
+      } else {
+        setComments(data.comments || []);
+      }
     }
-  }, []);
+  }, [comments.length]);
 
   useEffect(() => {
     if (selectedSpec) loadComments(selectedSpec.id);
@@ -355,7 +362,15 @@ export function SpecReview() {
 
         {/* Comments */}
         <div className={styles.commentsSection}>
-          <div className={styles.commentsTitle}>Comments ({comments.length})</div>
+          <div className={styles.commentsTitle}>Comments ({commentTotal})</div>
+          {comments.length < commentTotal && (
+            <button
+              className={styles.loadMoreBtn}
+              onClick={() => selectedSpec && loadComments(selectedSpec.id, true)}
+            >
+              Load older comments ({commentTotal - comments.length} more)
+            </button>
+          )}
           {comments.length > 0 && (
             <div className={styles.commentsList}>
               {comments.map(comment => (

@@ -4631,8 +4631,13 @@ app.get('/api/specs/:id/comments', (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const spec = sqlite.prepare('SELECT id FROM spec_reviews WHERE id = ?').get(id);
   if (!spec) return c.json({ error: 'Spec not found' }, 404);
-  const comments = sqlite.prepare('SELECT * FROM spec_comments WHERE spec_id = ? ORDER BY created_at ASC').all(id);
-  return c.json({ comments });
+  const limit = Math.min(100, parseInt(c.req.query('limit') || '30', 10));
+  const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10));
+  const total = (sqlite.prepare('SELECT COUNT(*) as c FROM spec_comments WHERE spec_id = ?').get(id) as any).c;
+  // Return most recent comments: order DESC for pagination, then reverse for display
+  const comments = sqlite.prepare('SELECT * FROM spec_comments WHERE spec_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(id, limit, offset) as any[];
+  comments.reverse();
+  return c.json({ comments, total });
 });
 
 // GET /api/spec-comments/:commentId — single comment by ID

@@ -525,6 +525,24 @@
   margin-bottom: 10px;
 }
 
+.loadMoreBtn {
+  display: block;
+  width: 100%;
+  padding: 6px;
+  margin-bottom: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+.loadMoreBtn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-secondary);
+}
+
 .commentsList {
   display: flex;
   flex-direction: column;

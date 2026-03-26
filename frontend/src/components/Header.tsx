@@ -33,7 +33,6 @@ const navGroups = [
     items: [
       { path: '/teams', label: 'Teams' },
       { path: '/library', label: 'Library' },
-      { path: '/groups', label: 'Groups' },
       { path: '/playbook', label: 'Playbook' },
       { path: '/overview', label: 'Overview' },
       { path: '/feed', label: 'Feed' },

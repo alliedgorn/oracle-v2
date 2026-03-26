@@ -86,7 +86,6 @@ export function invalidateRegistryCache(): void {
  * - @all → expands to all registered Oracle names
  * - @here → expands to all thread participants (requires threadId)
  * - @name → specific Oracle
- * - @groupname → all group members
  */
 export function parseMentions(content: string, threadId?: number): string[] {
   const registry = getOracleRegistry();
@@ -106,16 +105,6 @@ export function parseMentions(content: string, threadId?: number): string[] {
     } else if (name in registry) {
       names.add(name);
     } else {
-      // Check if it's a group name
-      try {
-        const group = sqlite.prepare('SELECT id FROM forum_groups WHERE name = ?').get(name) as any;
-        if (group) {
-          const members = sqlite.prepare('SELECT beast_name FROM forum_group_members WHERE group_id = ?').all(group.id) as any[];
-          for (const m of members) {
-            if (m.beast_name in registry) names.add(m.beast_name);
-          }
-        }
-      } catch { /* groups table may not exist yet */ }
       // Check if it's a team name (e.g. @real-broker → all team members)
       try {
         const teamName = name.replace(/-/g, ' ');

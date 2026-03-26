@@ -20,7 +20,6 @@ import { Playground } from './pages/Playground';
 import { Map } from './pages/Map';
 import { PackView } from './pages/PackView';
 import { BeastProfile } from './pages/BeastProfile';
-import { Groups } from './pages/Groups';
 import { Playbook } from './pages/Playbook';
 import { GornQueue } from './pages/GornQueue';
 import { RemoteControl } from './pages/RemoteControl';
@@ -79,7 +78,6 @@ function AppContent() {
         <Route path="/activity" element={<RequireAuth><Activity /></RequireAuth>} />
         <Route path="/pack" element={<RequireAuth><PackView /></RequireAuth>} />
         <Route path="/beast/:name" element={<RequireAuth><BeastProfile /></RequireAuth>} />
-        <Route path="/groups" element={<RequireAuth><Groups /></RequireAuth>} />
         <Route path="/playbook" element={<RequireAuth><Playbook /></RequireAuth>} />
         <Route path="/queue" element={<RequireAuth><GornQueue /></RequireAuth>} />
         <Route path="/prowl" element={<RequireAuth><Prowl /></RequireAuth>} />

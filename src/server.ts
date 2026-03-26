@@ -635,7 +635,8 @@ app.get('/api/health', (c) => {
 });
 
 // Search
-app.get('/api/search', async (c) => {
+// Legacy vector search — kept for backwards compat, use /api/search/legacy
+app.get('/api/search/legacy', async (c) => {
   const q = c.req.query('q');
   if (!q) {
     return c.json({ error: 'Missing query parameter: q' }, 400);
@@ -644,9 +645,9 @@ app.get('/api/search', async (c) => {
   const limit = parseInt(c.req.query('limit') || '10');
   const offset = parseInt(c.req.query('offset') || '0');
   const mode = (c.req.query('mode') || 'hybrid') as 'hybrid' | 'fts' | 'vector';
-  const project = c.req.query('project'); // Explicit project filter
-  const cwd = c.req.query('cwd');         // Auto-detect project from cwd
-  const model = c.req.query('model');     // Embedding model: 'bge-m3' (default), 'nomic', or 'qwen3'
+  const project = c.req.query('project');
+  const cwd = c.req.query('cwd');
+  const model = c.req.query('model');
 
   const result = await handleSearch(q, type, limit, offset, mode, project, cwd, model);
   return c.json({ ...result, query: q });
@@ -2064,6 +2065,11 @@ app.post('/api/thread', async (c) => {
       sqlite.prepare('UPDATE forum_messages SET reply_to_id = ? WHERE id = ?')
         .run(data.reply_to_id, result.messageId);
     }
+    // Index forum message for search (T#347)
+    if (result.messageId && result.threadId) {
+      const threadTitle = data.title || (sqlite.prepare('SELECT title FROM forum_threads WHERE id = ?').get(result.threadId) as any)?.title || '';
+      searchIndexUpsert('forum', result.messageId, threadTitle, data.message, data.author, new Date().toISOString());
+    }
     // Push WebSocket event
     wsBroadcast('new_message', {
       thread_id: result.threadId,
@@ -2910,12 +2916,9 @@ app.post('/api/library', async (c) => {
       'INSERT INTO library (title, content, type, author, tags, shelf_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(data.title, data.content, type, data.author, tags, shelfId, now, now);
 
-    return c.json({
-      id: (result as any).lastInsertRowid,
-      title: data.title,
-      type,
-      author: data.author,
-    }, 201);
+    const newId = (result as any).lastInsertRowid;
+    searchIndexUpsert('library', newId, data.title, data.content, data.author, new Date(now).toISOString());
+    return c.json({ id: newId, title: data.title, type, author: data.author }, 201);
   } catch (e) {
     return c.json({ error: 'Invalid JSON' }, 400);
   }
@@ -2940,8 +2943,9 @@ app.patch('/api/library/:id', async (c) => {
     sqlite.prepare(`UPDATE library SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = sqlite.prepare('SELECT * FROM library WHERE id = ?').get(id) as any;
-    if (updated?.tags) {
-      try { updated.tags = JSON.parse(updated.tags); } catch { updated.tags = []; }
+    if (updated) {
+      searchIndexUpsert('library', id, updated.title, updated.content, updated.author, new Date(updated.created_at).toISOString());
+      if (updated.tags) { try { updated.tags = JSON.parse(updated.tags); } catch { updated.tags = []; } }
     }
     return c.json(updated);
   } catch (e) {
@@ -2960,6 +2964,7 @@ app.delete('/api/library/:id', (c) => {
   const existing = sqlite.prepare('SELECT id FROM library WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Entry not found' }, 404);
   sqlite.prepare('DELETE FROM library WHERE id = ?').run(id);
+  searchIndexDelete('library', id);
   wsBroadcast('library_entry_deleted', { id });
   return c.json({ deleted: true, id });
 });
@@ -3150,8 +3155,9 @@ app.post('/api/tasks', async (c) => {
     'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, approval_required, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, now, now);
 
-  const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid);
-  wsBroadcast('task_created', { id: (task as any).id });
+  const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid) as any;
+  searchIndexUpsert('task', task.id, task.title, task.description || '', task.assigned_to || '', now);
+  wsBroadcast('task_created', { id: task.id });
   return c.json(task, 201);
 });
 
@@ -3196,8 +3202,9 @@ app.patch('/api/tasks/:id', async (c) => {
   params.push(id);
 
   sqlite.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-  const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get(id);
-  wsBroadcast('task_updated', { id: (task as any).id });
+  const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get(id) as any;
+  if (task) searchIndexUpsert('task', id, task.title, task.description || '', task.assigned_to || '', task.created_at);
+  wsBroadcast('task_updated', { id: task?.id });
   return c.json(task);
 });
 
@@ -3206,6 +3213,7 @@ app.delete('/api/tasks/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   const now = new Date().toISOString();
   sqlite.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run('deleted', now, id);
+  searchIndexDelete('task', id);
   return c.json({ success: true, id });
 });
 
@@ -4566,7 +4574,8 @@ app.post('/api/specs', async (c) => {
         sqlite.prepare('UPDATE tasks SET spec_id = ?, updated_at = ? WHERE id = ?').run(spec.id, now, taskIdNum);
       }
     }
-    wsBroadcast('spec_submitted', { id: (spec as any).id });
+    searchIndexUpsert('spec', spec.id, spec.title, spec.description || '', spec.author, now);
+    wsBroadcast('spec_submitted', { id: spec.id });
     return c.json(spec, 201);
   } catch (e: any) {
     if (e?.message?.includes('UNIQUE')) return c.json({ error: 'Spec already registered for this repo + path' }, 409);
@@ -4917,8 +4926,9 @@ app.post('/api/risks', async (c) => {
       now, now
     );
 
-    const risk = sqlite.prepare('SELECT * FROM risks WHERE id = ?').get((result as any).lastInsertRowid);
-    wsBroadcast('risk_update', { action: 'create', id: (risk as any).id });
+    const risk = sqlite.prepare('SELECT * FROM risks WHERE id = ?').get((result as any).lastInsertRowid) as any;
+    searchIndexUpsert('risk', risk.id, risk.title, risk.description || '', risk.created_by, now);
+    wsBroadcast('risk_update', { action: 'create', id: risk.id });
     return c.json(risk, 201);
   } catch (e: any) {
     return c.json({ error: e?.message || 'Invalid request' }, 400);
@@ -4972,8 +4982,9 @@ app.patch('/api/risks/:id', async (c) => {
     values.push(id);
 
     sqlite.prepare(`UPDATE risks SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    const risk = sqlite.prepare('SELECT * FROM risks WHERE id = ?').get(id);
-    wsBroadcast('risk_update', { action: 'update', id: (risk as any).id });
+    const risk = sqlite.prepare('SELECT * FROM risks WHERE id = ?').get(id) as any;
+    if (risk) searchIndexUpsert('risk', id, risk.title, risk.description || '', risk.created_by, risk.created_at);
+    wsBroadcast('risk_update', { action: 'update', id: risk?.id });
     return c.json(risk);
   } catch {
     return c.json({ error: 'Invalid request' }, 400);
@@ -5290,6 +5301,160 @@ app.delete('/api/prowl/:id', async (c) => {
   sqlite.prepare('DELETE FROM prowl_tasks WHERE id = ?').run(id);
   wsBroadcast('prowl_update', { action: 'delete' });
   return c.json({ deleted: true, id });
+});
+
+// ============================================================================
+// Global Search — FTS5 (T#347)
+// ============================================================================
+
+// Create FTS5 virtual table
+try {
+  sqlite.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+    title, content, source_type, source_id UNINDEXED, author, created_at UNINDEXED,
+    tokenize = 'porter unicode61'
+  )`).run();
+} catch { /* already exists */ }
+
+// Backfill if index is empty
+const searchCount = (sqlite.prepare('SELECT COUNT(*) as c FROM search_index').get() as any)?.c || 0;
+if (searchCount === 0) {
+  console.log('[SEARCH] Backfilling FTS5 search index...');
+  const backfillStmts = [
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT title, content, 'library', id, author, created_at FROM library`,
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT t.title, m.content, 'forum', m.id, m.author, m.created_at
+     FROM forum_messages m JOIN forum_threads t ON m.thread_id = t.id`,
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT title, COALESCE(description,''), 'spec', id, author, created_at FROM spec_reviews`,
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT title, COALESCE(description,''), 'risk', id, created_by, created_at FROM risks`,
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT title, COALESCE(description,''), 'task', id, COALESCE(assigned_to,''), created_at FROM tasks`,
+  ];
+  for (const stmt of backfillStmts) {
+    try { sqlite.prepare(stmt).run(); } catch (e) { console.log(`[SEARCH] Backfill warning: ${e}`); }
+  }
+  const total = (sqlite.prepare('SELECT COUNT(*) as c FROM search_index').get() as any)?.c || 0;
+  console.log(`[SEARCH] Backfill complete: ${total} documents indexed.`);
+}
+
+// Helper: index a document
+function searchIndexUpsert(sourceType: string, sourceId: number, title: string, content: string, author: string, createdAt: string) {
+  try {
+    sqlite.prepare('DELETE FROM search_index WHERE source_type = ? AND source_id = ?').run(sourceType, String(sourceId));
+    sqlite.prepare('INSERT INTO search_index(title, content, source_type, source_id, author, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(title, content, sourceType, String(sourceId), author, createdAt);
+  } catch { /* ignore indexing errors */ }
+}
+
+function searchIndexDelete(sourceType: string, sourceId: number) {
+  try { sqlite.prepare('DELETE FROM search_index WHERE source_type = ? AND source_id = ?').run(sourceType, String(sourceId)); } catch { /* ignore */ }
+}
+
+// Sanitize FTS5 query — prevent column targeting
+function sanitizeFtsQuery(raw: string): string {
+  const terms = raw.match(/"[^"]*"|[^\s]+/g) || [];
+  return terms.map(t => t.startsWith('"') ? t : `"${t.replace(/"/g, '')}"`).join(' ');
+}
+
+// GET /api/search — global full-text search
+app.get('/api/search', (c) => {
+  const requester = c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '');
+  if (!requester && !isTrustedRequest(c)) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  const q = c.req.query('q')?.trim();
+  if (!q) return c.json({ results: [], total: 0, query: '' });
+
+  const type = c.req.query('type');
+  const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') || '20', 10)));
+  const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10));
+
+  const sanitized = sanitizeFtsQuery(q);
+  if (!sanitized) return c.json({ results: [], total: 0, query: q });
+
+  let where = 'search_index MATCH ?';
+  const params: any[] = [sanitized];
+
+  if (type) {
+    where += ' AND source_type = ?';
+    params.push(type);
+  }
+
+  const countResult = sqlite.prepare(`SELECT COUNT(*) as c FROM search_index WHERE ${where}`).get(...params) as any;
+  const total = countResult?.c || 0;
+
+  const rows = sqlite.prepare(
+    `SELECT source_type, source_id, title, snippet(search_index, 1, '<mark>', '</mark>', '...', 40) as snippet, author, rank, created_at
+     FROM search_index WHERE ${where} ORDER BY rank LIMIT ? OFFSET ?`
+  ).all(...params, limit, offset) as any[];
+
+  const urlMap: Record<string, (id: string) => string> = {
+    forum: (id) => `/forum?thread=${id}`,
+    library: (id) => `/library?doc=${id}`,
+    spec: (id) => `/specs?spec=${id}`,
+    risk: (id) => `/risk`,
+    task: (id) => `/board?task=${id}`,
+  };
+
+  return c.json({
+    results: rows.map(r => ({
+      source_type: r.source_type,
+      source_id: r.source_id,
+      title: r.title,
+      snippet: r.snippet,
+      author: r.author,
+      rank: r.rank,
+      created_at: r.created_at,
+      url: (urlMap[r.source_type] || (() => '#'))(r.source_id),
+    })),
+    total,
+    query: q,
+  });
+});
+
+// POST /api/search/reindex — full rebuild (Gorn only)
+app.post('/api/search/reindex', (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+
+  sqlite.prepare('DELETE FROM search_index').run();
+  const stmts = [
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT title, content, 'library', id, author, created_at FROM library`,
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT t.title, m.content, 'forum', m.id, m.author, m.created_at
+     FROM forum_messages m JOIN forum_threads t ON m.thread_id = t.id`,
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT title, COALESCE(description,''), 'spec', id, author, created_at FROM spec_reviews`,
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT title, COALESCE(description,''), 'risk', id, created_by, created_at FROM risks`,
+    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
+     SELECT title, COALESCE(description,''), 'task', id, COALESCE(assigned_to,''), created_at FROM tasks`,
+  ];
+  for (const stmt of stmts) {
+    try { sqlite.prepare(stmt).run(); } catch { /* skip */ }
+  }
+  const total = (sqlite.prepare('SELECT COUNT(*) as c FROM search_index').get() as any)?.c || 0;
+  return c.json({ reindexed: true, total });
+});
+
+// GET /api/search/status — integrity check
+app.get('/api/search/status', (c) => {
+  const indexed: Record<string, number> = {};
+  const source: Record<string, number> = {};
+
+  const indexedRows = sqlite.prepare('SELECT source_type, COUNT(*) as c FROM search_index GROUP BY source_type').all() as any[];
+  for (const r of indexedRows) indexed[r.source_type] = r.c;
+
+  source.library = (sqlite.prepare('SELECT COUNT(*) as c FROM library').get() as any)?.c || 0;
+  source.forum = (sqlite.prepare('SELECT COUNT(*) as c FROM forum_messages').get() as any)?.c || 0;
+  source.spec = (sqlite.prepare('SELECT COUNT(*) as c FROM spec_reviews').get() as any)?.c || 0;
+  source.risk = (sqlite.prepare('SELECT COUNT(*) as c FROM risks').get() as any)?.c || 0;
+  source.task = (sqlite.prepare('SELECT COUNT(*) as c FROM tasks').get() as any)?.c || 0;
+
+  const drift = Object.keys(source).some(k => (indexed[k] || 0) !== source[k]);
+  return c.json({ indexed, source, drift, total_indexed: Object.values(indexed).reduce((a, b) => a + b, 0) });
 });
 
 // ============================================================================

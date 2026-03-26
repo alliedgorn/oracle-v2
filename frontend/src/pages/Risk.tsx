@@ -125,11 +125,17 @@ export function Risk() {
   };
 
   const changeStatus = async (riskId: number, newStatus: string) => {
-    await fetch(`/api/risks/${riskId}`, {
+    // Optimistic update
+    setRisks(prev => prev.map(r => r.id === riskId ? { ...r, status: newStatus } : r));
+    const res = await fetch(`/api/risks/${riskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
     });
+    if (res.ok) {
+      loadRisks();
+      loadSummary();
+    }
   };
 
   const loadRisks = useCallback(async () => {

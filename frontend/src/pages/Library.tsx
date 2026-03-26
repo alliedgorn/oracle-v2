@@ -1,12 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import styles from './Library.module.css';
-import { SearchInput } from '../components/SearchInput';
 import { FilterTabs } from '../components/FilterTabs';
+
+interface Suggestion {
+  id: number;
+  label: string;
+  type: 'shelf' | 'entry';
+  icon?: string;
+  color?: string;
+  entryType?: string;
+  author?: string;
+  shelf_id?: number | null;
+}
 
 interface LibraryDoc {
   id: number;
@@ -68,6 +78,11 @@ export function Library() {
   const [shelfColor, setShelfColor] = useState('');
   const [shelfSaving, setShelfSaving] = useState(false);
   const [shelfError, setShelfError] = useState('');
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState(-1);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const docId = searchParams.get('doc');
 
@@ -93,6 +108,52 @@ export function Library() {
     } catch { /* ignore */ }
     setLoading(false);
   }, [search, category, shelfFilter]);
+
+  const fetchSuggestions = useCallback(async (q: string) => {
+    if (q.trim().length < 2) { setSuggestions([]); return; }
+    try {
+      const res = await fetch(`${API_BASE}/library/search?q=${encodeURIComponent(q.trim())}`);
+      const data = await res.json();
+      setSuggestions(data.suggestions || []);
+      setShowSuggestions(true);
+      setSelectedSuggestion(-1);
+    } catch { setSuggestions([]); }
+  }, []);
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    clearTimeout(debounceRef.current);
+    if (value.trim().length < 2) { setSuggestions([]); setShowSuggestions(false); return; }
+    debounceRef.current = setTimeout(() => fetchSuggestions(value), 200);
+  }
+
+  function selectSuggestion(s: Suggestion) {
+    setShowSuggestions(false);
+    if (s.type === 'shelf') {
+      setShelfFilter(String(s.id));
+      setSearch('');
+    } else {
+      setSearchParams({ doc: String(s.id) });
+      setSearch('');
+    }
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent) {
+    if (!showSuggestions || suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedSuggestion(i => Math.min(i + 1, suggestions.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedSuggestion(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter' && selectedSuggestion >= 0) { e.preventDefault(); selectSuggestion(suggestions[selectedSuggestion]); }
+    else if (e.key === 'Escape') { setShowSuggestions(false); }
+  }
+
+  // Close suggestions on click outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSuggestions(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   useEffect(() => { loadDocs(); loadShelves(); }, [loadDocs, loadShelves]);
 
@@ -291,14 +352,41 @@ export function Library() {
         <p className={styles.subtitle}>Pack knowledge — searchable, shareable, permanent</p>
       </div>
 
-      <div className={styles.searchRow}>
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search documents..."
-          onClear={() => setSearch('')}
-          showClear={search.length > 0}
-        />
+      <div className={styles.searchRow} ref={searchRef}>
+        <div className={styles.searchWrapper}>
+          <input
+            type="text"
+            className={styles.searchInput}
+            placeholder="Search shelves and documents..."
+            value={search}
+            onChange={e => handleSearchChange(e.target.value)}
+            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+            onKeyDown={handleSearchKeyDown}
+          />
+          {search && (
+            <button className={styles.searchClear} onClick={() => { setSearch(''); setSuggestions([]); setShowSuggestions(false); }}>✕</button>
+          )}
+        </div>
+        {showSuggestions && suggestions.length > 0 && (
+          <div className={styles.suggestions}>
+            {suggestions.map((s, i) => (
+              <div
+                key={`${s.type}-${s.id}`}
+                className={`${styles.suggestionItem} ${i === selectedSuggestion ? styles.suggestionActive : ''}`}
+                onClick={() => selectSuggestion(s)}
+                onMouseEnter={() => setSelectedSuggestion(i)}
+              >
+                <span className={styles.suggestionIcon}>
+                  {s.type === 'shelf' ? (s.icon || '📚') : '📄'}
+                </span>
+                <span className={styles.suggestionLabel}>{s.label}</span>
+                <span className={styles.suggestionType} style={s.type === 'shelf' && s.color ? { color: s.color } : undefined}>
+                  {s.type === 'shelf' ? 'Shelf' : s.entryType || 'Entry'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className={styles.shelfBar}>

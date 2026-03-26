@@ -2844,6 +2844,29 @@ app.get('/api/library', (c) => {
   });
 });
 
+// GET /api/library/search — typeahead suggestions for shelves + entries
+app.get('/api/library/search', (c) => {
+  const q = c.req.query('q')?.trim();
+  if (!q || q.length < 2) return c.json({ suggestions: [] });
+
+  const pattern = `%${q}%`;
+
+  const shelves = sqlite.prepare(
+    'SELECT id, name, icon, color, "shelf" as result_type FROM library_shelves WHERE name LIKE ? LIMIT 5'
+  ).all(pattern) as any[];
+
+  const entries = sqlite.prepare(
+    'SELECT id, title, type, author, shelf_id, "entry" as result_type FROM library WHERE title LIKE ? ORDER BY updated_at DESC LIMIT 8'
+  ).all(pattern) as any[];
+
+  return c.json({
+    suggestions: [
+      ...shelves.map(s => ({ id: s.id, label: s.name, icon: s.icon, color: s.color, type: 'shelf' as const })),
+      ...entries.map(e => ({ id: e.id, label: e.title, type: 'entry' as const, entryType: e.type, author: e.author, shelf_id: e.shelf_id })),
+    ],
+  });
+});
+
 // GET /api/library/types — list available types and counts (must be before /:id)
 app.get('/api/library/types', (c) => {
   const rows = sqlite.prepare('SELECT type, COUNT(*) as count FROM library GROUP BY type ORDER BY count DESC').all() as any[];

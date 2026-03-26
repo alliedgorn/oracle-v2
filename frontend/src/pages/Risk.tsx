@@ -89,6 +89,7 @@ function formatDate(iso: string): string {
 export function Risk() {
   const [risks, setRisks] = useState<RiskItem[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [tab, setTab] = useState<'active' | 'archive'>('active');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [severityFilter, setSeverityFilter] = useState<string>('');
@@ -256,6 +257,24 @@ export function Risk() {
         )}
       </div>
 
+      {/* Tab Toggle */}
+      <div className={styles.tabBar}>
+        <button
+          className={`${styles.tab} ${tab === 'active' ? styles.tabActive : ''}`}
+          onClick={() => { setTab('active'); setStatusFilter(''); }}
+        >
+          Active
+          <span className={styles.tabBadge}>{(summary?.total || 0) - (summary?.by_status?.closed || 0)}</span>
+        </button>
+        <button
+          className={`${styles.tab} ${tab === 'archive' ? styles.tabActive : ''}`}
+          onClick={() => { setTab('archive'); setStatusFilter(''); setMatrixFilter(null); }}
+        >
+          Archive
+          <span className={styles.tabBadge}>{summary?.by_status?.closed || 0}</span>
+        </button>
+      </div>
+
       {/* Filters */}
       <div className={styles.filters}>
         <select className={styles.filterSelect} value={severityFilter} onChange={e => { setSeverityFilter(e.target.value); setMatrixFilter(null); }}>
@@ -269,11 +288,13 @@ export function Risk() {
       </div>
 
       {/* Risk List */}
-      {risks.length === 0 ? (
-        <div className={styles.empty}>No risks found. The den is safe... for now.</div>
-      ) : (
+      {(() => {
+        const filtered = risks.filter(r => tab === 'archive' ? r.status === 'closed' : r.status !== 'closed');
+        return filtered.length === 0 ? (
+          <div className={styles.empty}>{tab === 'archive' ? 'No archived risks.' : 'No risks found. The den is safe... for now.'}</div>
+        ) : (
         <div className={styles.riskList}>
-          {risks.map(risk => (
+          {filtered.map(risk => (
             <div key={risk.id}>
               <div
                 className={`${styles.riskItem} ${riskBorderClass(risk.severity)}`}
@@ -386,7 +407,8 @@ export function Risk() {
             </div>
           ))}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

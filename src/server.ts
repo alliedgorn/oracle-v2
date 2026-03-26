@@ -3139,7 +3139,7 @@ app.get('/api/board', (c) => {
   // Done column: sort by updated_at DESC (most recently completed first)
   columns.done.sort((a: any, b: any) => (b.updated_at || '').localeCompare(a.updated_at || ''));
 
-  const projects = sqlite.prepare('SELECT * FROM projects WHERE status = ? ORDER BY name').all('active') as any[];
+  const projects = sqlite.prepare("SELECT * FROM projects ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 WHEN 'completed' THEN 2 END, name").all() as any[];
 
   return c.json({ columns, projects, total: tasks.length });
 });

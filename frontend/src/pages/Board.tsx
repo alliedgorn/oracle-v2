@@ -270,9 +270,16 @@ export function Board() {
           onChange={e => setProjectFilter(e.target.value)}
         >
           <option value="">All Projects</option>
-          {board.projects.map(p => (
-            <option key={p.id} value={p.id}>{p.name}{p.status !== 'active' ? ` (${p.status})` : ''}</option>
-          ))}
+          {(['active', 'paused', 'completed'] as const).map(status => {
+            const group = board.projects.filter(p => p.status === status);
+            return group.length > 0 ? (
+              <optgroup key={status} label={status.charAt(0).toUpperCase() + status.slice(1)}>
+                {group.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </optgroup>
+            ) : null;
+          })}
         </select>
         <select
           className={styles.projectSelect}
@@ -288,15 +295,24 @@ export function Board() {
         {projectFilter && (() => {
           const proj = board.projects.find(p => String(p.id) === projectFilter);
           return proj ? (
-            <select
-              className={styles.projectSelect}
-              value={proj.status}
-              onChange={e => updateProjectStatus(proj.id, e.target.value)}
-            >
-              <option value="active">Active</option>
-              <option value="paused">Paused</option>
-              <option value="completed">Completed</option>
-            </select>
+            <>
+              <select
+                className={styles.projectSelect}
+                value={proj.status}
+                onChange={e => updateProjectStatus(proj.id, e.target.value)}
+              >
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="completed">Completed</option>
+              </select>
+              <span className={`${styles.projectStatusBadge} ${
+                proj.status === 'active' ? styles.statusActive :
+                proj.status === 'paused' ? styles.statusPaused :
+                styles.statusCompleted
+              }`}>
+                {proj.status}
+              </span>
+            </>
           ) : null;
         })()}
         <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>

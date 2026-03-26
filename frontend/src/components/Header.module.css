@@ -312,12 +312,14 @@
 
   .quickSearchResults {
     position: fixed;
-    top: auto;
+    top: 56px;
     left: 8px;
     right: 8px;
     width: auto;
-    max-height: 60vh;
+    max-height: calc(100vh - 72px);
     z-index: 300;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .quickSearchHint {
@@ -378,8 +380,19 @@
 /* Mobile */
 @media (max-width: 480px) {
   .quickSearchInput {
-    width: 120px;
-    font-size: 12px;
+    width: 100%;
+    min-width: 0;
+    font-size: 16px;
+  }
+
+  .quickSearch {
+    flex: 1;
+  }
+
+  .quickSearchResults {
+    left: 4px;
+    right: 4px;
+    max-height: calc(100vh - 64px);
   }
 
   .quickSearchToggle {

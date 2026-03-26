@@ -133,7 +133,7 @@ function notifyDmRecipient(from: string, to: string, content: string): boolean {
   if (!entry) return false;
 
   const preview = sanitizeForTmux(content, 120);
-  const message = `[DM from ${from}]: ${preview}...\n\nUse /forum dms to read and /forum dm ${from} <message> to reply.`;
+  const message = `[DM from ${from}]: ${preview}...\n\nUse /dm to read and /dm ${from} <message> to reply.`;
 
   try {
     const result = Bun.spawnSync(['tmux', 'send-keys', '-t', entry.tmux, message, 'Enter']);

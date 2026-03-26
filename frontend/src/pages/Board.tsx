@@ -181,6 +181,15 @@ export function Board() {
     loadBoard();
   }
 
+  async function updateProjectStatus(projectId: number, status: string) {
+    await fetch(`${API_BASE}/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    loadBoard();
+  }
+
   async function updateTaskStatus(taskId: number, status: string) {
     await fetch(`${API_BASE}/tasks/${taskId}`, {
       method: 'PATCH',
@@ -262,7 +271,7 @@ export function Board() {
         >
           <option value="">All Projects</option>
           {board.projects.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
+            <option key={p.id} value={p.id}>{p.name}{p.status !== 'active' ? ` (${p.status})` : ''}</option>
           ))}
         </select>
         <select
@@ -276,6 +285,20 @@ export function Board() {
           ))}
           <option value="gorn">Gorn</option>
         </select>
+        {projectFilter && (() => {
+          const proj = board.projects.find(p => String(p.id) === projectFilter);
+          return proj ? (
+            <select
+              className={styles.projectSelect}
+              value={proj.status}
+              onChange={e => updateProjectStatus(proj.id, e.target.value)}
+            >
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="completed">Completed</option>
+            </select>
+          ) : null;
+        })()}
         <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
           {board.total} tasks
         </span>

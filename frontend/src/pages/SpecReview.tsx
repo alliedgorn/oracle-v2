@@ -103,13 +103,15 @@ export function SpecReview() {
   }, [selectedSpec, loadComments]);
 
   // Real-time updates
-  useWebSocket('spec_comment', () => {
-    if (selectedSpec) loadComments(selectedSpec.id);
+  useWebSocket('spec_comment', (data: any) => {
+    const specId = data?.spec_id || selectedSpec?.id;
+    if (specId) loadComments(specId);
   });
   useWebSocket('spec_reviewed', () => {
     loadSpecs();
-    if (selectedSpec) {
-      fetch(`${API_BASE}/specs/${selectedSpec.id}`).then(r => r.json()).then(d => {
+    const sid = selectedSpec?.id;
+    if (sid) {
+      fetch(`${API_BASE}/specs/${sid}`).then(r => r.json()).then(d => {
         if (d.id) setSelectedSpec(d);
       }).catch(() => {});
     }

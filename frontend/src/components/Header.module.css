@@ -132,6 +132,119 @@
   color: var(--accent);
 }
 
+/* Quick Search */
+.quickSearch {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.quickSearchToggle {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.quickSearchToggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.quickSearchHint {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.quickSearchInput {
+  width: 280px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.quickSearchInput::placeholder {
+  color: var(--text-muted);
+}
+
+.quickSearchResults {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 380px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 200;
+  margin-top: 4px;
+}
+
+.quickSearchItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.quickSearchItem:hover,
+.quickSearchItemActive {
+  background: var(--bg-elevated);
+}
+
+.quickSearchIcon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.quickSearchLabel {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quickSearchType {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+
+.quickSearchFooter {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--accent);
+  text-align: center;
+  cursor: pointer;
+  border-top: 1px solid var(--border);
+}
+
+.quickSearchFooter:hover {
+  background: var(--bg-elevated);
+}
+
 /* Session stats */
 .sessionStats {
   display: flex;

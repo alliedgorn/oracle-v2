@@ -1,7 +1,19 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import styles from './Header.module.css';
+
+interface QuickResult {
+  source_type: string;
+  source_id: string;
+  title: string;
+  url: string;
+  author: string;
+}
+
+const TYPE_ICONS: Record<string, string> = {
+  forum: '💬', library: '📚', task: '✅', spec: '📋', risk: '⚠️',
+};
 
 // Top-level nav items (always visible, not grouped)
 const topNavItems = [
@@ -12,7 +24,6 @@ const topNavItems = [
   { path: '/specs', label: 'Specs' },
   { path: '/prowl', label: 'Prowl' },
   { path: '/risk', label: 'Risk' },
-  { path: '/search', label: '🔍' },
 ];
 
 // Grouped navigation (dropdowns for secondary items)
@@ -62,6 +73,13 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [badges, setBadges] = useState<NavBadges>({ specs: 0, prowl: 0 });
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<QuickResult[]>([]);
+  const [searchSelected, setSearchSelected] = useState(-1);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouchDevice = 'ontouchstart' in window;
   const [sessionStartTime] = useState(() => {
     const stored = localStorage.getItem('oracle_session_start');
@@ -124,6 +142,61 @@ export function Header({ onRemoteToggle }: HeaderProps) {
     const mins = minutes % 60;
     return `${hours}h ${mins}m`;
   }
+
+  const fetchQuickResults = useCallback(async (q: string) => {
+    if (q.trim().length < 2) { setSearchResults([]); return; }
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q.trim())}&limit=8`);
+      const data = await res.json();
+      setSearchResults(data.results || []);
+      setSearchSelected(-1);
+    } catch { setSearchResults([]); }
+  }, []);
+
+  function handleSearchInput(value: string) {
+    setSearchQuery(value);
+    clearTimeout(debounceRef.current);
+    if (value.trim().length < 2) { setSearchResults([]); return; }
+    debounceRef.current = setTimeout(() => fetchQuickResults(value), 150);
+  }
+
+  function selectResult(r: QuickResult) {
+    setSearchOpen(false); setSearchQuery(''); setSearchResults([]);
+    navigate(r.url);
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Escape') { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); return; }
+    if (e.key === 'Enter') {
+      if (searchSelected >= 0 && searchResults[searchSelected]) { e.preventDefault(); selectResult(searchResults[searchSelected]); }
+      else if (searchQuery.trim()) { setSearchOpen(false); setSearchResults([]); navigate(`/search?q=${encodeURIComponent(searchQuery)}`); setSearchQuery(''); }
+      return;
+    }
+    if (searchResults.length === 0) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setSearchSelected(i => Math.min(i + 1, searchResults.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setSearchSelected(i => Math.max(i - 1, 0)); }
+  }
+
+  // Close on click outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) { setSearchOpen(false); setSearchResults([]); }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  // Focus input when opened
+  useEffect(() => { if (searchOpen) searchInputRef.current?.focus(); }, [searchOpen]);
+
+  // Ctrl+K shortcut
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setSearchOpen(true); }
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, []);
 
   function isGroupActive(group: typeof navGroups[number]): boolean {
     return group.items.some(item => location.pathname === item.path.split('?')[0]);
@@ -196,6 +269,45 @@ export function Header({ onRemoteToggle }: HeaderProps) {
           </div>
         ))}
       </nav>
+
+      <div className={styles.quickSearch} ref={searchRef}>
+        {searchOpen ? (
+          <>
+            <input
+              ref={searchInputRef}
+              type="text"
+              className={styles.quickSearchInput}
+              placeholder="Search everything..."
+              value={searchQuery}
+              onChange={e => handleSearchInput(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+            />
+            {searchResults.length > 0 && (
+              <div className={styles.quickSearchResults}>
+                {searchResults.map((r, i) => (
+                  <div
+                    key={`${r.source_type}-${r.source_id}-${i}`}
+                    className={`${styles.quickSearchItem} ${i === searchSelected ? styles.quickSearchItemActive : ''}`}
+                    onClick={() => selectResult(r)}
+                    onMouseEnter={() => setSearchSelected(i)}
+                  >
+                    <span className={styles.quickSearchIcon}>{TYPE_ICONS[r.source_type] || '📄'}</span>
+                    <span className={styles.quickSearchLabel}>{r.title}</span>
+                    <span className={styles.quickSearchType}>{r.source_type}</span>
+                  </div>
+                ))}
+                <div className={styles.quickSearchFooter} onClick={() => { setSearchOpen(false); setSearchResults([]); navigate(`/search?q=${encodeURIComponent(searchQuery)}`); setSearchQuery(''); }}>
+                  View all results →
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <button className={styles.quickSearchToggle} onClick={() => setSearchOpen(true)} title="Search (Ctrl+K)">
+            🔍 <span className={styles.quickSearchHint}>Ctrl+K</span>
+          </button>
+        )}
+      </div>
 
       <div className={styles.sessionStats}>
         <span className={styles.statItem}>

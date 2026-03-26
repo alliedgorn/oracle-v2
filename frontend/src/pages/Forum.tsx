@@ -779,6 +779,10 @@ export function Forum() {
                               />
                             );
                           }
+                          const isMention = href && href.startsWith('/beast/');
+                          if (isMention) {
+                            return <a href={href} className={styles.mention}>{children}</a>;
+                          }
                           const isInternal = href && href.startsWith('/');
                           return isInternal
                             ? <a href={href}>{children}</a>

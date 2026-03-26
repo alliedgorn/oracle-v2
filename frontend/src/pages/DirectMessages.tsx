@@ -119,7 +119,14 @@ export function DirectMessages() {
           />
         );
       }
-      return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+      const isMention = href && href.startsWith('/beast/');
+      if (isMention) {
+        return <a href={href} className={styles.mention}>{children}</a>;
+      }
+      const isInternal = href && href.startsWith('/');
+      return isInternal
+        ? <a href={href}>{children}</a>
+        : <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
     },
   }).current;
 

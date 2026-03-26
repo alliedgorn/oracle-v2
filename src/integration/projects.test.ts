@@ -4,7 +4,7 @@
  *
  * Author: Pip (QA/Chaos Testing)
  */
-import { describe, test, expect, beforeAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 
 const BASE_URL = "http://localhost:47778";
 const TEST_PREFIX = "test_projects_";
@@ -23,6 +23,14 @@ describe("Projects API Integration", () => {
   beforeAll(async () => {
     if (!(await isServerRunning())) {
       throw new Error("Server not running on port 47778");
+    }
+  });
+
+  afterAll(async () => {
+    for (const id of createdProjectIds) {
+      try {
+        await fetch(`${BASE_URL}/api/projects/${id}?as=pip`, { method: "DELETE" });
+      } catch {}
     }
   });
 

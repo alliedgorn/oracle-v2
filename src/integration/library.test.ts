@@ -27,8 +27,11 @@ describe("Library API Integration", () => {
   });
 
   afterAll(async () => {
-    // Clean up test entries by updating title to mark as test
-    // No DELETE endpoint, so entries persist
+    for (const id of createdEntryIds) {
+      try {
+        await fetch(`${BASE_URL}/api/library/${id}?as=pip`, { method: "DELETE" });
+      } catch {}
+    }
   });
 
   // =====================

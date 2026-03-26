@@ -177,8 +177,18 @@ Only run backfill if `search_index` is empty (first migration).
 - [x] FTS5 query input sanitized (column targeting prevented)
 - [x] Snippets only from indexed content (excluded types never in index)
 
+## Reindex & Integrity
+
+### Manual Reindex Endpoint
+
+`POST /api/search/reindex` — Gorn-only auth. Truncates and rebuilds the full FTS5 index from source tables. For recovery from index drift, schema changes, or adding new content types.
+
+### Integrity Check
+
+`GET /api/search/status` — compares row counts between source tables and search_index by source_type. Returns drift report. Lightweight, safe to run on a schedule (weekly via scheduler). Only triggers alert/log if counts diverge — no automatic reindex.
+
 ## Risk
 
 - **Low**: FTS5 is mature SQLite extension, well-documented
 - **Medium**: Index-on-write hooks add complexity to every CRUD operation — need to ensure all write paths are covered
-- **Mitigation**: Wrap index operations in a helper function; periodic reindex command for drift detection
+- **Mitigation**: Wrap index operations in a helper function; manual reindex endpoint for recovery; weekly integrity check for drift detection

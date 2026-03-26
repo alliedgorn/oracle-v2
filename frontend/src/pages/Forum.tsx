@@ -156,6 +156,8 @@ export function Forum() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ messages: any[]; threads: any[] } | null>(null);
   const [reactions, setReactions] = useState<Record<number, { emoji: string; beasts: string[]; count: number }[]>>({});
+  const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
+  const [supportedEmoji, setSupportedEmoji] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [replyTo, setReplyTo] = useState<{ id: number; author: string | null; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
@@ -231,6 +233,7 @@ export function Forum() {
   useEffect(() => {
     loadThreads();
     loadUnreadCounts();
+    fetch('/api/reactions/supported').then(r => r.json()).then(d => setSupportedEmoji(d.emoji || [])).catch(() => {});
   }, []);
 
   // Load thread from URL param or auto-select first
@@ -780,9 +783,20 @@ export function Forum() {
                     ))}
                     <button
                       className={styles.addReaction}
-                      onClick={() => toggleReaction(msg.id, '👍')}
+                      onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
                       title="React"
                     >+</button>
+                    {emojiPickerMsgId === msg.id && (
+                      <div className={styles.emojiPicker}>
+                        {supportedEmoji.map(e => (
+                          <button
+                            key={e}
+                            className={styles.emojiOption}
+                            onClick={() => { toggleReaction(msg.id, e); setEmojiPickerMsgId(null); }}
+                          >{e}</button>
+                        ))}
+                      </div>
+                    )}
                     <button
                       className={styles.replyBtn}
                       onClick={() => {

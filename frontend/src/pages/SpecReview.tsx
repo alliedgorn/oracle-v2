@@ -29,6 +29,14 @@ interface Spec {
   updated_at: string;
 }
 
+interface SpecComment {
+  id: number;
+  spec_id: number;
+  author: string;
+  content: string;
+  created_at: string;
+}
+
 const API_BASE = '/api';
 
 const FILTERS = [
@@ -49,6 +57,9 @@ export function SpecReview() {
   const [versions, setVersions] = useState<SpecVersion[]>([]);
   const [diffText, setDiffText] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [comments, setComments] = useState<SpecComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
 
   const specParam = searchParams.get('spec');
 
@@ -76,6 +87,37 @@ export function SpecReview() {
       })
       .catch(() => setSelectedSpec(null));
   }, [specParam]);
+
+  const loadComments = useCallback(async (specId: number) => {
+    const res = await fetch(`${API_BASE}/specs/${specId}/comments`);
+    if (res.ok) {
+      const data = await res.json();
+      setComments(data.comments || []);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedSpec) loadComments(selectedSpec.id);
+    else setComments([]);
+  }, [selectedSpec, loadComments]);
+
+  const submitComment = async (specId: number) => {
+    if (!commentText.trim() || submittingComment) return;
+    setSubmittingComment(true);
+    try {
+      const res = await fetch(`${API_BASE}/specs/${specId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: commentText.trim() }),
+      });
+      if (res.ok) {
+        setCommentText('');
+        loadComments(specId);
+      }
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
 
   function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -281,6 +323,40 @@ export function SpecReview() {
             </div>
           </div>
         )}
+
+        {/* Comments */}
+        <div className={styles.commentsSection}>
+          <div className={styles.commentsTitle}>Comments ({comments.length})</div>
+          {comments.length > 0 && (
+            <div className={styles.commentsList}>
+              {comments.map(comment => (
+                <div key={comment.id} className={styles.commentItem}>
+                  <div className={styles.commentHeader}>
+                    <span className={styles.commentAuthor}>@{comment.author}</span>
+                    <span className={styles.commentTime}>{formatDate(comment.created_at)}</span>
+                  </div>
+                  <div className={styles.commentContent}>{comment.content}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className={styles.commentForm}>
+            <input
+              className={styles.commentInput}
+              placeholder="Add a comment..."
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && selectedSpec && submitComment(selectedSpec.id)}
+            />
+            <button
+              className={styles.commentSubmit}
+              onClick={() => selectedSpec && submitComment(selectedSpec.id)}
+              disabled={!commentText.trim() || submittingComment}
+            >
+              Post
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

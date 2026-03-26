@@ -4611,6 +4611,85 @@ app.delete('/api/specs/:id', async (c) => {
 });
 
 // ============================================================================
+// Spec Comments (T#332)
+// ============================================================================
+
+try { sqlite.prepare(`
+  CREATE TABLE IF NOT EXISTS spec_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    spec_id INTEGER NOT NULL,
+    author TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`).run(); } catch { /* exists */ }
+
+// GET /api/specs/:id/comments
+app.get('/api/specs/:id/comments', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const spec = sqlite.prepare('SELECT id FROM spec_reviews WHERE id = ?').get(id);
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+  const comments = sqlite.prepare('SELECT * FROM spec_comments WHERE spec_id = ? ORDER BY created_at ASC').all(id);
+  return c.json({ comments });
+});
+
+// POST /api/specs/:id/comments
+app.post('/api/specs/:id/comments', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const spec = sqlite.prepare('SELECT id, title, author FROM spec_reviews WHERE id = ?').get(id) as any;
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+
+  try {
+    const data = await c.req.json();
+    const author = (c.req.query('as') || data.author || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+    if (!author) return c.json({ error: 'Identity required: pass ?as=beast or author in body' }, 400);
+    if (!data.content?.trim()) return c.json({ error: 'content required' }, 400);
+
+    const contentText = data.content.trim();
+    const result = sqlite.prepare(
+      'INSERT INTO spec_comments (spec_id, author, content) VALUES (?, ?, ?)'
+    ).run(id, author, contentText);
+
+    const comment = sqlite.prepare('SELECT * FROM spec_comments WHERE id = ?').get((result as any).lastInsertRowid);
+    wsBroadcast('spec_comment', { action: 'comment', spec_id: id, comment });
+
+    // Notify spec author + previous commenters + @mentions
+    try {
+      const { parseMentions, notifyMentioned } = await import('./forum/mentions.ts');
+      const toNotify = new Set<string>();
+      // Spec author
+      if (spec.author && spec.author.toLowerCase() !== author) toNotify.add(spec.author.toLowerCase());
+      // Previous commenters
+      const prevCommenters = sqlite.prepare(
+        'SELECT DISTINCT author FROM spec_comments WHERE spec_id = ? AND author != ?'
+      ).all(id, author) as any[];
+      for (const pc of prevCommenters) toNotify.add(pc.author.toLowerCase());
+      // @mentions in comment content
+      const mentions = parseMentions(contentText, 0);
+      for (const m of mentions) toNotify.add(m.toLowerCase());
+      toNotify.delete(author);
+      toNotify.delete('gorn'); toNotify.delete('human'); toNotify.delete('user');
+      if (toNotify.size > 0) {
+        notifyMentioned(
+          [...toNotify],
+          0,
+          `Spec #${id}: ${spec.title || 'Untitled'}`,
+          author,
+          `New comment on spec #${id}: ${contentText.slice(0, 100)}`,
+          { type: 'Spec comment', label: `spec #${id}`, hint: `View at /specs?spec=${id} to see comments.` }
+        );
+      }
+    } catch { /* notification failure is non-critical */ }
+
+    return c.json(comment, 201);
+  } catch {
+    return c.json({ error: 'Invalid request' }, 400);
+  }
+});
+
+// ============================================================================
 // Risk Register (T#316)
 // ============================================================================
 

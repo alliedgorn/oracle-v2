@@ -280,12 +280,14 @@ export function Board() {
         >
           <option value="">All Projects</option>
           <option value="__active__">All Active</option>
-          {(['active', 'paused'] as const).map(status => {
+          {(['active', 'paused', 'completed'] as const).map(status => {
             const group = board.projects.filter(p => p.status === status);
             return group.length > 0 ? (
               <optgroup key={status} label={status.charAt(0).toUpperCase() + status.slice(1)}>
                 {group.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                  <option key={p.id} value={p.id}>
+                    {p.name}{status !== 'active' ? ` (${status})` : ''}
+                  </option>
                 ))}
               </optgroup>
             ) : null;
@@ -329,6 +331,26 @@ export function Board() {
           {board.total} tasks
         </span>
       </div>
+
+      {/* Paused/Completed project banner */}
+      {(() => {
+        const proj = projectFilter && projectFilter !== '__active__'
+          ? board.projects.find(p => String(p.id) === projectFilter)
+          : null;
+        return proj && proj.status !== 'active' ? (
+          <div className={styles.projectBanner} data-status={proj.status}>
+            This project is {proj.status}.
+            {proj.status === 'paused' && (
+              <button
+                className={styles.bannerAction}
+                onClick={() => updateProjectStatus(proj.id, 'active')}
+              >
+                Reactivate
+              </button>
+            )}
+          </div>
+        ) : null;
+      })()}
 
       {/* New Task Form */}
       {showNewTask && (
@@ -394,7 +416,12 @@ export function Board() {
 
       {/* Kanban View */}
       {viewMode === 'kanban' && (
-        <div className={styles.board}>
+        <div className={`${styles.board} ${(() => {
+          const proj = projectFilter && projectFilter !== '__active__'
+            ? board.projects.find(p => String(p.id) === projectFilter)
+            : null;
+          return proj && proj.status !== 'active' ? styles.pausedBoard : '';
+        })()}`}>
           {STATUSES.map(status => {
             const tasks = board.columns[status] || [];
             return (
@@ -419,7 +446,12 @@ export function Board() {
 
       {/* List View */}
       {viewMode === 'list' && (
-        <div className={styles.listView}>
+        <div className={`${styles.listView} ${(() => {
+          const proj = projectFilter && projectFilter !== '__active__'
+            ? board.projects.find(p => String(p.id) === projectFilter)
+            : null;
+          return proj && proj.status !== 'active' ? styles.pausedBoard : '';
+        })()}`}>
           <table className={styles.listTable}>
             <thead>
               <tr>

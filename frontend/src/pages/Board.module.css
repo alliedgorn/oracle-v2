@@ -92,6 +92,48 @@
   color: #6e7681;
 }
 
+/* Paused/completed project banner */
+.projectBanner {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.projectBanner[data-status="paused"] {
+  background: rgba(217, 119, 6, 0.1);
+  color: var(--warning, #d97706);
+  border: 1px solid rgba(217, 119, 6, 0.2);
+}
+
+.projectBanner[data-status="completed"] {
+  background: rgba(110, 118, 129, 0.1);
+  color: var(--text-muted);
+  border: 1px solid rgba(110, 118, 129, 0.2);
+}
+
+.bannerAction {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  padding: 2px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.bannerAction:hover {
+  background: rgba(217, 119, 6, 0.15);
+}
+
+/* Reduced opacity for paused/completed project tasks */
+.pausedBoard {
+  opacity: 0.85;
+}
+
 /* Kanban board */
 .board {
   display: flex;

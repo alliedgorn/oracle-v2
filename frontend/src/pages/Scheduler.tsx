@@ -137,10 +137,9 @@ export function Scheduler() {
   }
 
   async function markRun(id: number) {
-    await fetch(`${API_BASE}/schedules/${id}/run`, {
-      method: 'PATCH',
+    await fetch(`${API_BASE}/schedules/${id}/execute`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
     });
     loadSchedules();
   }

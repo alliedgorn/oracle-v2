@@ -3822,6 +3822,42 @@ app.delete('/api/schedules/:id', async (c) => {
   return c.json({ deleted: true, id });
 });
 
+// POST /api/schedules/:id/execute — manually trigger a schedule (sends tmux notification to Beast)
+app.post('/api/schedules/:id/execute', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const schedule = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
+  if (!schedule) return c.json({ error: 'Schedule not found' }, 404);
+
+  const sessionName = schedule.beast.charAt(0).toUpperCase() + schedule.beast.slice(1);
+
+  // Check if Beast tmux session exists
+  try {
+    execSync(`tmux has-session -t ${JSON.stringify(sessionName)}`, { timeout: 2000 });
+  } catch {
+    return c.json({ error: `tmux session '${sessionName}' not found — Beast may be offline` }, 503);
+  }
+
+  // Send notification to Beast (same as auto-trigger daemon)
+  const safeTask = schedule.task.replace(/[^a-zA-Z0-9 _./-]/g, '');
+  const notification = `# [Scheduler] Due now: ${safeTask} (schedule #${schedule.id})`;
+
+  try {
+    execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(notification)}`, { timeout: 2000 });
+    execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} Enter`, { timeout: 2000 });
+
+    const now = new Date().toISOString();
+    sqlite.prepare(
+      `UPDATE beast_schedules SET last_triggered_at = ?, trigger_status = 'triggered', updated_at = datetime('now') WHERE id = ?`
+    ).run(now, id);
+
+    wsBroadcast('schedule_update', { action: 'triggered', id });
+    return c.json({ success: true, message: `Triggered ${schedule.beast}/${schedule.task}` });
+  } catch (err) {
+    return c.json({ error: `Failed to send to ${sessionName}: ${err}` }, 500);
+  }
+});
+
 // PATCH /api/schedules/:id/trigger — mark as triggered (owner, Gorn, or server daemon only)
 app.patch('/api/schedules/:id/trigger', async (c) => {
   const id = parseInt(c.req.param('id'), 10);

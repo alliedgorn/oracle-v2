@@ -17,6 +17,6 @@ export function autolinkIds(content: string): string {
     // schedule #14, Schedule #14 → link to scheduler
     .replace(/\b[Ss]chedule\s?#(\d+)\b/g, '[Schedule #$1](/scheduler)')
     // @beast → link to beast profile (lowercase word after @, not @all/@team patterns)
-    .replace(/@(karo|gnarl|zaghnal|bertus|leonard|mara|rax|pip|nyx|dex|flint|quill|snap|vigil|talon|gorn)\b/gi,
+    .replace(/@(karo|gnarl|zaghnal|bertus|leonard|mara|rax|pip|nyx|dex|flint|quill|snap|vigil|talon|sable|gorn)\b/gi,
       (_, name) => `[@${name.toLowerCase()}](/beast/${name.toLowerCase()})`);
 }

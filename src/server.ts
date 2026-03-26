@@ -2524,7 +2524,7 @@ app.post('/api/dm', async (c) => {
       }
     }
     const result = await withRetry(() => sendDm(data.from, data.to, data.message));
-    wsBroadcast('new_dm', { from: data.from, to: data.to, conversation_id: result.conversationId });
+    wsBroadcast('new_dm', { conversation_id: result.conversationId });
     return c.json({
       conversation_id: result.conversationId,
       message_id: result.messageId,
@@ -3011,7 +3011,7 @@ app.post('/api/projects', async (c) => {
     'INSERT INTO projects (name, description, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
   ).run(name, description || '', created_by, now, now);
   const project = sqlite.prepare('SELECT * FROM projects WHERE id = ?').get((result as any).lastInsertRowid);
-  wsBroadcast('project_created', project);
+  wsBroadcast('project_created', { id: (project as any).id });
   return c.json(project, 201);
 });
 
@@ -3095,7 +3095,7 @@ app.post('/api/tasks', async (c) => {
   ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, now, now);
 
   const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid);
-  wsBroadcast('task_created', task);
+  wsBroadcast('task_created', { id: (task as any).id });
   return c.json(task, 201);
 });
 
@@ -3141,7 +3141,7 @@ app.patch('/api/tasks/:id', async (c) => {
 
   sqlite.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(...params);
   const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get(id);
-  wsBroadcast('task_updated', task);
+  wsBroadcast('task_updated', { id: (task as any).id });
   return c.json(task);
 });
 
@@ -3180,7 +3180,7 @@ app.post('/api/tasks/bulk-status', async (c) => {
   for (const id of task_ids) {
     stmt.run(status, now, id);
   }
-  wsBroadcast('tasks_bulk_updated', { task_ids, status });
+  wsBroadcast('tasks_bulk_updated', { task_ids });
   return c.json({ success: true, updated: task_ids.length });
 });
 
@@ -3737,7 +3737,7 @@ app.post('/api/schedules', async (c) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(beast, task, command || null, interval, intervalSeconds, nextDue, scheduleTime, tz, source || null, isOnce ? 1 : 0, runAt);
   const created = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(result.lastInsertRowid) as any;
-  wsBroadcast('schedule_update', { action: 'created', schedule: created });
+  wsBroadcast('schedule_update', { action: 'created', id: (created as any).id });
   return c.json(created, 201);
 });
 
@@ -3798,7 +3798,7 @@ app.patch('/api/schedules/:id', async (c) => {
   params.push(id);
   sqlite.prepare(`UPDATE beast_schedules SET ${updates.join(', ')} WHERE id = ?`).run(...params);
   const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
-  wsBroadcast('schedule_update', { action: 'updated', schedule: updated });
+  wsBroadcast('schedule_update', { action: 'updated', id: (updated as any).id });
   return c.json(updated);
 });
 
@@ -3830,7 +3830,7 @@ app.patch('/api/schedules/:id/run', async (c) => {
       `UPDATE beast_schedules SET last_run_at = ?, enabled = 0, trigger_status = 'completed', last_triggered_at = ?, updated_at = datetime('now') WHERE id = ?`
     ).run(now.toISOString(), now.toISOString(), id);
     const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
-    wsBroadcast('schedule_update', { action: 'run', schedule: updated });
+    wsBroadcast('schedule_update', { action: 'run', id: (updated as any).id });
     return c.json(updated);
   }
 
@@ -3845,7 +3845,7 @@ app.patch('/api/schedules/:id/run', async (c) => {
     `UPDATE beast_schedules SET last_run_at = ?, next_due_at = ?, trigger_status = 'pending', last_triggered_at = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(now.toISOString(), nextDue, now.toISOString(), id);
   const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
-  wsBroadcast('schedule_update', { action: 'run', schedule: updated });
+  wsBroadcast('schedule_update', { action: 'run', id: (updated as any).id });
   return c.json(updated);
 });
 
@@ -3888,7 +3888,7 @@ app.patch('/api/schedules/:id/trigger', async (c) => {
     `UPDATE beast_schedules SET last_triggered_at = ?, trigger_status = 'triggered', updated_at = datetime('now') WHERE id = ?`
   ).run(now, id);
   const updated = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
-  wsBroadcast('schedule_update', { action: 'triggered', schedule: updated });
+  wsBroadcast('schedule_update', { action: 'triggered', id: (updated as any).id });
   return c.json(updated);
 });
 
@@ -3952,7 +3952,7 @@ function runSchedulerCycle() {
           `UPDATE beast_schedules SET last_triggered_at = ?, trigger_status = 'triggered', updated_at = datetime('now') WHERE id = ?`
         ).run(now, schedule.id);
 
-        wsBroadcast('schedule_update', { action: 'triggered', schedule: { ...schedule, last_triggered_at: now, trigger_status: 'triggered' } });
+        wsBroadcast('schedule_update', { action: 'triggered', id: schedule.id });
         console.log(`[Scheduler] Triggered: ${schedule.beast}/${schedule.task} (#${schedule.id})`);
       } catch (err) {
         console.log(`[Scheduler] Failed to notify ${schedule.beast}: ${err}`);
@@ -4510,7 +4510,7 @@ app.post('/api/specs', async (c) => {
         sqlite.prepare('UPDATE tasks SET spec_id = ?, updated_at = ? WHERE id = ?').run(spec.id, now, taskIdNum);
       }
     }
-    wsBroadcast('spec_submitted', { spec });
+    wsBroadcast('spec_submitted', { id: (spec as any).id });
     return c.json(spec, 201);
   } catch (e: any) {
     if (e?.message?.includes('UNIQUE')) return c.json({ error: 'Spec already registered for this repo + path' }, 409);
@@ -4542,7 +4542,7 @@ app.post('/api/specs/:id/review', async (c) => {
       'UPDATE spec_reviews SET status = ?, reviewer_feedback = ?, reviewed_at = ?, updated_at = ? WHERE id = ?'
     ).run(status, feedback || null, now, now, id);
     const updated = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
-    wsBroadcast('spec_reviewed', { spec: updated, action });
+    wsBroadcast('spec_reviewed', { id: (updated as any).id, action });
     // Auto-comment on associated PM Board task + notify assignee
     if (spec.task_id) {
       const taskIdNum = parseInt(spec.task_id.replace(/\D/g, ''), 10);
@@ -4592,7 +4592,7 @@ app.post('/api/specs/:id/resubmit', async (c) => {
     'UPDATE spec_reviews SET status = ?, reviewer_feedback = NULL, reviewed_at = NULL, updated_at = ? WHERE id = ?'
   ).run('pending', now, id);
   const updated = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id);
-  wsBroadcast('spec_resubmitted', { spec: updated });
+  wsBroadcast('spec_resubmitted', { id: (updated as any).id });
   return c.json(updated);
 });
 
@@ -4607,7 +4607,7 @@ app.delete('/api/specs/:id', async (c) => {
   const existing = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Spec not found' }, 404);
   sqlite.prepare('DELETE FROM spec_reviews WHERE id = ?').run(id);
-  wsBroadcast('spec_deleted', { spec: existing });
+  wsBroadcast('spec_deleted', { id: (existing as any).id });
   return c.json({ deleted: true, id });
 });
 
@@ -4654,7 +4654,7 @@ app.post('/api/specs/:id/comments', async (c) => {
     ).run(id, author, contentText);
 
     const comment = sqlite.prepare('SELECT * FROM spec_comments WHERE id = ?').get((result as any).lastInsertRowid);
-    wsBroadcast('spec_comment', { action: 'comment', spec_id: id, comment });
+    wsBroadcast('spec_comment', { action: 'comment', spec_id: id, comment_id: (comment as any).id });
 
     // Notify spec author + previous commenters + @mentions
     try {
@@ -4848,7 +4848,7 @@ app.post('/api/risks', async (c) => {
     );
 
     const risk = sqlite.prepare('SELECT * FROM risks WHERE id = ?').get((result as any).lastInsertRowid);
-    wsBroadcast('risk_update', { action: 'create', risk });
+    wsBroadcast('risk_update', { action: 'create', id: (risk as any).id });
     return c.json(risk, 201);
   } catch (e: any) {
     return c.json({ error: e?.message || 'Invalid request' }, 400);
@@ -4903,7 +4903,7 @@ app.patch('/api/risks/:id', async (c) => {
 
     sqlite.prepare(`UPDATE risks SET ${updates.join(', ')} WHERE id = ?`).run(...values);
     const risk = sqlite.prepare('SELECT * FROM risks WHERE id = ?').get(id);
-    wsBroadcast('risk_update', { action: 'update', risk });
+    wsBroadcast('risk_update', { action: 'update', id: (risk as any).id });
     return c.json(risk);
   } catch {
     return c.json({ error: 'Invalid request' }, 400);
@@ -4920,7 +4920,7 @@ app.delete('/api/risks/:id', async (c) => {
 
   const now = new Date().toISOString();
   sqlite.prepare('UPDATE risks SET deleted_at = ?, updated_at = ? WHERE id = ?').run(now, now, id);
-  wsBroadcast('risk_update', { action: 'delete', risk: existing });
+  wsBroadcast('risk_update', { action: 'delete', id: (existing as any).id });
   return c.json({ deleted: true, id });
 });
 
@@ -4967,7 +4967,7 @@ app.post('/api/risks/:id/comments', async (c) => {
     ).run(id, author, contentText);
 
     const comment = sqlite.prepare('SELECT * FROM risk_comments WHERE id = ?').get((result as any).lastInsertRowid);
-    wsBroadcast('risk_update', { action: 'comment', risk_id: id, comment });
+    wsBroadcast('risk_update', { action: 'comment', risk_id: id });
 
     // Notify risk owner + previous commenters
     try {
@@ -5116,7 +5116,7 @@ app.post('/api/prowl', async (c) => {
     );
 
     const task = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get((result as any).lastInsertRowid);
-    wsBroadcast('prowl_update', { action: 'create', task });
+    wsBroadcast('prowl_update', { action: 'create' });
     return c.json(task, 201);
   } catch (e: any) {
     return c.json({ error: e?.message || 'Invalid request' }, 400);
@@ -5152,7 +5152,7 @@ app.patch('/api/prowl/:id', async (c) => {
 
     sqlite.prepare(`UPDATE prowl_tasks SET ${updates.join(', ')} WHERE id = ?`).run(...values);
     const task = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id);
-    wsBroadcast('prowl_update', { action: 'update', task });
+    wsBroadcast('prowl_update', { action: 'update' });
     return c.json(task);
   } catch {
     return c.json({ error: 'Invalid request' }, 400);
@@ -5178,7 +5178,7 @@ app.patch('/api/prowl/:id/status', async (c) => {
     sqlite.prepare('UPDATE prowl_tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?')
       .run(newStatus, completedAt, now, id);
     const task = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id);
-    wsBroadcast('prowl_update', { action: 'status', task });
+    wsBroadcast('prowl_update', { action: 'status' });
     return c.json(task);
   } catch {
     return c.json({ error: 'Invalid request' }, 400);
@@ -5200,7 +5200,7 @@ app.post('/api/prowl/:id/toggle', async (c) => {
   sqlite.prepare('UPDATE prowl_tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?')
     .run(newStatus, completedAt, now, id);
   const task = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id);
-  wsBroadcast('prowl_update', { action: 'toggle', task });
+  wsBroadcast('prowl_update', { action: 'toggle' });
   return c.json(task);
 });
 
@@ -5218,7 +5218,7 @@ app.delete('/api/prowl/:id', async (c) => {
   if (!existing) return c.json({ error: 'Task not found' }, 404);
 
   sqlite.prepare('DELETE FROM prowl_tasks WHERE id = ?').run(id);
-  wsBroadcast('prowl_update', { action: 'delete', task: existing });
+  wsBroadcast('prowl_update', { action: 'delete' });
   return c.json({ deleted: true, id });
 });
 

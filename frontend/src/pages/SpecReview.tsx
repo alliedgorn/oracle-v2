@@ -103,15 +103,6 @@ export function SpecReview() {
     else setComments([]);
   }, [selectedSpec, loadComments]);
 
-  // Poll comments every 10s as fallback for WebSocket
-  useEffect(() => {
-    if (!selectedSpec) return;
-    const interval = setInterval(() => {
-      if (!document.hidden) loadComments(selectedSpec.id);
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [selectedSpec, loadComments]);
-
   // Real-time updates — only re-fetch if we don't already have the comment
   useWebSocket('spec_comment', (data: any) => {
     const specId = data?.spec_id || selectedSpec?.id;

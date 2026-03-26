@@ -80,6 +80,7 @@ export function DirectMessages() {
   const [newMessage, setNewMessage] = useState('');
   const [_replyAs, setReplyAs] = useState('gorn');
   const [loading, setLoading] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [showNewDm, setShowNewDm] = useState(false);
   const [beasts, setBeasts] = useState<{ name: string; displayName: string }[]>([]);
@@ -498,6 +499,26 @@ export function DirectMessages() {
                     rows={3}
                   />
                   <div className={styles.replyActions}>
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        type="button"
+                        className={styles.emojiBtn}
+                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                        title="Insert emoji"
+                      >😀</button>
+                      {showEmojiPicker && (
+                        <div className={styles.emojiPicker}>
+                          {['😀','😂','😢','🤔','😍','👍','👎','❤️','🔥','👀','✅','❌','💪','🎉','🙏','👏','💯','🚀','⭐','💡','🤝','🫡','📦','⚠️','🏆'].map(e => (
+                            <button
+                              key={e}
+                              type="button"
+                              className={styles.emojiOption}
+                              onClick={() => { setNewMessage(prev => prev + e); setShowEmojiPicker(false); }}
+                            >{e}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
                     <button
                       type="submit"

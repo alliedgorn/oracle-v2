@@ -4791,7 +4791,8 @@ app.post('/api/risks/:id/comments', async (c) => {
             0,
             `Risk #${id}: ${riskData.title || 'Untitled'}`,
             author,
-            `New comment on risk #${id}: ${contentText.slice(0, 100)}`
+            `New comment on risk #${id}: ${contentText.slice(0, 100)}`,
+            { type: 'Risk comment', label: `risk #${id}`, hint: `View at /risk and expand risk #${id} to see comments.` }
           );
         }
       }

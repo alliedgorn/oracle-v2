@@ -178,6 +178,7 @@ export function notifyMentioned(
   threadTitle: string,
   author: string,
   content: string,
+  context?: { type: string; label: string; hint: string },
 ): string[] {
   if (mentions.length === 0) return [];
 
@@ -200,7 +201,12 @@ export function notifyMentioned(
     const utc7 = new Date(now.getTime() + 7 * 60 * 60 * 1000);
     const timeStr = `${utc7.getUTCHours().toString().padStart(2, '0')}:${utc7.getUTCMinutes().toString().padStart(2, '0')} UTC+7`;
 
-    const message = `[${timeStr}] [Forum message] From ${author} in thread #${threadId} ("${sanitizeForTmux(threadTitle, 50)}"):\\n\\n${preview}\\n\\nUse /forum thread ${threadId} to read and /forum post <message> (with thread_id ${threadId}) to reply.`;
+    let message: string;
+    if (context) {
+      message = `[${timeStr}] [${context.type}] From ${author} in ${context.label} ("${sanitizeForTmux(threadTitle, 50)}"):\\n\\n${preview}\\n\\n${context.hint}`;
+    } else {
+      message = `[${timeStr}] [Forum message] From ${author} in thread #${threadId} ("${sanitizeForTmux(threadTitle, 50)}"):\\n\\n${preview}\\n\\nUse /forum thread ${threadId} to read and /forum post <message> (with thread_id ${threadId}) to reply.`;
+    }
 
     try {
       const result = Bun.spawnSync(['tmux', 'send-keys', '-t', entry.tmux, message, 'Enter']);

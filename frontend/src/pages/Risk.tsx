@@ -301,7 +301,10 @@ export function Risk() {
                 onClick={() => setExpandedId(expandedId === risk.id ? null : risk.id)}
               >
                 <div className={styles.riskContent}>
-                  <div className={styles.riskTitle}>{risk.title}</div>
+                  <div className={styles.riskTitle}>
+                    <span className={styles.riskId}>#{risk.id}</span>
+                    {risk.title}
+                  </div>
                   <div className={styles.riskMeta}>
                     <span className={`${styles.severityBadge} ${sevClass(risk.severity)}`}>{risk.severity}</span>
                     <span className={styles.statusBadge}>{risk.status}</span>

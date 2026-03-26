@@ -91,23 +91,28 @@ export function SpecReview() {
       .catch(() => setSelectedSpec(null));
   }, [specParam]);
 
-  const loadComments = useCallback(async (specId: number, loadMore = false) => {
-    const offset = loadMore ? comments.length : 0;
+  const loadComments = useCallback(async (specId: number) => {
+    const res = await fetch(`${API_BASE}/specs/${specId}/comments?limit=30&offset=0`);
+    if (res.ok) {
+      const data = await res.json();
+      setCommentTotal(data.total || 0);
+      setComments(data.comments || []);
+    }
+  }, []);
+
+  const loadMoreComments = async (specId: number) => {
+    const offset = comments.length;
     const res = await fetch(`${API_BASE}/specs/${specId}/comments?limit=30&offset=${offset}`);
     if (res.ok) {
       const data = await res.json();
       setCommentTotal(data.total || 0);
-      if (loadMore) {
-        setComments(prev => [...(data.comments || []), ...prev]);
-      } else {
-        setComments(data.comments || []);
-      }
+      setComments(prev => [...(data.comments || []), ...prev]);
     }
-  }, [comments.length]);
+  };
 
   useEffect(() => {
     if (selectedSpec) loadComments(selectedSpec.id);
-    else setComments([]);
+    else { setComments([]); setCommentTotal(0); }
   }, [selectedSpec, loadComments]);
 
   // Real-time updates — fetch only the new comment and append
@@ -366,7 +371,7 @@ export function SpecReview() {
           {comments.length < commentTotal && (
             <button
               className={styles.loadMoreBtn}
-              onClick={() => selectedSpec && loadComments(selectedSpec.id, true)}
+              onClick={() => selectedSpec && loadMoreComments(selectedSpec.id)}
             >
               Load older comments ({commentTotal - comments.length} more)
             </button>

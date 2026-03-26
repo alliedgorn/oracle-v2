@@ -124,13 +124,12 @@ export function Risk() {
     }
   };
 
-  const changeStatus = async (riskId: number, newStatus: string) => {
-    // Optimistic update
-    setRisks(prev => prev.map(r => r.id === riskId ? { ...r, status: newStatus } : r));
+  const updateRiskField = async (riskId: number, field: string, value: string) => {
+    setRisks(prev => prev.map(r => r.id === riskId ? { ...r, [field]: value } : r));
     const res = await fetch(`/api/risks/${riskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
+      body: JSON.stringify({ [field]: value }),
     });
     if (res.ok) {
       loadRisks();
@@ -297,17 +296,31 @@ export function Risk() {
                 <div className={styles.riskExpanded}>
                   {risk.description && <div className={styles.riskDescription}>{risk.description}</div>}
 
-                  <div className={styles.riskField}>
-                    <label>Status</label>
-                    <select
-                      className={styles.statusSelect}
-                      value={risk.status}
-                      onChange={(e) => changeStatus(risk.id, e.target.value)}
-                    >
-                      {['open', 'mitigating', 'accepted', 'mitigated', 'closed'].map(s => (
-                        <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                      ))}
-                    </select>
+                  <div className={styles.riskFieldRow}>
+                    <div className={styles.riskField}>
+                      <label>Status</label>
+                      <select
+                        className={styles.statusSelect}
+                        value={risk.status}
+                        onChange={(e) => updateRiskField(risk.id, 'status', e.target.value)}
+                      >
+                        {['open', 'mitigating', 'accepted', 'mitigated', 'closed'].map(s => (
+                          <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className={styles.riskField}>
+                      <label>Likelihood</label>
+                      <select
+                        className={styles.statusSelect}
+                        value={risk.likelihood}
+                        onChange={(e) => updateRiskField(risk.id, 'likelihood', e.target.value)}
+                      >
+                        {LIKELIHOODS.map(l => (
+                          <option key={l} value={l}>{l.replace('_', ' ')}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   {risk.mitigation && (
@@ -322,10 +335,6 @@ export function Risk() {
                       <span>{risk.impact_notes}</span>
                     </div>
                   )}
-                  <div className={styles.riskField}>
-                    <label>Likelihood</label>
-                    <span>{risk.likelihood.replace('_', ' ')}</span>
-                  </div>
                   {risk.risk_type && (
                     <div className={styles.riskField}>
                       <label>Risk Type</label>

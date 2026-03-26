@@ -279,6 +279,13 @@
   margin-top: 8px;
 }
 
+/* Field Row */
+.riskFieldRow {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 /* Status Select */
 .statusSelect {
   padding: 4px 8px;

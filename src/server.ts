@@ -4759,12 +4759,44 @@ app.post('/api/risks/:id/comments', async (c) => {
     if (!author) return c.json({ error: 'Identity required: pass ?as=beast or author in body' }, 400);
     if (!data.content?.trim()) return c.json({ error: 'content required' }, 400);
 
+    const contentText = data.content.trim();
     const result = sqlite.prepare(
       'INSERT INTO risk_comments (risk_id, author, content) VALUES (?, ?, ?)'
-    ).run(id, author, data.content.trim());
+    ).run(id, author, contentText);
 
     const comment = sqlite.prepare('SELECT * FROM risk_comments WHERE id = ?').get((result as any).lastInsertRowid);
     wsBroadcast('risk_update', { action: 'comment', risk_id: id, comment });
+
+    // Notify risk owner + previous commenters
+    try {
+      const riskData = sqlite.prepare('SELECT title, owner FROM risks WHERE id = ?').get(id) as any;
+      if (riskData) {
+        const { parseMentions, notifyMentioned } = await import('./forum/mentions.ts');
+        const toNotify = new Set<string>();
+        // Risk owner
+        if (riskData.owner && riskData.owner.toLowerCase() !== author) toNotify.add(riskData.owner.toLowerCase());
+        // Previous commenters
+        const prevCommenters = sqlite.prepare(
+          'SELECT DISTINCT author FROM risk_comments WHERE risk_id = ? AND author != ?'
+        ).all(id, author) as any[];
+        for (const pc of prevCommenters) toNotify.add(pc.author.toLowerCase());
+        // @mentions in comment content
+        const mentions = parseMentions(contentText, 0);
+        for (const m of mentions) toNotify.add(m.toLowerCase());
+        toNotify.delete(author);
+        toNotify.delete('gorn'); toNotify.delete('human'); toNotify.delete('user');
+        if (toNotify.size > 0) {
+          notifyMentioned(
+            [...toNotify],
+            0,
+            `Risk #${id}: ${riskData.title || 'Untitled'}`,
+            author,
+            `New comment on risk #${id}: ${contentText.slice(0, 100)}`
+          );
+        }
+      }
+    } catch { /* notification failure is non-critical */ }
+
     return c.json(comment, 201);
   } catch {
     return c.json({ error: 'Invalid request' }, 400);

@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './SpecReview.module.css';
 
 interface SpecVersion {
@@ -100,6 +101,20 @@ export function SpecReview() {
     if (selectedSpec) loadComments(selectedSpec.id);
     else setComments([]);
   }, [selectedSpec, loadComments]);
+
+  // Real-time updates
+  useWebSocket('spec_comment', () => {
+    if (selectedSpec) loadComments(selectedSpec.id);
+  });
+  useWebSocket('spec_reviewed', () => {
+    loadSpecs();
+    if (selectedSpec) {
+      fetch(`${API_BASE}/specs/${selectedSpec.id}`).then(r => r.json()).then(d => {
+        if (d.id) setSelectedSpec(d);
+      }).catch(() => {});
+    }
+  });
+  useWebSocket('spec_resubmitted', () => { loadSpecs(); });
 
   const submitComment = async (specId: number) => {
     if (!commentText.trim() || submittingComment) return;

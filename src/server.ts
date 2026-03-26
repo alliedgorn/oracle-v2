@@ -4678,7 +4678,7 @@ app.post('/api/specs/:id/comments', async (c) => {
           `Spec #${id}: ${spec.title || 'Untitled'}`,
           author,
           `New comment on spec #${id}: ${contentText.slice(0, 100)}`,
-          { type: 'Spec comment', label: `spec #${id}`, hint: `View at /specs?spec=${id} to see comments.` }
+          { type: 'Spec comment', label: `spec #${id}`, hint: `Use /spec ${id} to view. Reply with: curl -X POST http://localhost:47778/api/specs/${id}/comments?as=<you> -H 'Content-Type: application/json' -d '{\"content\":\"your reply\"}'` }
         );
       }
     } catch { /* notification failure is non-critical */ }

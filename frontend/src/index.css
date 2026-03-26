@@ -159,6 +159,19 @@ a {
   color: var(--text-primary);
 }
 
+/* Markdown content — restore list styling stripped by global reset */
+ul, ol {
+  padding-left: 1.5em;
+}
+
+li {
+  margin: 0.25em 0;
+}
+
+p {
+  margin: 0.4em 0;
+}
+
 /* Auto-link chips — FT#, T#, MSG# references */
 .autolink {
   display: inline;

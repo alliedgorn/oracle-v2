@@ -581,20 +581,6 @@
   line-height: 1.4;
 }
 
-.commentContent ul,
-.commentContent ol {
-  padding-left: 1.5em;
-  margin: 0.5em 0;
-}
-
-.commentContent li {
-  margin: 0.25em 0;
-}
-
-.commentContent p {
-  margin: 0.4em 0;
-}
-
 .commentContent img {
   max-width: 100%;
   height: auto;

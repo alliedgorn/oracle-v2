@@ -379,17 +379,27 @@
 
 /* Mobile */
 @media (max-width: 480px) {
-  .quickSearchInput {
-    width: 100%;
-    min-width: 0;
-    font-size: 16px;
+  .quickSearch {
+    flex-shrink: 0;
   }
 
-  .quickSearch {
-    flex: 1;
+  .quickSearchInput {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    font-size: 16px;
+    z-index: 301;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    border: 2px solid var(--accent);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   }
 
   .quickSearchResults {
+    top: 56px;
     left: 4px;
     right: 4px;
     max-height: calc(100vh - 64px);

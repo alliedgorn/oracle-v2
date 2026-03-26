@@ -561,7 +561,13 @@
   font-size: 0.85em;
   color: var(--text-secondary);
   line-height: 1.4;
-  white-space: pre-wrap;
+}
+
+.commentContent img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
 .commentForm {

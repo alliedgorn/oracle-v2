@@ -401,6 +401,12 @@
   white-space: pre-wrap;
 }
 
+.commentContent img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
 .commentForm {
   display: flex;
   gap: 6px;

@@ -11,6 +11,39 @@ interface ImageUploadProps {
 }
 
 const API_BASE = '/api';
+const MAX_WIDTH = 1200;
+const QUALITY = 0.8;
+
+function compressImage(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/') || file.type === 'image/gif') {
+      resolve(file);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      if (img.width <= MAX_WIDTH && file.size < 500000) {
+        resolve(file);
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        if (blob && blob.size < file.size) {
+          resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+        } else {
+          resolve(file);
+        }
+      }, 'image/jpeg', QUALITY);
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 export function ImageUpload({ onUploadComplete }: ImageUploadProps) {
   const [staged, setStaged] = useState<StagedImage | null>(null);
@@ -54,8 +87,9 @@ export function ImageUpload({ onUploadComplete }: ImageUploadProps) {
   async function autoUpload(file: File, previewUrl: string) {
     setUploading(true);
     try {
+      const compressed = await compressImage(file);
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', compressed);
       const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
       const data = await res.json();
       if (data.url) {
@@ -73,8 +107,9 @@ export function ImageUpload({ onUploadComplete }: ImageUploadProps) {
     setUploading(true);
 
     try {
+      const compressed = await compressImage(staged.file);
       const formData = new FormData();
-      formData.append('file', staged.file);
+      formData.append('file', compressed);
 
       const res = await fetch(`${API_BASE}/upload`, {
         method: 'POST',

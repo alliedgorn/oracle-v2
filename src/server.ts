@@ -4723,6 +4723,55 @@ app.delete('/api/risks/:id', async (c) => {
 });
 
 // ============================================================================
+// Risk Comments (T#323)
+// ============================================================================
+
+try { sqlite.prepare(`
+  CREATE TABLE IF NOT EXISTS risk_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    risk_id INTEGER NOT NULL,
+    author TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`).run(); } catch { /* exists */ }
+
+// GET /api/risks/:id/comments — list comments for a risk
+app.get('/api/risks/:id/comments', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const risk = sqlite.prepare('SELECT id FROM risks WHERE id = ? AND deleted_at IS NULL').get(id);
+  if (!risk) return c.json({ error: 'Risk not found' }, 404);
+  const comments = sqlite.prepare('SELECT * FROM risk_comments WHERE risk_id = ? ORDER BY created_at ASC').all(id);
+  return c.json({ comments });
+});
+
+// POST /api/risks/:id/comments — add comment
+app.post('/api/risks/:id/comments', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const risk = sqlite.prepare('SELECT id FROM risks WHERE id = ? AND deleted_at IS NULL').get(id);
+  if (!risk) return c.json({ error: 'Risk not found' }, 404);
+
+  try {
+    const data = await c.req.json();
+    const author = (c.req.query('as') || data.author || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+    if (!author) return c.json({ error: 'Identity required: pass ?as=beast or author in body' }, 400);
+    if (!data.content?.trim()) return c.json({ error: 'content required' }, 400);
+
+    const result = sqlite.prepare(
+      'INSERT INTO risk_comments (risk_id, author, content) VALUES (?, ?, ?)'
+    ).run(id, author, data.content.trim());
+
+    const comment = sqlite.prepare('SELECT * FROM risk_comments WHERE id = ?').get((result as any).lastInsertRowid);
+    wsBroadcast('risk_update', { action: 'comment', risk_id: id, comment });
+    return c.json(comment, 201);
+  } catch {
+    return c.json({ error: 'Invalid request' }, 400);
+  }
+});
+
+// ============================================================================
 // Prowl — Personal Task Manager for Gorn (T#279)
 // ============================================================================
 

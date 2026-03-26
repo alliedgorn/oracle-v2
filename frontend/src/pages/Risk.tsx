@@ -24,6 +24,14 @@ interface RiskItem {
   reviewed_at: string | null;
 }
 
+interface RiskComment {
+  id: number;
+  risk_id: number;
+  author: string;
+  content: string;
+  created_at: string;
+}
+
 interface Summary {
   total: number;
   by_severity: Record<string, number>;
@@ -86,6 +94,43 @@ export function Risk() {
   const [severityFilter, setSeverityFilter] = useState<string>('');
   const [matrixFilter, setMatrixFilter] = useState<{ sev: string; lik: string } | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [comments, setComments] = useState<RiskComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+
+  const loadComments = useCallback(async (riskId: number) => {
+    const res = await fetch(`/api/risks/${riskId}/comments`);
+    if (res.ok) {
+      const data = await res.json();
+      setComments(data.comments);
+    }
+  }, []);
+
+  const submitComment = async (riskId: number) => {
+    if (!commentText.trim() || submittingComment) return;
+    setSubmittingComment(true);
+    try {
+      const res = await fetch(`/api/risks/${riskId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: commentText.trim() }),
+      });
+      if (res.ok) {
+        setCommentText('');
+        loadComments(riskId);
+      }
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const changeStatus = async (riskId: number, newStatus: string) => {
+    await fetch(`/api/risks/${riskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    });
+  };
 
   const loadRisks = useCallback(async () => {
     const params = new URLSearchParams();
@@ -109,7 +154,15 @@ export function Risk() {
   useEffect(() => { loadRisks(); }, [loadRisks]);
   useEffect(() => { loadSummary(); }, [loadSummary]);
 
-  useWebSocket('risk_update', () => { loadRisks(); loadSummary(); });
+  useEffect(() => {
+    if (expandedId) loadComments(expandedId);
+    else setComments([]);
+  }, [expandedId, loadComments]);
+
+  useWebSocket('risk_update', () => {
+    loadRisks(); loadSummary();
+    if (expandedId) loadComments(expandedId);
+  });
 
   function getMatrixCount(sev: string, lik: string): number {
     if (!summary) return 0;
@@ -237,6 +290,20 @@ export function Risk() {
               {expandedId === risk.id && (
                 <div className={styles.riskExpanded}>
                   {risk.description && <div className={styles.riskDescription}>{risk.description}</div>}
+
+                  <div className={styles.riskField}>
+                    <label>Status</label>
+                    <select
+                      className={styles.statusSelect}
+                      value={risk.status}
+                      onChange={(e) => changeStatus(risk.id, e.target.value)}
+                    >
+                      {['open', 'mitigating', 'accepted', 'mitigated', 'closed'].map(s => (
+                        <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   {risk.mitigation && (
                     <div className={styles.riskField}>
                       <label>Mitigation</label>
@@ -264,6 +331,40 @@ export function Risk() {
                     {risk.source && ` · Source: ${risk.source}`}
                     {risk.thread_id && ` · Thread #${risk.thread_id}`}
                     {risk.reviewed_at && ` · Reviewed ${formatDate(risk.reviewed_at)}`}
+                  </div>
+
+                  {/* Comments */}
+                  <div className={styles.commentsSection}>
+                    <div className={styles.commentsTitle}>Comments ({comments.length})</div>
+                    {comments.length > 0 && (
+                      <div className={styles.commentsList}>
+                        {comments.map(comment => (
+                          <div key={comment.id} className={styles.commentItem}>
+                            <div className={styles.commentHeader}>
+                              <span className={styles.commentAuthor}>@{comment.author}</span>
+                              <span className={styles.commentTime}>{formatDate(comment.created_at)}</span>
+                            </div>
+                            <div className={styles.commentContent}>{comment.content}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className={styles.commentForm}>
+                      <input
+                        className={styles.commentInput}
+                        placeholder="Add a comment..."
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && submitComment(risk.id)}
+                      />
+                      <button
+                        className={styles.commentSubmit}
+                        onClick={() => submitComment(risk.id)}
+                        disabled={!commentText.trim() || submittingComment}
+                      >
+                        Post
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

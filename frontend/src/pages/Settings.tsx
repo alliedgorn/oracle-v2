@@ -16,7 +16,7 @@ export function Settings() {
   const [authEnabled, setAuthEnabled] = useState(false);
   const [localBypass, setLocalBypass] = useState(true);
   const [reindexing, setReindexing] = useState(false);
-  const [indexStatus, setIndexStatus] = useState<{ total_indexed: number; drift: boolean } | null>(null);
+  const [indexStatus, setIndexStatus] = useState<{ total_indexed: number; drift: boolean; indexed: Record<string, number> } | null>(null);
 
   const { checkAuth, isLocal } = useAuth();
 
@@ -40,7 +40,8 @@ export function Settings() {
       const res = await fetch('/api/search/reindex', { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        setMessage({ type: 'success', text: `Search index rebuilt: ${data.total} documents indexed` });
+        const breakdown = data.indexed ? Object.entries(data.indexed).map(([t, c]) => `${t}: ${c}`).join(', ') : '';
+        setMessage({ type: 'success', text: `Search index rebuilt: ${data.total} documents indexed (${breakdown})` });
         loadIndexStatus();
       } else {
         setMessage({ type: 'error', text: data.error || 'Reindex failed' });
@@ -317,13 +318,25 @@ export function Settings() {
         </p>
 
         {indexStatus && (
-          <div className={styles.info}>
-            <span className={styles.infoLabel}>Documents indexed:</span>
-            <span className={styles.infoBadge}>{indexStatus.total_indexed.toLocaleString()}</span>
-            {indexStatus.drift && (
-              <span className={`${styles.infoBadge} ${styles.remote}`}>Drift detected</span>
+          <>
+            <div className={styles.info}>
+              <span className={styles.infoLabel}>Total indexed:</span>
+              <span className={styles.infoBadge}>{indexStatus.total_indexed.toLocaleString()}</span>
+              {indexStatus.drift && (
+                <span className={`${styles.infoBadge} ${styles.remote}`}>Drift detected</span>
+              )}
+              {!indexStatus.drift && (
+                <span className={`${styles.infoBadge} ${styles.local}`}>In sync</span>
+              )}
+            </div>
+            {indexStatus.indexed && (
+              <div className={styles.info} style={{ flexWrap: 'wrap', gap: '8px' }}>
+                {Object.entries(indexStatus.indexed).map(([type, count]) => (
+                  <span key={type} className={styles.infoBadge}>{type}: {count}</span>
+                ))}
+              </div>
             )}
-          </div>
+          </>
         )}
 
         <div className={styles.actions}>

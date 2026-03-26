@@ -4574,7 +4574,9 @@ app.post('/api/specs', async (c) => {
         sqlite.prepare('UPDATE tasks SET spec_id = ?, updated_at = ? WHERE id = ?').run(spec.id, now, taskIdNum);
       }
     }
-    searchIndexUpsert('spec', spec.id, spec.title, spec.description || '', spec.author, now);
+        const specFilePath = path.join(import.meta.dirname || __dirname, '..', spec.file_path);
+    const specContent = fs.existsSync(specFilePath) ? fs.readFileSync(specFilePath, 'utf-8') : spec.title;
+    searchIndexUpsert('spec', spec.id, spec.title, specContent, spec.author, now);
     wsBroadcast('spec_submitted', { id: spec.id });
     return c.json(spec, 201);
   } catch (e: any) {
@@ -5315,6 +5317,19 @@ try {
   )`).run();
 } catch { /* already exists */ }
 
+// Index specs by reading their markdown files
+function indexSpecFiles() {
+  const specs = sqlite.prepare('SELECT id, title, author, file_path, repo, created_at FROM spec_reviews').all() as any[];
+  const repoBase = path.join(import.meta.dirname || __dirname, '..');
+  for (const spec of specs) {
+    try {
+      const filePath = path.join(repoBase, spec.file_path);
+      const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf-8') : spec.title;
+      searchIndexUpsert('spec', spec.id, spec.title, content, spec.author, spec.created_at);
+    } catch { /* skip */ }
+  }
+}
+
 // Backfill if index is empty
 const searchCount = (sqlite.prepare('SELECT COUNT(*) as c FROM search_index').get() as any)?.c || 0;
 if (searchCount === 0) {
@@ -5326,8 +5341,6 @@ if (searchCount === 0) {
      SELECT t.title, m.content, 'forum', m.id, m.author, m.created_at
      FROM forum_messages m JOIN forum_threads t ON m.thread_id = t.id`,
     `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
-     SELECT title, COALESCE(description,''), 'spec', id, author, created_at FROM spec_reviews`,
-    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
      SELECT title, COALESCE(description,''), 'risk', id, created_by, created_at FROM risks`,
     `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
      SELECT title, COALESCE(description,''), 'task', id, COALESCE(assigned_to,''), created_at FROM tasks`,
@@ -5335,6 +5348,7 @@ if (searchCount === 0) {
   for (const stmt of backfillStmts) {
     try { sqlite.prepare(stmt).run(); } catch (e) { console.log(`[SEARCH] Backfill warning: ${e}`); }
   }
+  indexSpecFiles();
   const total = (sqlite.prepare('SELECT COUNT(*) as c FROM search_index').get() as any)?.c || 0;
   console.log(`[SEARCH] Backfill complete: ${total} documents indexed.`);
 }
@@ -5414,9 +5428,9 @@ app.get('/api/search', (c) => {
   });
 });
 
-// POST /api/search/reindex — full rebuild (Gorn only)
+// POST /api/search/reindex — full rebuild (Gorn or trusted local)
 app.post('/api/search/reindex', (c) => {
-  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Gorn-only' }, 403);
 
   sqlite.prepare('DELETE FROM search_index').run();
   const stmts = [
@@ -5426,8 +5440,6 @@ app.post('/api/search/reindex', (c) => {
      SELECT t.title, m.content, 'forum', m.id, m.author, m.created_at
      FROM forum_messages m JOIN forum_threads t ON m.thread_id = t.id`,
     `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
-     SELECT title, COALESCE(description,''), 'spec', id, author, created_at FROM spec_reviews`,
-    `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
      SELECT title, COALESCE(description,''), 'risk', id, created_by, created_at FROM risks`,
     `INSERT INTO search_index(title, content, source_type, source_id, author, created_at)
      SELECT title, COALESCE(description,''), 'task', id, COALESCE(assigned_to,''), created_at FROM tasks`,
@@ -5435,8 +5447,12 @@ app.post('/api/search/reindex', (c) => {
   for (const stmt of stmts) {
     try { sqlite.prepare(stmt).run(); } catch { /* skip */ }
   }
-  const total = (sqlite.prepare('SELECT COUNT(*) as c FROM search_index').get() as any)?.c || 0;
-  return c.json({ reindexed: true, total });
+  indexSpecFiles();
+  const indexed: Record<string, number> = {};
+  const rows = sqlite.prepare('SELECT source_type, COUNT(*) as c FROM search_index GROUP BY source_type').all() as any[];
+  for (const r of rows) indexed[r.source_type] = r.c;
+  const total = Object.values(indexed).reduce((a, b) => a + b, 0);
+  return c.json({ reindexed: true, total, indexed });
 });
 
 // GET /api/search/status — integrity check

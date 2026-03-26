@@ -160,6 +160,7 @@ export function Forum() {
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
   const [supportedEmoji, setSupportedEmoji] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [newCategory, setNewCategory] = useState<string>('discussion');
   const [replyTo, setReplyTo] = useState<{ id: number; author: string | null; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [totalMessages, setTotalMessages] = useState(0);
@@ -425,11 +426,20 @@ export function Forum() {
       } else if (showNewThread) {
         // Create new thread
         const result = await sendMessage(newMessage, undefined, newTitle || undefined);
+        // Set category if not default
+        if (newCategory && newCategory !== 'discussion' && result.thread_id) {
+          await fetch(`${API_BASE}/thread/${result.thread_id}/category`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category: newCategory }),
+          });
+        }
         await loadThreads();
         setSearchParams({ thread: result.thread_id.toString() });
       }
       setNewMessage('');
       setNewTitle('');
+      setNewCategory('discussion');
       setReplyTo(null);
     } finally {
       setLoading(false);
@@ -633,11 +643,23 @@ export function Forum() {
             <form onSubmit={handleSendMessage} className={styles.form}>
               <input
                 type="text"
-                placeholder="Title"
+                placeholder="Thread title..."
                 value={newTitle}
                 onChange={e => setNewTitle(e.target.value)}
-                className={styles.input}
+                className={styles.titleInput}
               />
+              <div className={styles.categoryPills}>
+                {['discussion', 'announcement', 'task', 'decision', 'question'].map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    className={`${styles.categoryPill} ${newCategory === cat ? styles.categoryPillActive : ''}`}
+                    onClick={() => setNewCategory(cat)}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
               <textarea
                 placeholder="What's on your mind? (⌘+Enter to send)"
                 value={newMessage}

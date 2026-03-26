@@ -322,6 +322,63 @@
   padding: 14px 16px;
 }
 
+/* Headline-style title input for new threads */
+.titleInput {
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--border);
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 600;
+  padding: 12px 4px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+  border-radius: 0;
+}
+
+.titleInput::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.titleInput:focus {
+  border-bottom-color: var(--accent);
+}
+
+/* Category pill selector */
+.categoryPills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.categoryPill {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  text-transform: capitalize;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.categoryPill:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.categoryPillActive {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
 .form .textarea {
   width: 100%;
   box-sizing: border-box;
@@ -1064,6 +1121,14 @@
   }
 
   .newThread h2 {
+    font-size: 18px;
+  }
+
+  .form .textarea {
+    min-height: 200px;
+  }
+
+  .titleInput {
     font-size: 18px;
   }
 }

@@ -644,7 +644,7 @@ export function Forum() {
                 onChange={e => setNewMessage(e.target.value)}
                 onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
                 className={styles.textarea}
-                rows={8}
+                rows={14}
               />
               <div className={styles.replyActions}>
                 <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />

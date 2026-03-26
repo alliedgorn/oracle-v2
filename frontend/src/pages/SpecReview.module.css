@@ -566,26 +566,37 @@
 
 .commentForm {
   display: flex;
+  flex-direction: column;
   gap: 6px;
 }
 
-.commentInput {
-  flex: 1;
-  padding: 6px 10px;
+.commentTextarea {
+  width: 100%;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 0.85em;
+  font-family: inherit;
   outline: none;
+  resize: vertical;
+  min-height: 60px;
+  box-sizing: border-box;
 }
 
-.commentInput:focus {
+.commentTextarea:focus {
   border-color: var(--accent);
 }
 
-.commentInput::placeholder {
+.commentTextarea::placeholder {
   color: var(--text-muted);
+}
+
+.commentActions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
 .commentSubmit {

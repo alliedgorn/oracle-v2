@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { ImageUpload } from '../components/ImageUpload';
 import styles from './SpecReview.module.css';
 
 interface SpecVersion {
@@ -358,20 +359,29 @@ export function SpecReview() {
             </div>
           )}
           <div className={styles.commentForm}>
-            <input
-              className={styles.commentInput}
-              placeholder="Add a comment..."
+            <textarea
+              className={styles.commentTextarea}
+              placeholder="Add a comment... (⌘+Enter to send)"
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && selectedSpec && submitComment(selectedSpec.id)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  if (selectedSpec && commentText.trim()) submitComment(selectedSpec.id);
+                }
+              }}
+              rows={3}
             />
-            <button
-              className={styles.commentSubmit}
-              onClick={() => selectedSpec && submitComment(selectedSpec.id)}
-              disabled={!commentText.trim() || submittingComment}
-            >
-              Post
-            </button>
+            <div className={styles.commentActions}>
+              <ImageUpload onUploadComplete={(md) => setCommentText(prev => prev + md)} />
+              <button
+                className={styles.commentSubmit}
+                onClick={() => selectedSpec && submitComment(selectedSpec.id)}
+                disabled={!commentText.trim() || submittingComment}
+              >
+                Post
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -357,6 +357,21 @@
     margin-top: var(--space-xs);
   }
 
+  .tdActions .actionBtn:first-child {
+    flex: 1;
+    width: auto;
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+    font-size: 13px;
+    height: 36px;
+  }
+
+  .tdActions .actionBtn:first-child::after {
+    content: ' Download';
+    font-size: 13px;
+  }
+
   .thPreview, .thActions {
     width: auto;
   }

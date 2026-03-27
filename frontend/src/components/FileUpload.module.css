@@ -34,7 +34,7 @@
 .dropOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay, rgba(0, 0, 0, 0.5));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -121,7 +121,7 @@
 
 .removeBtn:hover {
   color: var(--danger);
-  background: rgba(196, 75, 63, 0.1);
+  background: var(--danger-glow, rgba(196, 75, 63, 0.1));
 }
 
 /* Upload progress */
@@ -152,7 +152,7 @@
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-xs) var(--space-sm);
-  background: rgba(196, 75, 63, 0.1);
+  background: var(--danger-glow, rgba(196, 75, 63, 0.1));
   border: 1px solid var(--danger);
   border-radius: var(--radius-sm);
   color: var(--danger);

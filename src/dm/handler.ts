@@ -367,12 +367,13 @@ export function getDashboard(limit: number = 50): {
       .where(eq(dmMessages.conversationId, conv.id))
       .get();
 
-    // Unread count
+    // Unread count — only messages NOT sent by gorn (messages from beasts to gorn)
     const unreadCount = db.select({ count: sql<number>`count(*)` })
       .from(dmMessages)
       .where(and(
         eq(dmMessages.conversationId, conv.id),
         isNull(dmMessages.readAt),
+        sql`${dmMessages.sender} != 'gorn'`,
       ))
       .get();
 

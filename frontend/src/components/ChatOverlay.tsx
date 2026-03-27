@@ -36,10 +36,12 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const prevCountRef = useRef(0);
   const userSentRef = useRef(false);
 
+  const wasNearBottomRef = useRef(true);
+
   function isNearBottom(): boolean {
     const el = messagesContainerRef.current;
     if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
   }
 
   // Mark messages as read
@@ -109,7 +111,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     if (initialLoad) return;
     const newCount = messages.length;
     if (newCount > prevCountRef.current && prevCountRef.current > 0) {
-      if (userSentRef.current || isNearBottom()) {
+      if (userSentRef.current || wasNearBottomRef.current) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         userSentRef.current = false;
       }
@@ -121,6 +123,8 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   useEffect(() => {
     const interval = setInterval(() => {
       if (document.hidden) return;
+      // Capture scroll position BEFORE updating messages
+      wasNearBottomRef.current = isNearBottom();
       // Only poll latest — don't reset if user loaded older messages
       (async () => {
         try {

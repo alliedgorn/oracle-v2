@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BeastCard } from './BeastCard';
 import { ChatOverlay } from './ChatOverlay';
+import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './RemotePanel.module.css';
 
 interface Beast {
@@ -44,18 +45,23 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
 
   const loadStatus = useCallback(async () => {
     try {
-      const [packRes, statusRes, dmRes] = await Promise.all([
+      const [packRes, statusRes] = await Promise.all([
         fetch(`${API_BASE}/pack`),
         fetch(`${API_BASE}/remote/status`),
-        fetch(`${API_BASE}/dm/gorn?limit=50`),
       ]);
       const packData = await packRes.json();
       const statusData = await statusRes.json();
-      const dmData = await dmRes.json();
       setBeasts(packData.beasts);
       setAttachedBeast(statusData.attached_beast);
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadUnread = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/dm/gorn?limit=50`);
+      const data = await res.json();
       const counts: Record<string, number> = {};
-      for (const conv of dmData.conversations || []) {
+      for (const conv of data.conversations || []) {
         if (conv.unread_count > 0) counts[conv.with] = conv.unread_count;
       }
       setUnreadCounts(counts);
@@ -63,18 +69,21 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
   }, []);
 
   useEffect(() => {
-    if (!collapsed) loadStatus();
-  }, [collapsed, loadStatus]);
+    if (!collapsed) { loadStatus(); loadUnread(); }
+  }, [collapsed, loadStatus, loadUnread]);
 
-  // Always poll when not collapsed
+  // Poll pack/remote status (no DMs — those use WS)
   useEffect(() => {
     if (collapsed) return;
     const interval = setInterval(() => {
       if (document.hidden) return;
       loadStatus();
-    }, 5000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [collapsed, loadStatus]);
+
+  // WebSocket: refresh unread counts on new DM
+  useWebSocket('new_dm', useCallback(() => { loadUnread(); }, [loadUnread]));
 
   async function handleClick(beast: Beast) {
     if (beast.status === 'offline') return;

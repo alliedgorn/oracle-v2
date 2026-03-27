@@ -72,6 +72,8 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [badges, setBadges] = useState<NavBadges>({ specs: 0, prowl: 0 });
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
+  const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<QuickResult[]>([]);
@@ -241,20 +243,39 @@ export function Header({ onRemoteToggle }: HeaderProps) {
           <div
             key={group.label}
             className={styles.dropdown}
-            onMouseEnter={() => !isTouchDevice && setOpenGroup(group.label)}
+            onMouseEnter={() => {
+              if (!isTouchDevice) {
+                if (dropdownTriggerRef.current) {
+                  const rect = dropdownTriggerRef.current.getBoundingClientRect();
+                  setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                }
+                setOpenGroup(group.label);
+              }
+            }}
             onMouseLeave={() => !isTouchDevice && setOpenGroup(null)}
           >
             <button
+              ref={dropdownTriggerRef}
               type="button"
               className={`${styles.navLink} ${styles.dropdownTrigger} ${isGroupActive(group) ? styles.active : ''}`}
-              onClick={() => setOpenGroup(prev => prev === group.label ? null : group.label)}
+              onClick={() => {
+                setOpenGroup(prev => {
+                  if (prev === group.label) return null;
+                  // Calculate position from trigger button
+                  if (dropdownTriggerRef.current) {
+                    const rect = dropdownTriggerRef.current.getBoundingClientRect();
+                    setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                  }
+                  return group.label;
+                });
+              }}
             >
               {group.label} ▾
             </button>
             {openGroup === group.label && (
               <>
                 {isTouchDevice && <div className={styles.dropdownBackdrop} onClick={() => setOpenGroup(null)} />}
-                <div className={styles.dropdownMenu}>
+                <div className={styles.dropdownMenu} style={dropdownPos ? { position: 'fixed', top: dropdownPos.top, left: dropdownPos.left } : undefined}>
                   {group.items.map(item => (
                     <Link
                       key={item.path}

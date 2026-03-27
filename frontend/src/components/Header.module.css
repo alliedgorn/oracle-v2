@@ -33,13 +33,8 @@
   display: flex;
   gap: var(--space-xs);
   align-items: center;
+  flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.nav::-webkit-scrollbar {
-  display: none;
 }
 
 .navLink {
@@ -93,16 +88,16 @@
 }
 
 .dropdownMenu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: var(--space-xs);
   min-width: 160px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  z-index: 200;
+  z-index: 1000;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
 /* Bridge the gap to prevent hover loss */
@@ -345,14 +340,17 @@
     order: 3;
     width: 100%;
     overflow-x: auto;
+    overflow-y: visible;
     gap: 2px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    flex-wrap: nowrap;
   }
 
   .nav::-webkit-scrollbar {
     display: none;
   }
+
 
   .navLink {
     padding: 10px 12px;
@@ -424,8 +422,13 @@
 
   .nav {
     gap: 0;
-    overflow: visible;
-    flex-wrap: wrap;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
   }
 
   .navLink {
@@ -433,13 +436,4 @@
     font-size: 12px;
   }
 
-  .dropdownMenu {
-    position: absolute;
-    left: auto;
-    right: 0;
-    top: 100%;
-    min-width: 180px;
-    max-height: 60vh;
-    overflow-y: auto;
-  }
 }

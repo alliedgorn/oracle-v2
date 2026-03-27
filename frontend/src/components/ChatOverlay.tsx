@@ -29,6 +29,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [showScrollDown, setShowScrollDown] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -140,12 +141,14 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     return () => clearInterval(interval);
   }, [beastName]);
 
-  // Scroll-to-top detection for loading more (with 0.5s delay)
+  // Scroll detection: load-more at top + show scroll-down button
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
     function handleScroll() {
+      const distFromBottom = el!.scrollHeight - el!.scrollTop - el!.clientHeight;
+      setShowScrollDown(distFromBottom > 200);
       if (el!.scrollTop < 50 && hasMore && !loadingMore) {
         if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
         scrollTimerRef.current = setTimeout(() => {
@@ -207,6 +210,13 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
         ))}
         <div ref={messagesEndRef} />
       </div>
+      {showScrollDown && (
+        <button
+          className={styles.scrollDownBtn}
+          onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          title="Scroll to newest"
+        >↓</button>
+      )}
       <form onSubmit={handleSend} className={styles.inputArea}>
         <div className={styles.inputRow}>
           <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev ? `${prev}\n${md}` : md)} />

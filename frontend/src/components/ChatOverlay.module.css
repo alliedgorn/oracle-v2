@@ -133,6 +133,31 @@
   opacity: 0.7;
 }
 
+.scrollDownBtn {
+  position: absolute;
+  bottom: 70px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  opacity: 0.9;
+  transition: opacity 0.2s;
+}
+
+.scrollDownBtn:hover {
+  opacity: 1;
+}
+
 .inputArea {
   padding: 10px 12px;
   border-top: 1px solid var(--border);

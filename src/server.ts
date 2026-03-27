@@ -3994,23 +3994,22 @@ function runSchedulerCycle() {
 
     // Find overdue schedules that need triggering:
     // - enabled and overdue (next_due_at <= now)
-    // - NULL: never triggered
-    // - 'pending': beast called /run last cycle, now next_due has passed again — re-trigger
+    // - NULL: never triggered before
     // - 'triggered': sent notification but beast hasn't /run yet — re-trigger after 5 min cooldown
-    // - 'failed': previous attempt failed — retry
-    // - 'completed': one-time schedule finished — skip
+    // - 'failed': previous attempt failed — retry after 5 min cooldown
+    // - 'pending': beast called /run, next_due advanced — only re-trigger when next_due passes
+    // - 'completed': one-time schedule finished — never re-trigger
     const overdue = sqlite.prepare(
       `SELECT * FROM beast_schedules
        WHERE enabled = 1 AND datetime(next_due_at) <= datetime(?)
+       AND trigger_status IS NOT 'completed'
        AND (
          trigger_status IS NULL
          OR trigger_status = 'pending'
-         OR (trigger_status = 'triggered' AND datetime(last_triggered_at) <= datetime(?, '-5 minutes'))
-         OR trigger_status = 'failed'
+         OR (trigger_status IN ('triggered', 'failed') AND datetime(last_triggered_at) <= datetime(?, '-5 minutes'))
        )
-       AND (last_triggered_at IS NULL OR datetime(last_triggered_at) <= datetime(?, '-5 minutes'))
        ORDER BY next_due_at`
-    ).all(now, now, now) as any[];
+    ).all(now, now) as any[];
 
     for (const schedule of overdue) {
       const sessionName = schedule.beast.charAt(0).toUpperCase() + schedule.beast.slice(1);

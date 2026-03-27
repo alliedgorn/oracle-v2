@@ -114,9 +114,26 @@
   z-index: 1099;
 }
 
+.dropdownSubgroup {
+  padding: 4px 0;
+}
+
+.dropdownSubgroup:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.dropdownSubgroupLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 14px 2px;
+}
+
 .dropdownItem {
   display: block;
-  padding: 10px 14px;
+  padding: 8px 14px;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-size: 14px;

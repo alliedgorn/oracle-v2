@@ -18,35 +18,57 @@ const TYPE_ICONS: Record<string, string> = {
 
 // Top-level nav items (always visible, not grouped)
 const topNavItems = [
-  { path: '/', label: 'Pack' },
   { path: '/forum', label: 'Forum' },
   { path: '/dms', label: 'DMs' },
   { path: '/board', label: 'Board' },
   { path: '/specs', label: 'Specs' },
   { path: '/prowl', label: 'Prowl' },
-  { path: '/risk', label: 'Risk' },
 ];
 
 // Grouped navigation (dropdowns for secondary items)
+
 const navGroups = [
   {
     label: 'More',
-    items: [
-      { path: '/teams', label: 'Teams' },
-      { path: '/library', label: 'Library' },
-      { path: '/playbook', label: 'Playbook' },
-      { path: '/overview', label: 'Overview' },
-      { path: '/feed', label: 'Feed' },
-      { path: '/search', label: 'Search' },
-      { path: '/graph', label: 'Graph' },
-      { path: '/map', label: 'Map' },
-      { path: '/activity?tab=searches', label: 'Activity' },
-      { path: '/evolution', label: 'Evolution' },
-      { path: '/traces', label: 'Traces' },
-      { path: '/superseded', label: 'Superseded' },
-      { path: '/scheduler', label: 'Scheduler' },
-      { path: '/audit', label: 'Audit Log' },
-      { path: '/handoff', label: 'Handoff' },
+    subgroups: [
+      {
+        label: 'Pack',
+        items: [
+          { path: '/', label: 'Pack' },
+          { path: '/teams', label: 'Teams' },
+          { path: '/risk', label: 'Risk' },
+          { path: '/rules', label: 'Rules' },
+        ],
+      },
+      {
+        label: 'Knowledge',
+        items: [
+          { path: '/library', label: 'Library' },
+          { path: '/playbook', label: 'Playbook' },
+          { path: '/search', label: 'Search' },
+          { path: '/feed', label: 'Feed' },
+        ],
+      },
+      {
+        label: 'Insights',
+        items: [
+          { path: '/overview', label: 'Overview' },
+          { path: '/graph', label: 'Graph' },
+          { path: '/map', label: 'Map' },
+          { path: '/evolution', label: 'Evolution' },
+          { path: '/traces', label: 'Traces' },
+        ],
+      },
+      {
+        label: 'Admin',
+        items: [
+          { path: '/activity?tab=searches', label: 'Activity' },
+          { path: '/scheduler', label: 'Scheduler' },
+          { path: '/audit', label: 'Audit Log' },
+          { path: '/superseded', label: 'Superseded' },
+          { path: '/handoff', label: 'Handoff' },
+        ],
+      },
     ],
   },
 ];
@@ -204,7 +226,9 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   }, []);
 
   function isGroupActive(group: typeof navGroups[number]): boolean {
-    return group.items.some(item => location.pathname === item.path.split('?')[0]);
+    return group.subgroups.some(sub =>
+      sub.items.some(item => location.pathname === item.path.split('?')[0])
+    );
   }
 
   const duration = sessionStats
@@ -288,15 +312,20 @@ export function Header({ onRemoteToggle }: HeaderProps) {
                     zIndex: 1100,
                   }}
                 >
-                  {group.items.map(item => (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      className={`${styles.dropdownItem} ${location.pathname === item.path.split('?')[0] ? styles.active : ''}`}
-                      onClick={() => setOpenGroup(null)}
-                    >
-                      {item.label}
-                    </Link>
+                  {group.subgroups.map(sub => (
+                    <div key={sub.label} className={styles.dropdownSubgroup}>
+                      <div className={styles.dropdownSubgroupLabel}>{sub.label}</div>
+                      {sub.items.map(item => (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          className={`${styles.dropdownItem} ${location.pathname === item.path.split('?')[0] ? styles.active : ''}`}
+                          onClick={() => setOpenGroup(null)}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
                   ))}
                 </div>
               </>,

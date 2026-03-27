@@ -12,6 +12,7 @@ import styles from './Forum.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
 import { ImageUpload } from '../components/ImageUpload';
 import { EmojiButton } from '../components/EmojiButton';
+import { VoiceInput } from '../components/VoiceInput';
 import { SearchInput } from '../components/SearchInput';
 import { StatusBadge } from '../components/StatusBadge';
 import { FilterTabs } from '../components/FilterTabs';
@@ -671,6 +672,7 @@ export function Forum() {
               <div className={styles.replyActions}>
                 <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
                 <EmojiButton onSelect={(e) => setNewMessage(prev => prev + e)} />
+                <VoiceInput onTranscript={(text) => setNewMessage(prev => prev ? prev + ' ' + text : text)} />
                 <button
                   type="submit"
                   disabled={loading || !newMessage.trim()}
@@ -861,6 +863,7 @@ export function Forum() {
                 <div className={styles.replyActions}>
                   <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
                   <EmojiButton onSelect={(e) => setNewMessage(prev => prev + e)} />
+                  <VoiceInput onTranscript={(text) => setNewMessage(prev => prev ? prev + ' ' + text : text)} />
                   <button
                     type="submit"
                     disabled={loading || !newMessage.trim()}

@@ -33,8 +33,6 @@
   display: flex;
   gap: var(--space-xs);
   align-items: center;
-  flex: 1;
-  min-width: 0;
 }
 
 .navLink {

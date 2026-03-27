@@ -5109,6 +5109,199 @@ app.post('/api/risks/:id/comments', async (c) => {
 });
 
 // ============================================================================
+// Forge — Personal Routine Tracker for Gorn (T#372)
+// ============================================================================
+
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS routine_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL CHECK(type IN ('meal', 'workout', 'weight', 'note', 'photo')),
+    logged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    data JSON NOT NULL,
+    source TEXT DEFAULT 'manual',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME DEFAULT NULL
+  )
+`);
+
+// Ensure uploads/routine dir exists
+const ROUTINE_UPLOADS = path.join(ORACLE_DATA_DIR, 'uploads', 'routine');
+if (!fs.existsSync(ROUTINE_UPLOADS)) fs.mkdirSync(ROUTINE_UPLOADS, { recursive: true });
+
+// Auth helper: only Gorn + Sable
+function isForgeAuthorized(c: any): boolean {
+  if (hasSessionAuth(c)) return true; // Gorn browser session
+  const as = (c.req.query('as') || '').toLowerCase();
+  return ['gorn', 'sable'].includes(as);
+}
+
+// GET /api/routine/logs — list logs
+app.get('/api/routine/logs', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const type = c.req.query('type');
+  const from = c.req.query('from');
+  const to = c.req.query('to');
+  const limit = Math.min(200, parseInt(c.req.query('limit') || '50', 10));
+  const offset = parseInt(c.req.query('offset') || '0', 10);
+
+  let query = 'SELECT * FROM routine_logs WHERE deleted_at IS NULL';
+  const params: any[] = [];
+  if (type) { query += ' AND type = ?'; params.push(type); }
+  if (from) { query += ' AND logged_at >= ?'; params.push(from); }
+  if (to) { query += ' AND logged_at <= ?'; params.push(to); }
+  query += ' ORDER BY logged_at DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+
+  const logs = sqlite.prepare(query).all(...params);
+  const total = (sqlite.prepare('SELECT COUNT(*) as c FROM routine_logs WHERE deleted_at IS NULL').get() as any).c;
+  return c.json({ logs, total });
+});
+
+// GET /api/routine/today — today's logs grouped by type
+app.get('/api/routine/today', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const today = new Date().toISOString().slice(0, 10);
+  const logs = sqlite.prepare(
+    "SELECT * FROM routine_logs WHERE deleted_at IS NULL AND date(logged_at) = ? ORDER BY logged_at DESC"
+  ).all(today);
+  return c.json({ logs, date: today });
+});
+
+// GET /api/routine/weight — weight history for chart
+app.get('/api/routine/weight', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const rows = sqlite.prepare(
+    "SELECT id, logged_at, json_extract(data, '$.value') as value, json_extract(data, '$.unit') as unit FROM routine_logs WHERE type = 'weight' AND deleted_at IS NULL ORDER BY logged_at ASC"
+  ).all();
+  return c.json({ weights: rows });
+});
+
+// GET /api/routine/stats — summary stats
+app.get('/api/routine/stats', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const totalLogs = (sqlite.prepare('SELECT COUNT(*) as c FROM routine_logs WHERE deleted_at IS NULL').get() as any).c;
+  const byType = sqlite.prepare('SELECT type, COUNT(*) as count FROM routine_logs WHERE deleted_at IS NULL GROUP BY type').all();
+  const thisWeek = (sqlite.prepare("SELECT COUNT(*) as c FROM routine_logs WHERE deleted_at IS NULL AND type = 'workout' AND logged_at >= datetime('now', '-7 days')").get() as any).c;
+  const latestWeight = sqlite.prepare("SELECT json_extract(data, '$.value') as value, logged_at FROM routine_logs WHERE type = 'weight' AND deleted_at IS NULL ORDER BY logged_at DESC LIMIT 1").get() as any;
+  return c.json({ total_logs: totalLogs, by_type: byType, workouts_this_week: thisWeek, latest_weight: latestWeight });
+});
+
+// GET /api/routine/photos — photo gallery
+app.get('/api/routine/photos', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const tag = c.req.query('tag');
+  let query = "SELECT * FROM routine_logs WHERE type = 'photo' AND deleted_at IS NULL";
+  const params: any[] = [];
+  if (tag) { query += " AND json_extract(data, '$.tag') = ?"; params.push(tag); }
+  query += ' ORDER BY logged_at DESC';
+  const photos = sqlite.prepare(query).all(...params);
+  return c.json({ photos });
+});
+
+// POST /api/routine/logs — create log entry
+app.post('/api/routine/logs', async (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  try {
+    const data = await c.req.json();
+    const { type, logged_at } = data;
+    if (!type || !data.data) return c.json({ error: 'type and data required' }, 400);
+    if (!['meal', 'workout', 'weight', 'note', 'photo'].includes(type)) {
+      return c.json({ error: 'type must be meal, workout, weight, note, or photo' }, 400);
+    }
+    const jsonData = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
+    const now = new Date().toISOString();
+    const result = sqlite.prepare(
+      'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(type, logged_at || now, jsonData, data.source || 'manual', now);
+    const log = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ?').get((result as any).lastInsertRowid);
+    return c.json(log, 201);
+  } catch { return c.json({ error: 'Invalid request' }, 400); }
+});
+
+// PATCH /api/routine/logs/:id — edit log
+app.patch('/api/routine/logs/:id', async (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  const existing = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ? AND deleted_at IS NULL').get(id);
+  if (!existing) return c.json({ error: 'Log not found' }, 404);
+  try {
+    const body = await c.req.json();
+    const updates: string[] = [];
+    const values: any[] = [];
+    if (body.data) { updates.push('data = ?'); values.push(typeof body.data === 'string' ? body.data : JSON.stringify(body.data)); }
+    if (body.logged_at) { updates.push('logged_at = ?'); values.push(body.logged_at); }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    values.push(id);
+    sqlite.prepare(`UPDATE routine_logs SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json(sqlite.prepare('SELECT * FROM routine_logs WHERE id = ?').get(id));
+  } catch { return c.json({ error: 'Invalid request' }, 400); }
+});
+
+// DELETE /api/routine/logs/:id — soft delete
+app.delete('/api/routine/logs/:id', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  const existing = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ? AND deleted_at IS NULL').get(id);
+  if (!existing) return c.json({ error: 'Log not found' }, 404);
+  sqlite.prepare('UPDATE routine_logs SET deleted_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+  return c.json({ success: true, id });
+});
+
+// POST /api/routine/photo/upload — upload progress photo
+app.post('/api/routine/photo/upload', async (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  try {
+    const formData = await c.req.formData();
+    const file = formData.get('file') as File;
+    const tag = formData.get('tag') as string || '';
+    const notes = formData.get('notes') as string || '';
+    if (!file) return c.json({ error: 'No file provided' }, 400);
+    if (file.size > 10 * 1024 * 1024) return c.json({ error: 'File too large. Max 10MB' }, 400);
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const imageType = detectImageType(buffer);
+    if (!imageType) return c.json({ error: 'Invalid image. Only JPG, PNG, GIF, WebP allowed.' }, 400);
+
+    // Process with sharp: EXIF rotation + metadata strip + resize
+    let processedBuffer = buffer;
+    let ext = imageType.ext;
+    try {
+      const sharp = require('sharp');
+      processedBuffer = await sharp(buffer)
+        .rotate()
+        .resize(1920, null, { withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .withMetadata({ orientation: undefined })
+        .toBuffer();
+      ext = '.jpg';
+    } catch { /* sharp not available */ }
+
+    const filename = `${crypto.randomUUID()}${ext}`;
+    fs.writeFileSync(path.join(ROUTINE_UPLOADS, filename), processedBuffer);
+
+    // Create log entry
+    const now = new Date().toISOString();
+    const photoData = JSON.stringify({ url: `/api/routine/photo/${filename}`, tag, notes });
+    const result = sqlite.prepare(
+      'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run('photo', now, photoData, 'manual', now);
+    const log = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ?').get((result as any).lastInsertRowid);
+    return c.json(log, 201);
+  } catch { return c.json({ error: 'Upload failed' }, 500); }
+});
+
+// GET /api/routine/photo/:filename — serve routine photo
+app.get('/api/routine/photo/:filename', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const filename = c.req.param('filename').replace(/[^a-zA-Z0-9._-]/g, '');
+  const filePath = path.join(ROUTINE_UPLOADS, filename);
+  if (!fs.existsSync(filePath)) return c.json({ error: 'Not found' }, 404);
+  const ext = path.extname(filename).toLowerCase();
+  const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+  return new Response(fs.readFileSync(filePath), { headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' } });
+});
+
+// ============================================================================
 // Rules — Decree and Norm governance (T#360)
 // ============================================================================
 

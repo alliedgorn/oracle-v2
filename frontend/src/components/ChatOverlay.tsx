@@ -128,25 +128,10 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
       if (document.hidden) return;
       // Capture scroll position BEFORE updating messages
       wasNearBottomRef.current = isNearBottom();
-      // Only poll latest — don't reset if user loaded older messages
-      (async () => {
-        try {
-          const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&order=desc`);
-          const data = await res.json();
-          const latest = (data.messages || []).reverse();
-          if (latest.length > 0) {
-            setMessages(prev => {
-              // Merge: keep older messages that aren't in the latest batch
-              const latestIds = new Set(latest.map((m: Message) => m.id));
-              const older = prev.filter(m => !latestIds.has(m.id) && m.id < latest[0].id);
-              return [...older, ...latest];
-            });
-          }
-        } catch {}
-      })();
+      loadMessages();
     }, 3000);
     return () => clearInterval(interval);
-  }, [beastName]);
+  }, [loadMessages]);
 
   // Scroll detection: load-more at top + show scroll-down button
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

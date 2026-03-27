@@ -19,7 +19,7 @@ Personal fitness tracker for Gorn on Den Book. Phase 1 covers manual logging of 
 ```sql
 CREATE TABLE routine_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL CHECK(type IN ('meal', 'workout', 'weight', 'note')),
+  type TEXT NOT NULL CHECK(type IN ('meal', 'workout', 'weight', 'note', 'photo')),
   logged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   data JSON NOT NULL,
   source TEXT DEFAULT 'manual',
@@ -41,6 +41,9 @@ CREATE TABLE routine_logs (
 
 // note
 {"text": "Rest day, shoulder feels tight"}
+
+// photo (progress photo)
+{"url": "/api/routine/photo/abc123.jpg", "tag": "front", "notes": "Week 4"}
 ```
 
 ## API Endpoints
@@ -58,6 +61,8 @@ DELETE /api/routine/logs/:id      -- soft delete
 GET    /api/routine/weight        -- weight history [{value, logged_at}] for chart
 GET    /api/routine/stats         -- summary: gym frequency, avg calories, weight delta
 GET    /api/routine/today         -- today's logs grouped by type
+GET    /api/routine/photos        -- photo gallery (filterable by tag, date range)
+POST   /api/routine/photo/upload  -- upload progress photo (returns URL)
 ```
 
 ### Auth
@@ -71,9 +76,10 @@ All endpoints Gorn-only (session auth required). No Beast access.
 **Layout (per Dex/Quill design):**
 
 1. **Today View** (top) — quick-add cards:
-   - 4 buttons: Meal, Workout, Weight, Note
+   - 5 buttons: Meal, Workout, Weight, Photo, Note
    - Clicking opens inline form below the button row
    - Today's entries shown as timeline cards
+   - Photo button opens camera/picker, auto-stamps with date
 
 2. **Weight Chart** (middle):
    - Line chart showing weight over time
@@ -89,10 +95,18 @@ All endpoints Gorn-only (session auth required). No Beast access.
 
 **Nav**: Add to More > Pack dropdown.
 
+3. **Progress Photos** (section below weight chart):
+   - Photo gallery grid with date stamps
+   - Optional tag per photo: front, side, back, custom
+   - Side-by-side comparison: pick any two photos to compare
+   - Photos stored in `data/uploads/routine/` (same pattern as avatars)
+   - Gorn-only — private, not visible to Beasts
+
 ## Security
 
 - Session auth on all endpoints (Gorn only)
 - No Beast access — personal health data
+- Progress photos private (no public URLs, session auth required to view)
 - JSON data validated for type shape on write
 
 ## Phase 2 (future, not in this spec)

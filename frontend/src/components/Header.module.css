@@ -111,7 +111,7 @@
 .dropdownBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 199;
+  z-index: 1099;
 }
 
 .dropdownItem {
@@ -338,7 +338,7 @@
     order: 3;
     width: 100%;
     overflow-x: auto;
-    overflow-y: visible;
+    overflow-y: hidden;
     gap: 2px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
@@ -421,6 +421,7 @@
   .nav {
     gap: 0;
     overflow-x: auto;
+    overflow-y: hidden;
     flex-wrap: nowrap;
     scrollbar-width: none;
   }

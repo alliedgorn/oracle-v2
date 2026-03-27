@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import styles from './Header.module.css';
 
@@ -247,7 +248,8 @@ export function Header({ onRemoteToggle }: HeaderProps) {
               if (!isTouchDevice) {
                 if (dropdownTriggerRef.current) {
                   const rect = dropdownTriggerRef.current.getBoundingClientRect();
-                  setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                  const left = Math.min(rect.left, window.innerWidth - 168);
+                  setDropdownPos({ top: rect.bottom + 4, left: Math.max(8, left) });
                 }
                 setOpenGroup(group.label);
               }
@@ -261,10 +263,12 @@ export function Header({ onRemoteToggle }: HeaderProps) {
               onClick={() => {
                 setOpenGroup(prev => {
                   if (prev === group.label) return null;
-                  // Calculate position from trigger button
+                  // Calculate position from trigger button, clamp to viewport
                   if (dropdownTriggerRef.current) {
                     const rect = dropdownTriggerRef.current.getBoundingClientRect();
-                    setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                    const menuWidth = 160;
+                    const left = Math.min(rect.left, window.innerWidth - menuWidth - 8);
+                    setDropdownPos({ top: rect.bottom + 4, left: Math.max(8, left) });
                   }
                   return group.label;
                 });
@@ -272,10 +276,18 @@ export function Header({ onRemoteToggle }: HeaderProps) {
             >
               {group.label} ▾
             </button>
-            {openGroup === group.label && (
+            {openGroup === group.label && dropdownPos && createPortal(
               <>
-                {isTouchDevice && <div className={styles.dropdownBackdrop} onClick={() => setOpenGroup(null)} />}
-                <div className={styles.dropdownMenu} style={dropdownPos ? { position: 'fixed', top: dropdownPos.top, left: dropdownPos.left } : undefined}>
+                <div className={styles.dropdownBackdrop} onClick={() => setOpenGroup(null)} />
+                <div
+                  className={styles.dropdownMenu}
+                  style={{
+                    position: 'fixed',
+                    top: dropdownPos.top,
+                    left: Math.min(dropdownPos.left, window.innerWidth - 200),
+                    zIndex: 1100,
+                  }}
+                >
                   {group.items.map(item => (
                     <Link
                       key={item.path}
@@ -287,7 +299,8 @@ export function Header({ onRemoteToggle }: HeaderProps) {
                     </Link>
                   ))}
                 </div>
-              </>
+              </>,
+              document.body
             )}
           </div>
         ))}

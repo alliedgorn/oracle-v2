@@ -2297,16 +2297,65 @@ app.get('/api/message/:id/history', (c) => {
 });
 
 // Add reaction to message
-// Supported emoji whitelist — request new ones via forum
-const SUPPORTED_EMOJI = new Set([
-  '👍', '👎', '❤️', '🔥', '👀', '✅', '❌',
-  '😂', '😢', '🤔', '💪', '🎉', '🙏', '👏', '💯',
-  '🚀', '⭐', '⚠️', '💡', '🏆', '🫡', '🤝',
-  '📦', // shipped
-  '🐾', '🐴', '🐊', '🐻', '🦘', '🦁', '🦝', '🦦', '🐙', '🐦‍⬛', // beast animals
-]);
+// Emoji whitelist — DB-backed, any Beast can add (T#385)
+try {
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS emoji_whitelist (
+    emoji TEXT PRIMARY KEY,
+    added_by TEXT,
+    created_at INTEGER NOT NULL
+  )`).run();
+} catch { /* already exists */ }
 
-// GET /api/reactions/supported — list supported emoji
+// Seed defaults if table is empty
+const emojiCount = (sqlite.prepare('SELECT COUNT(*) as c FROM emoji_whitelist').get() as any)?.c || 0;
+if (emojiCount === 0) {
+  const defaults = [
+    '👍', '👎', '❤️', '🔥', '👀', '✅', '❌',
+    '😂', '😢', '🤔', '💪', '🎉', '🙏', '👏', '💯',
+    '🚀', '⭐', '⚠️', '💡', '🏆', '🫡', '🤝',
+    '📦', '🐾', '🐴', '🐊', '🐻', '🦘', '🦁', '🦝', '🦦', '🐙', '🐦‍⬛',
+  ];
+  const insert = sqlite.prepare('INSERT OR IGNORE INTO emoji_whitelist (emoji, added_by, created_at) VALUES (?, ?, ?)');
+  const now = Date.now();
+  for (const e of defaults) insert.run(e, 'system', now);
+}
+
+function getSupportedEmoji(): Set<string> {
+  const rows = sqlite.prepare('SELECT emoji FROM emoji_whitelist').all() as any[];
+  return new Set(rows.map(r => r.emoji));
+}
+
+// Cache — refreshed on add/remove
+let SUPPORTED_EMOJI = getSupportedEmoji();
+
+// GET /api/forum/emojis — list whitelist
+app.get('/api/forum/emojis', (c) => {
+  const rows = sqlite.prepare('SELECT emoji, added_by, created_at FROM emoji_whitelist ORDER BY created_at').all() as any[];
+  return c.json({ emoji: rows, total: rows.length });
+});
+
+// POST /api/forum/emojis — add emoji (any Beast)
+app.post('/api/forum/emojis', async (c) => {
+  const data = await c.req.json();
+  if (!data.emoji) return c.json({ error: 'emoji required' }, 400);
+  const beast = data.beast || data.added_by || (hasSessionAuth(c) ? 'gorn' : '');
+  if (!beast && !isTrustedRequest(c)) return c.json({ error: 'beast required' }, 400);
+  const now = Date.now();
+  sqlite.prepare('INSERT OR IGNORE INTO emoji_whitelist (emoji, added_by, created_at) VALUES (?, ?, ?)').run(data.emoji, beast, now);
+  SUPPORTED_EMOJI = getSupportedEmoji();
+  return c.json({ added: data.emoji, by: beast, total: SUPPORTED_EMOJI.size });
+});
+
+// DELETE /api/forum/emojis/:emoji — remove emoji (Gorn only)
+app.delete('/api/forum/emojis/:emoji', (c) => {
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Gorn-only' }, 403);
+  const emoji = decodeURIComponent(c.req.param('emoji'));
+  sqlite.prepare('DELETE FROM emoji_whitelist WHERE emoji = ?').run(emoji);
+  SUPPORTED_EMOJI = getSupportedEmoji();
+  return c.json({ removed: emoji, total: SUPPORTED_EMOJI.size });
+});
+
+// GET /api/reactions/supported — legacy endpoint
 app.get('/api/reactions/supported', (c) => {
   return c.json({ emoji: [...SUPPORTED_EMOJI] });
 });

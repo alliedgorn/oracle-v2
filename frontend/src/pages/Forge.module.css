@@ -276,6 +276,8 @@
   font-size: 14px;
   color: var(--text-primary);
   line-height: 1.4;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .logMeta {
@@ -363,6 +365,8 @@
   font-weight: 600;
   color: var(--text-primary);
   font-size: 0.95rem;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .workoutDur {
@@ -402,6 +406,8 @@
 .exerciseName {
   color: var(--text-primary);
   font-size: 0.85rem;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .exerciseDetail {

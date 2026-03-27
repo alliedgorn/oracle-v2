@@ -34,7 +34,7 @@ export function Login() {
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        <div className={styles.logo}>Oracle</div>
+        <div className={styles.logo}>The Den</div>
         <h1 className={styles.title}>Sign In</h1>
         <p className={styles.subtitle}>Enter your password to access the dashboard</p>
 

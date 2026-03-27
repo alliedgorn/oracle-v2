@@ -1399,12 +1399,16 @@ app.get('/api/beast/:name/avatar.svg', (c) => {
     hyena: '#d97706', horse: '#7c3aed', alligator: '#059669',
     bear: '#92400e', kangaroo: '#dc2626', lion: '#ca8a04',
     raccoon: '#6366f1', otter: '#0d9488', crow: '#475569',
-    octopus: '#9b59b6',
+    octopus: '#9b59b6', ferret: '#8b6834',
+    wolf: '#64748b', porcupine: '#a3a3a3', mongoose: '#f59e0b',
+    owl: '#8b5cf6', hawk: '#ef4444',
   };
   const ANIMAL_EMOJI: Record<string, string> = {
     hyena: '🐾', horse: '🐴', alligator: '🐊', bear: '🐻',
     kangaroo: '🦘', lion: '🦁', raccoon: '🦝', otter: '🦦', crow: '🐦‍⬛',
-    octopus: '🐙',
+    octopus: '🐙', ferret: '🐾',
+    wolf: '🐺', porcupine: '🦔', mongoose: '🐿️',
+    owl: '🦉', hawk: '🦅',
   };
 
   const animal = profile?.animal?.toLowerCase() || 'unknown';
@@ -1988,7 +1992,7 @@ app.post('/api/thread', async (c) => {
     // Index forum message for search (T#347)
     if (result.messageId && result.threadId) {
       const threadTitle = data.title || (sqlite.prepare('SELECT title FROM forum_threads WHERE id = ?').get(result.threadId) as any)?.title || '';
-      searchIndexUpsert('forum', result.messageId, threadTitle, data.message, data.author, new Date().toISOString());
+      searchIndexUpsert('forum', result.messageId, threadTitle, data.message, data.author, new Date().toISOString(), `/forum?thread=${result.threadId}`);
     }
     // Push WebSocket event
     wsBroadcast('new_message', {
@@ -3087,8 +3091,37 @@ app.post('/api/tasks', async (c) => {
   ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, now, now);
 
   const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid) as any;
-  searchIndexUpsert('task', task.id, task.title, task.description || '', task.assigned_to || '', now);
+  searchIndexUpsert('task', task.id, task.title, task.description || '', task.assigned_to || '', now, `/board?task=${task.id}`);
   wsBroadcast('task_created', { id: task.id });
+
+  // Notify assignee + @mentioned beasts in description (T#378)
+  try {
+    const { parseMentions, notifyMentioned } = await import('./forum/mentions.ts');
+    const toNotify = new Set<string>();
+
+    // Add assignee
+    if (task.assigned_to) toNotify.add(task.assigned_to.toLowerCase());
+
+    // Parse @mentions from description
+    if (task.description) {
+      for (const name of parseMentions(task.description)) toNotify.add(name);
+    }
+
+    // Remove the creator (don't notify yourself)
+    toNotify.delete(created_by.toLowerCase());
+
+    if (toNotify.size > 0) {
+      notifyMentioned(
+        [...toNotify],
+        0, // no thread
+        task.title,
+        created_by,
+        `New task T#${task.id}: ${task.title}${task.assigned_to ? ` (assigned to @${task.assigned_to})` : ''}`,
+        { type: 'PM Board', label: `task #${task.id}`, hint: `Use /board task ${task.id} to view.` },
+      );
+    }
+  } catch { /* notification failure is non-critical */ }
+
   return c.json(task, 201);
 });
 
@@ -3262,7 +3295,15 @@ app.get('/api/board', (c) => {
   // Done column: sort by updated_at DESC (most recently completed first)
   columns.done.sort((a: any, b: any) => (b.updated_at || '').localeCompare(a.updated_at || ''));
 
-  const projects = sqlite.prepare("SELECT * FROM projects ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 WHEN 'completed' THEN 2 END, name").all() as any[];
+  const projectStatus = c.req.query('status');
+  let projectQuery = "SELECT * FROM projects";
+  const projectParams: any[] = [];
+  if (projectStatus) {
+    projectQuery += " WHERE status = ?";
+    projectParams.push(projectStatus);
+  }
+  projectQuery += " ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 WHEN 'completed' THEN 2 END, name";
+  const projects = sqlite.prepare(projectQuery).all(...projectParams) as any[];
 
   return c.json({ columns, projects, total: tasks.length });
 });
@@ -5870,8 +5911,24 @@ if (searchCount === 0) {
   console.log(`[SEARCH] Backfill complete: ${total} documents indexed.`);
 }
 
+// URL generator for search results
+const searchUrlMap: Record<string, (id: number) => string> = {
+  forum: () => '#', // forum needs thread_id, handled specially
+  library: (id) => `/library?doc=${id}`,
+  spec: (id) => `/specs?spec=${id}`,
+  risk: () => `/risk`,
+  task: (id) => `/board?task=${id}`,
+  shelf: () => `/library`,
+};
+
+function searchUrlFor(sourceType: string, sourceId: number, extraUrl?: string): string {
+  if (extraUrl) return extraUrl;
+  return (searchUrlMap[sourceType] || (() => '#'))(sourceId);
+}
+
 // Helper: index a document
 function searchIndexUpsert(sourceType: string, sourceId: number, title: string, content: string, author: string, createdAt: string, url?: string) {
+  const resolvedUrl = searchUrlFor(sourceType, sourceId, url);
   // FTS5 (sync)
   try {
     sqlite.prepare('DELETE FROM search_index WHERE source_type = ? AND source_id = ?').run(sourceType, String(sourceId));
@@ -5881,7 +5938,7 @@ function searchIndexUpsert(sourceType: string, sourceId: number, title: string, 
   if (meili && meiliAvailable) {
     meili.index('denbook').addDocuments([{
       search_id: `${sourceType}_${sourceId}`, title, content, source_type: sourceType,
-      source_id: sourceId, author, created_at: createdAt, url: url || '#',
+      source_id: sourceId, author, created_at: createdAt, url: resolvedUrl,
     }]).catch(() => {});
   }
 }
@@ -5916,14 +5973,22 @@ function fts5Search(q: string, type: string | undefined, limit: number, offset: 
   ).all(...params, limit, offset) as any[];
 
   const urlMap: Record<string, (id: string) => string> = {
-    forum: (id) => `/forum?thread=${id}`, library: (id) => `/library?doc=${id}`,
+    library: (id) => `/library?doc=${id}`,
     spec: (id) => `/specs?spec=${id}`, risk: () => `/risk`, task: (id) => `/board?task=${id}`,
+    shelf: () => `/library`,
   };
+
+  // Forum source_id is message ID — look up thread_id for URL
+  function forumUrl(messageId: string): string {
+    const row = sqlite.prepare('SELECT thread_id FROM forum_messages WHERE id = ?').get(parseInt(messageId, 10)) as any;
+    return row ? `/forum?thread=${row.thread_id}` : '#';
+  }
 
   return {
     results: rows.map(r => ({
       source_type: r.source_type, source_id: r.source_id, title: r.title,
-      snippet: r.snippet, author: r.author, url: (urlMap[r.source_type] || (() => '#'))(r.source_id),
+      snippet: r.snippet, author: r.author,
+      url: r.source_type === 'forum' ? forumUrl(r.source_id) : (urlMap[r.source_type] || (() => '#'))(r.source_id),
     })),
     total, query: q, engine: 'fts5' as const,
   };

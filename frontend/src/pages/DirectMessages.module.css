@@ -88,6 +88,37 @@
   color: var(--text-muted);
 }
 
+.viewToggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.viewToggleBtn {
+  flex: 1;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.viewToggleBtn:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.viewToggleActive {
+  background: var(--accent);
+  color: white;
+}
+
 .searchInput {
   width: 100%;
   background: var(--bg-secondary);

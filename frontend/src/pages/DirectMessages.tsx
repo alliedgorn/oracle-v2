@@ -84,6 +84,7 @@ export function DirectMessages() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [showNewDm, setShowNewDm] = useState(false);
+  const [viewMode, setViewMode] = useState<'my' | 'beast'>('my');
   const [beasts, setBeasts] = useState<{ name: string; displayName: string }[]>([]);
   const [totalMessages, setTotalMessages] = useState(0);
   const totalMessagesRef = useRef(0);
@@ -401,6 +402,17 @@ export function DirectMessages() {
           </div>
         )}
 
+        <div className={styles.viewToggle}>
+          <button
+            className={`${styles.viewToggleBtn} ${viewMode === 'my' ? styles.viewToggleActive : ''}`}
+            onClick={() => setViewMode('my')}
+          >My Chats</button>
+          <button
+            className={`${styles.viewToggleBtn} ${viewMode === 'beast' ? styles.viewToggleActive : ''}`}
+            onClick={() => setViewMode('beast')}
+          >Beast Chats</button>
+        </div>
+
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -409,6 +421,9 @@ export function DirectMessages() {
 
         <div className={styles.conversationList}>
           {dashboard?.conversations.filter(conv => {
+            const hasGorn = conv.participants.includes('gorn');
+            if (viewMode === 'my' && !hasGorn) return false;
+            if (viewMode === 'beast' && hasGorn) return false;
             if (!search.trim()) return true;
             const q = search.toLowerCase();
             return conv.participants[0].includes(q) || conv.participants[1].includes(q);

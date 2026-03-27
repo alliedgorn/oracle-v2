@@ -122,16 +122,30 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     prevCountRef.current = messages.length;
   }, [messages, initialLoad]);
 
-  // Poll for new messages
+  // Poll for new messages (merge with existing to preserve scroll-up history)
   useEffect(() => {
     const interval = setInterval(() => {
       if (document.hidden) return;
-      // Capture scroll position BEFORE updating messages
       wasNearBottomRef.current = isNearBottom();
-      loadMessages();
+      (async () => {
+        try {
+          const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&order=desc`);
+          const data = await res.json();
+          const latest = (data.messages || []).reverse();
+          if (latest.length > 0) {
+            markAsRead();
+            setMessages(prev => {
+              if (prev.length === 0) return latest;
+              const latestIds = new Set(latest.map((m: Message) => m.id));
+              const older = prev.filter(m => !latestIds.has(m.id) && m.id < latest[0].id);
+              return [...older, ...latest];
+            });
+          }
+        } catch {}
+      })();
     }, 3000);
     return () => clearInterval(interval);
-  }, [loadMessages]);
+  }, [beastName, markAsRead]);
 
   // Scroll detection: load-more at top + show scroll-down button
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

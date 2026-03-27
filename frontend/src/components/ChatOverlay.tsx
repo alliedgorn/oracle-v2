@@ -31,6 +31,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const [hasMore, setHasMore] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -189,7 +190,14 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
         {messages.map(msg => (
           <div key={msg.id} className={`${styles.message} ${msg.sender === 'gorn' ? styles.sent : styles.received}`}>
             <div className={styles.msgContent}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{autolinkIds(msg.content)}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  img: ({ src, alt, ...props }) => (
+                    <img {...props} src={src} alt={alt || ''} style={{ cursor: 'pointer' }} onClick={() => src && setLightboxSrc(src)} />
+                  ),
+                }}
+              >{autolinkIds(msg.content)}</ReactMarkdown>
             </div>
             <span className={styles.msgTime}>
               {formatTime(msg.created_at)}
@@ -225,6 +233,13 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
           </button>
         </div>
       </form>
+
+      {lightboxSrc && (
+        <div className={styles.lightbox} onClick={() => setLightboxSrc(null)}>
+          <img src={lightboxSrc} alt="Full size" className={styles.lightboxImg} />
+          <button className={styles.lightboxClose} onClick={() => setLightboxSrc(null)}>✕</button>
+        </div>
+      )}
     </div>
   );
 }

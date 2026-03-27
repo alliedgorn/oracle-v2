@@ -62,13 +62,13 @@ export function PackView() {
   }, [loadPack]);
 
   // React to URL ?beast= changes (e.g. clicking terminal icon from RemotePanel)
+  const beastParam = searchParams.get('beast');
   useEffect(() => {
-    const beastParam = searchParams.get('beast');
     if (beastParam && beasts.length > 0 && (!selected || selected.name !== beastParam)) {
       const match = beasts.find(b => b.name === beastParam);
       if (match) setSelected(match);
     }
-  }, [searchParams, beasts]);
+  }, [beastParam, beasts]);
 
   // Initialize terminal when a beast is selected
   useEffect(() => {

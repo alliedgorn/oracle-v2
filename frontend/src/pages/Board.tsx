@@ -122,16 +122,7 @@ export function Board() {
     return () => window.removeEventListener('keydown', handler);
   }, [selectedTask]);
 
-  // Poll for updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (document.hidden) return;
-      loadBoard();
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [projectFilter, assigneeFilter]);
-
-  // WebSocket real-time updates
+  // WebSocket real-time updates (replaced 10s polling)
   const handleWsUpdate = useCallback(() => {
     loadBoard();
   }, [projectFilter, assigneeFilter]);
@@ -139,6 +130,15 @@ export function Board() {
   useWebSocket('task_created', handleWsUpdate);
   useWebSocket('task_updated', handleWsUpdate);
   useWebSocket('tasks_bulk_updated', handleWsUpdate);
+
+  // Refresh when page becomes visible (catch updates missed while hidden)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden) loadBoard();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [projectFilter, assigneeFilter]);
 
   async function loadBoard() {
     const params = new URLSearchParams();

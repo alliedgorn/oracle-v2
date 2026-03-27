@@ -4578,9 +4578,9 @@ app.post('/api/specs/:id/review', async (c) => {
                 'gorn',
                 `Spec ${action}d: ${commentContent.slice(0, 100)}`,
                 {
-                  type: 'PM Board',
-                  label: `task #${taskIdNum}`,
-                  hint: `Use /board to view task details.`,
+                  type: 'Specs',
+                  label: `Spec #${id} (task #${taskIdNum})`,
+                  hint: `Use /spec to view spec details. Use /board task ${taskIdNum} to view task.`,
                 }
               );
             }

@@ -306,7 +306,7 @@ export function Forge() {
           </div>
         ))}
         {hasMore && (
-          <button className={styles.formButton} onClick={loadMore} disabled={loadingMore} style={{ width: '100%', marginTop: 8 }}>
+          <button className={styles.formButton} onClick={loadMore} disabled={loadingMore}>
             {loadingMore ? 'Loading...' : 'Load more'}
           </button>
         )}

@@ -1097,6 +1097,44 @@ app.patch('/api/schedule/:id', async (c) => {
 
 import { execSync } from 'child_process';
 
+// Load all Beast spinner verbs from their settings.local.json configs
+// Returns a Set of all configured spinner verbs across all Beasts
+function loadAllSpinnerVerbs(): Set<string> {
+  const verbs = new Set<string>();
+  const workspaceDir = '/home/gorn/workspace';
+  try {
+    const dirs = fs.readdirSync(workspaceDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+    for (const dir of dirs) {
+      try {
+        const configPath = path.join(workspaceDir, dir, '.claude', 'settings.local.json');
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        const sv = config.spinnerVerbs;
+        if (sv) {
+          const verbList = Array.isArray(sv) ? sv : (sv.verbs || []);
+          for (const v of verbList) {
+            if (typeof v === 'string') verbs.add(v);
+          }
+        }
+      } catch { /* skip dirs without config */ }
+    }
+  } catch { /* workspace not readable */ }
+  return verbs;
+}
+
+// Cache spinner verbs (reload every 5 minutes)
+let cachedSpinnerVerbs: Set<string> | null = null;
+let spinnerVerbsLoadedAt = 0;
+function getSpinnerVerbs(): Set<string> {
+  const now = Date.now();
+  if (!cachedSpinnerVerbs || now - spinnerVerbsLoadedAt > 5 * 60 * 1000) {
+    cachedSpinnerVerbs = loadAllSpinnerVerbs();
+    spinnerVerbsLoadedAt = now;
+  }
+  return cachedSpinnerVerbs;
+}
+
 // Get all beasts with status (processing/idle/offline)
 app.get('/api/pack', (c) => {
   const profiles = getAllBeastProfiles();
@@ -1156,9 +1194,22 @@ app.get('/api/pack', (c) => {
           let isProcessing = false;
           if (promptIdx > 1) {
             const abovePrompt = lines.slice(Math.max(promptIdx - 3, 0), promptIdx).join('\n');
-            // Match any Claude Code spinner pattern — random verbs like Burrowing…, Reticulating…, Crafting…
-            // Format: "✻ Word…" or "✽ Word…" or "· Word…" or "esc to interrupt"
+            // Match processing state using multiple signals:
+            // 1. Generic spinner pattern: ✻/✽/· followed by word + ellipsis (…)
+            // 2. "esc to interrupt" text (shown during tool execution)
+            // 3. Custom Beast spinner verbs from settings.local.json configs
             isProcessing = /[✻✽·]\s+\w+\u2026|esc to interrupt/.test(abovePrompt);
+
+            // If generic match missed, check for configured spinner verbs (handles multi-word verbs, etc.)
+            if (!isProcessing) {
+              const spinnerVerbs = getSpinnerVerbs();
+              for (const verb of spinnerVerbs) {
+                if (abovePrompt.includes(verb + '\u2026') || abovePrompt.includes(verb + '...')) {
+                  isProcessing = true;
+                  break;
+                }
+              }
+            }
           }
 
           if (isProcessing) {
@@ -1187,6 +1238,40 @@ app.get('/api/pack', (c) => {
   });
 
   return c.json({ beasts });
+});
+
+// Get all configured spinner verbs across all Beasts
+app.get('/api/pack/spinner-verbs', (c) => {
+  const workspaceDir = '/home/gorn/workspace';
+  const beastVerbs: Record<string, string[]> = {};
+  const allVerbs = new Set<string>();
+
+  try {
+    const dirs = fs.readdirSync(workspaceDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+    for (const dir of dirs) {
+      try {
+        const configPath = path.join(workspaceDir, dir, '.claude', 'settings.local.json');
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        const sv = config.spinnerVerbs;
+        if (sv) {
+          const verbList = (Array.isArray(sv) ? sv : (sv.verbs || [])).filter((v: unknown) => typeof v === 'string');
+          if (verbList.length > 0) {
+            beastVerbs[dir] = verbList;
+            for (const v of verbList) allVerbs.add(v);
+          }
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* workspace not readable */ }
+
+  return c.json({
+    beasts: beastVerbs,
+    allVerbs: [...allVerbs].sort(),
+    totalUnique: allVerbs.size,
+    totalBeasts: Object.keys(beastVerbs).length,
+  });
 });
 
 // Capture live terminal output for a Beast

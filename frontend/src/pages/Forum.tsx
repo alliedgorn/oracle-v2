@@ -867,6 +867,7 @@ export function Forum() {
                   placeholder={replyTo ? `Reply to ${replyTo.author || 'message'}...` : 'Continue the discussion... (⌘+Enter to send)'}
                   ref={newMessageRef}
                   defaultValue={newMessage}
+                  onInput={handleTextareaInput}
                   onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
                   className={styles.textarea}
                   rows={3}

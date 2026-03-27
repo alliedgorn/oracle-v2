@@ -4569,6 +4569,7 @@ app.post('/api/specs/:id/review', async (c) => {
             const toNotify = new Set<string>();
             if (task.assigned_to) toNotify.add(task.assigned_to.toLowerCase());
             if (task.created_by) toNotify.add(task.created_by.toLowerCase());
+            if (spec.author) toNotify.add(spec.author.toLowerCase());
             toNotify.delete('gorn');
             if (toNotify.size > 0) {
               notifyMentioned(

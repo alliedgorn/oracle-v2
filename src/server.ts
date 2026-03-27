@@ -1251,10 +1251,11 @@ app.post('/api/beast/:name/terminal/input', async (c) => {
     }
 
     // Check session exists
-    execSync(`tmux has-session -t ${JSON.stringify(sessionName)}`, { timeout: 2000 });
+    const hasSession = Bun.spawnSync(['tmux', 'has-session', '-t', sessionName]);
+    if (hasSession.exitCode !== 0) throw new Error('Session not found');
 
-    // Send keys
-    execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(keys)}`, { timeout: 2000 });
+    // Send keys — use Bun.spawnSync to avoid shell interpretation of special chars
+    Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', keys]);
 
     return c.json({ sent: true, beast: name, length: keys.length });
   } catch {
@@ -1277,8 +1278,8 @@ app.post('/api/beast/:name/terminal/key', async (c) => {
       return c.json({ error: `Invalid key. Allowed: ${ALLOWED_KEYS.join(', ')}` }, 400);
     }
 
-    execSync(`tmux has-session -t ${JSON.stringify(sessionName)}`, { timeout: 2000 });
-    execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} ${key}`, { timeout: 2000 });
+    Bun.spawnSync(['tmux', 'has-session', '-t', sessionName]);
+    Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, key]);
 
     return c.json({ sent: true, beast: name, key });
   } catch {
@@ -4146,23 +4147,20 @@ app.post('/api/schedules/:id/execute', async (c) => {
   const sessionName = schedule.beast.charAt(0).toUpperCase() + schedule.beast.slice(1);
 
   // Check if Beast tmux session exists
-  try {
-    execSync(`tmux has-session -t ${JSON.stringify(sessionName)}`, { timeout: 2000 });
-  } catch {
+  const hasSession = Bun.spawnSync(['tmux', 'has-session', '-t', sessionName]);
+  if (hasSession.exitCode !== 0) {
     return c.json({ error: `tmux session '${sessionName}' not found — Beast may be offline` }, 503);
   }
 
-  // Send notification to Beast (same as auto-trigger daemon)
-  const safeTask = schedule.task.replace(/[^a-zA-Z0-9 _./-]/g, '');
-  const safeCommand = schedule.command ? schedule.command.replace(/[^a-zA-Z0-9 _./:@=-]/g, '') : '';
-  const notification = `[Scheduler] Due now: ${safeTask} (schedule ${schedule.id})${safeCommand ? ` | Command: ${safeCommand}` : ''}`;
-  const reminder = `Remember: mark done with curl -s -X PATCH http://localhost:47778/api/schedules/${schedule.id}/run?as=${schedule.beast}`;
+  // Send notification to Beast — no sanitization needed with Bun.spawnSync (no shell)
+  const notification = `# [Scheduler] Due now: ${schedule.task} (schedule ${schedule.id})${schedule.command ? ` | Command: ${schedule.command}` : ''}`;
+  const reminder = `# Remember: mark done with curl -s -X PATCH http://localhost:47778/api/schedules/${schedule.id}/run?as=${schedule.beast}`;
 
   try {
-    execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(notification)}`, { timeout: 2000 });
-    execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} Enter`, { timeout: 2000 });
-    execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(reminder)}`, { timeout: 2000 });
-    execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} Enter`, { timeout: 2000 });
+    Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
+    Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
+    Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', reminder]);
+    Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
 
     const now = new Date().toISOString();
     sqlite.prepare(
@@ -4241,26 +4239,21 @@ function runSchedulerCycle() {
       const sessionName = schedule.beast.charAt(0).toUpperCase() + schedule.beast.slice(1);
 
       // Check if Beast tmux session exists
-      try {
-        execSync(`tmux has-session -t ${JSON.stringify(sessionName)}`, { timeout: 2000 });
-      } catch {
-        // Session not found — skip, log
+      const hasSession = Bun.spawnSync(['tmux', 'has-session', '-t', sessionName]);
+      if (hasSession.exitCode !== 0) {
         console.log(`[Scheduler] Skip ${schedule.beast}/${schedule.task}: tmux session '${sessionName}' not found`);
         continue;
       }
 
-      // Send comment notification to Beast (NOT a command — Option 1 per Gnarl's review)
-      // Sanitize task name: strip any chars that could be interpreted by tmux/shell
-      const safeTask = schedule.task.replace(/[^a-zA-Z0-9 _./-]/g, '');
-      const safeCommand = schedule.command ? schedule.command.replace(/[^a-zA-Z0-9 _./:@=-]/g, '') : '';
-      const notification = `[Scheduler] Due now: ${safeTask} (schedule ${schedule.id})${safeCommand ? ` | Command: ${safeCommand}` : ''}`;
-      const reminder = `Remember: mark done with curl -s -X PATCH http://localhost:47778/api/schedules/${schedule.id}/run?as=${schedule.beast}`;
+      // Send notification — Bun.spawnSync bypasses shell, no sanitization needed
+      const notification = `# [Scheduler] Due now: ${schedule.task} (schedule ${schedule.id})${schedule.command ? ` | Command: ${schedule.command}` : ''}`;
+      const reminder = `# Remember: mark done with curl -s -X PATCH http://localhost:47778/api/schedules/${schedule.id}/run?as=${schedule.beast}`;
 
       try {
-        execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(notification)}`, { timeout: 2000 });
-        execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} Enter`, { timeout: 2000 });
-        execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(reminder)}`, { timeout: 2000 });
-        execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} Enter`, { timeout: 2000 });
+        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
+        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
+        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', reminder]);
+        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
 
         // Mark as triggered
         sqlite.prepare(

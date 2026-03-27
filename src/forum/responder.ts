@@ -107,10 +107,9 @@ function sendToLiveSession(pane: string, oracle: string, threadId: number, title
   const prompt = `[Forum message] From ${senderName} in thread #${threadId} ("${title}"):\n\n${preview}\n\nUse /forum thread ${threadId} to read and /forum post <message> (with thread_id ${threadId}) to reply.`;
 
   try {
-    // Use tmux send-keys to inject into the session
-    execSync(`tmux send-keys -t ${JSON.stringify(pane)} ${JSON.stringify(prompt)} Enter`, {
-      timeout: 5000
-    });
+    // Use Bun.spawnSync to inject into the session — bypasses shell interpretation
+    Bun.spawnSync(['tmux', 'send-keys', '-t', pane, '-l', prompt]);
+    Bun.spawnSync(['tmux', 'send-keys', '-t', pane, 'Enter']);
 
     console.log(`[tmux] Injected message into ${oracle}'s live session (pane ${pane})`);
     return true;

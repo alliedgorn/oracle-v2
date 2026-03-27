@@ -1765,6 +1765,13 @@ app.get('/api/forum/file/:filename', (c) => {
     || sqlite.prepare('SELECT mime_type, original_name FROM forum_attachments WHERE filename = ?').get(filename) as any;
   if (meta?.deleted_at) return c.json({ error: 'File not found' }, 404);
 
+  // ETag based on filename (UUID — immutable content)
+  const etag = `"${filename}"`;
+  const ifNoneMatch = c.req.header('if-none-match');
+  if (ifNoneMatch === etag) {
+    return new Response(null, { status: 304 });
+  }
+
   const content = fs.readFileSync(filePath);
   const safeImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
   const isImage = safeImageTypes.has(meta?.mime_type);
@@ -1774,6 +1781,7 @@ app.get('/api/forum/file/:filename', (c) => {
   c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${(meta?.original_name || filename).replace(/"/g, '_')}"`);
   if (!isImage) c.header('Content-Security-Policy', 'sandbox');
   c.header('Cache-Control', 'public, max-age=31536000, immutable');
+  c.header('ETag', etag);
   return c.body(content);
 });
 
@@ -1877,6 +1885,13 @@ app.get('/api/files/:id/download', (c) => {
   const filePath = path.join(UPLOADS_DIR, file.filename);
   if (!fs.existsSync(filePath)) return c.json({ error: 'File not found on disk' }, 404);
 
+  // ETag for caching
+  const etag = `"${file.filename}"`;
+  const ifNoneMatch = c.req.header('if-none-match');
+  if (ifNoneMatch === etag) {
+    return new Response(null, { status: 304 });
+  }
+
   const content = fs.readFileSync(filePath);
   const safeImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
   const isImage = safeImageTypes.has(file.mime_type);
@@ -1885,6 +1900,7 @@ app.get('/api/files/:id/download', (c) => {
   c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${file.original_name.replace(/"/g, '_')}"`);
   if (!isImage) c.header('Content-Security-Policy', 'sandbox');
   c.header('Cache-Control', 'public, max-age=31536000, immutable');
+  c.header('ETag', etag);
   return c.body(content);
 });
 

@@ -133,17 +133,24 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     return () => clearInterval(interval);
   }, [beastName]);
 
-  // Scroll-to-top detection for loading more
+  // Scroll-to-top detection for loading more (with 0.5s delay)
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
     function handleScroll() {
       if (el!.scrollTop < 50 && hasMore && !loadingMore) {
-        loadOlderMessages();
+        if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+        scrollTimerRef.current = setTimeout(() => {
+          if (el!.scrollTop < 50) loadOlderMessages();
+        }, 500);
       }
     }
     el.addEventListener('scroll', handleScroll, { passive: true });
-    return () => el.removeEventListener('scroll', handleScroll);
+    return () => {
+      el.removeEventListener('scroll', handleScroll);
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    };
   }, [hasMore, loadingMore, messages]);
 
   async function handleSend(e: React.FormEvent) {

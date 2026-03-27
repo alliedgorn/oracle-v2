@@ -20,6 +20,8 @@ export function Forge() {
   const [stats, setStats] = useState<any>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
+  const [importPreview, setImportPreview] = useState<any>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [weights, setWeights] = useState<any[]>([]);
   const [activeForm, setActiveForm] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -139,23 +141,54 @@ export function Forge() {
               if (!file) return;
               setImporting(true);
               setImportResult(null);
+              setImportPreview(null);
+              setImportFile(file);
               try {
                 const formData = new FormData();
                 formData.append('file', file);
-                const res = await fetch(`${API_BASE}/routine/import/alpha-progression`, { method: 'POST', body: formData });
-                const data = await res.json();
-                setImportResult(data);
-                if (data.imported) loadData();
-              } catch { setImportResult({ error: 'Import failed' }); }
+                const res = await fetch(`${API_BASE}/routine/import/alpha-progression?preview=true`, { method: 'POST', body: formData });
+                setImportPreview(await res.json());
+              } catch { setImportPreview({ error: 'Failed to parse CSV' }); }
               setImporting(false);
               e.target.value = '';
             }}
             disabled={importing}
           />
           <span className={styles.quickAddIcon}>📥</span>
-          <span>{importing ? 'Importing...' : 'Import CSV'}</span>
+          <span>{importing ? 'Parsing...' : 'Import CSV'}</span>
         </label>
       </div>
+
+      {importPreview && !importResult && (
+        <div className={styles.form} style={{ marginBottom: 16 }}>
+          {importPreview.error ? (
+            <p style={{ color: 'var(--danger, red)' }}>{importPreview.error}</p>
+          ) : (
+            <>
+              <p>Found <strong>{importPreview.sessions} sessions</strong> ({importPreview.total_exercises} exercises, {importPreview.total_sets} sets)
+              {importPreview.date_range && <> from {importPreview.date_range.from} to {importPreview.date_range.to}</>}</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className={styles.formButton} disabled={importing} onClick={async () => {
+                  if (!importFile) return;
+                  setImporting(true);
+                  try {
+                    const formData = new FormData();
+                    formData.append('file', importFile);
+                    const res = await fetch(`${API_BASE}/routine/import/alpha-progression`, { method: 'POST', body: formData });
+                    const data = await res.json();
+                    setImportResult(data);
+                    setImportPreview(null);
+                    setImportFile(null);
+                    if (data.imported) loadData();
+                  } catch { setImportResult({ error: 'Import failed' }); }
+                  setImporting(false);
+                }}>{importing ? 'Importing...' : 'Import'}</button>
+                <button className={styles.formButton} style={{ opacity: 0.6 }} onClick={() => { setImportPreview(null); setImportFile(null); }}>Cancel</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {importResult && (
         <div className={styles.form} style={{ marginBottom: 16 }}>

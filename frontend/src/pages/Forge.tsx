@@ -79,6 +79,140 @@ function WorkoutCard({ data }: { data: any }) {
   );
 }
 
+// Line chart colors for workout trends (5-color palette for dark bg)
+const TREND_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#a78bfa'];
+
+// Workout trends line chart component
+function WorkoutTrendsChart({ range }: { range: string }) {
+  const [trends, setTrends] = useState<any>(null);
+  const [metric, setMetric] = useState<'maxWeight' | 'totalVolume' | 'totalReps'>('maxWeight');
+  const [selectedExercises, setSelectedExercises] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/routine/workout-trends?range=${range}`)
+      .then(r => r.json())
+      .then(data => {
+        setTrends(data);
+        if (data.exercises?.length && selectedExercises.length === 0) {
+          setSelectedExercises(data.exercises.slice(0, 5));
+        }
+      })
+      .catch(() => {});
+  }, [range]);
+
+  if (!trends || !trends.exercises?.length) return null;
+
+  const exercises = selectedExercises.filter(e => trends.trends[e]?.length > 0);
+  if (exercises.length === 0) return null;
+
+  // Collect all data points for axis scaling
+  const allPoints: { date: number; value: number }[] = [];
+  for (const ex of exercises) {
+    for (const pt of trends.trends[ex] || []) {
+      allPoints.push({ date: new Date(pt.date).getTime(), value: pt[metric] });
+    }
+  }
+  if (allPoints.length === 0) return null;
+
+  const minDate = Math.min(...allPoints.map(p => p.date));
+  const maxDate = Math.max(...allPoints.map(p => p.date));
+  const minVal = Math.min(...allPoints.map(p => p.value));
+  const maxVal = Math.max(...allPoints.map(p => p.value));
+  const valRange = maxVal - minVal || 1;
+  const dateRange = maxDate - minDate || 1;
+
+  const W = 600, H = 180, PAD = 30;
+
+  function toX(date: number) { return PAD + ((date - minDate) / dateRange) * (W - PAD * 2); }
+  function toY(val: number) { return H - PAD - ((val - minVal + valRange * 0.1) / (valRange * 1.2)) * (H - PAD * 2); }
+
+  const metricLabels: Record<string, string> = { maxWeight: 'Max Weight', totalVolume: 'Volume', totalReps: 'Total Reps' };
+
+  return (
+    <div className={styles.weightSection}>
+      <div className={styles.historyHeader}>
+        <h3>Workout Trends</h3>
+        <div className={styles.filters}>
+          {(['maxWeight', 'totalVolume', 'totalReps'] as const).map(m => (
+            <button key={m} className={`${styles.filterBtn} ${metric === m ? styles.filterActive : ''}`}
+              onClick={() => setMetric(m)}>{metricLabels[m]}</button>
+          ))}
+        </div>
+      </div>
+      <div className={styles.trendChart}>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map(frac => {
+            const y = toY(minVal + valRange * frac);
+            const label = Math.round(minVal + valRange * frac);
+            return (
+              <g key={frac}>
+                <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke="var(--border)" strokeWidth={0.5} />
+                <text x={PAD - 4} y={y + 3} fill="var(--text-muted)" fontSize={9} textAnchor="end">{label}</text>
+              </g>
+            );
+          })}
+          {/* Lines + dots for each exercise */}
+          {exercises.map((exName, ei) => {
+            const pts = (trends.trends[exName] || []).map((pt: any) => ({
+              x: toX(new Date(pt.date).getTime()),
+              y: toY(pt[metric]),
+              raw: pt,
+            }));
+            if (pts.length === 0) return null;
+            const pathD = pts.map((p: any, i: number) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+            return (
+              <g key={exName}>
+                <path d={pathD} fill="none" stroke={TREND_COLORS[ei % TREND_COLORS.length]} strokeWidth={2} />
+                {pts.map((p: any, i: number) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={3}
+                    fill={TREND_COLORS[ei % TREND_COLORS.length]}
+                    style={{ cursor: 'pointer' }}>
+                    <title>{`${exName} · ${new Date(p.raw.date).toLocaleDateString()} · ${metric === 'maxWeight' ? p.raw.maxWeight + ' ' + p.raw.unit : metric === 'totalVolume' ? Math.round(p.raw.totalVolume) : p.raw.totalReps}`}</title>
+                  </circle>
+                ))}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      {/* Legend */}
+      <div className={styles.trendLegend}>
+        {exercises.map((name, i) => (
+          <span key={name} className={styles.trendLegendItem}>
+            <span className={styles.trendDot} style={{ background: TREND_COLORS[i % TREND_COLORS.length] }} />
+            {name}
+          </span>
+        ))}
+      </div>
+      {/* Exercise selector */}
+      {trends.allExercises?.length > 5 && (
+        <details className={styles.exerciseSelector}>
+          <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }}>
+            Select exercises ({selectedExercises.length}/{trends.allExercises.length})
+          </summary>
+          <div className={styles.exerciseChips}>
+            {trends.allExercises.map((ex: any) => (
+              <button key={ex.name}
+                className={`${styles.filterBtn} ${selectedExercises.includes(ex.name) ? styles.filterActive : ''}`}
+                onClick={() => {
+                  setSelectedExercises(prev =>
+                    prev.includes(ex.name)
+                      ? prev.filter(e => e !== ex.name)
+                      : prev.length >= 5 ? prev : [...prev, ex.name]
+                  );
+                }}
+                style={{ fontSize: 11 }}>
+                {ex.name} ({ex.count})
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export function Forge() {
   const [logs, setLogs] = useState<RoutineLog[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -87,6 +221,7 @@ export function Forge() {
   const [importPreview, setImportPreview] = useState<any>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [weights, setWeights] = useState<any[]>([]);
+  const [weightGrouping, setWeightGrouping] = useState<string>('daily');
   const [activeForm, setActiveForm] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -109,7 +244,9 @@ export function Forge() {
     setLogs(newLogs);
     setHasMore(newLogs.length >= PAGE_SIZE);
     setStats(await statsRes.json());
-    setWeights((await weightRes.json()).weights || []);
+    const weightData = await weightRes.json();
+    setWeights(weightData.weights || []);
+    setWeightGrouping(weightData.grouping || 'daily');
   }, [typeFilter, weightRange]);
 
   async function loadMore() {
@@ -380,21 +517,40 @@ export function Forge() {
             </div>
           </div>
           <div className={styles.weightChart}>
-            {weights.map((w: any, i: number) => {
-              const min = Math.min(...weights.map((x: any) => x.value));
-              const max = Math.max(...weights.map((x: any) => x.value));
-              const range = max - min || 1;
-              const height = ((w.value - min) / range) * 80 + 20;
-              return (
-                <div key={w.id || i} className={styles.weightBar} title={`${w.value} kg — ${new Date(w.logged_at).toLocaleDateString()}`}>
-                  <div className={styles.weightBarFill} style={{ height: `${height}%` }} />
-                  <span className={styles.weightLabel}>{w.value}</span>
-                </div>
-              );
-            })}
+            {(() => {
+              const allMin = Math.min(...weights.map((x: any) => x.min_value ?? x.value));
+              const allMax = Math.max(...weights.map((x: any) => x.max_value ?? x.value));
+              const range = allMax - allMin || 1;
+              return weights.map((w: any, i: number) => {
+                const val = w.value;
+                const barHeight = ((val - allMin) / range) * 80 + 20;
+                const isGrouped = weightGrouping !== 'daily' && w.min_value != null;
+                const whiskerMin = isGrouped ? ((w.min_value - allMin) / range) * 80 + 20 : 0;
+                const whiskerMax = isGrouped ? ((w.max_value - allMin) / range) * 80 + 20 : 0;
+                const periodLabel = w.period || new Date(w.logged_at).toLocaleDateString();
+                const tooltip = isGrouped
+                  ? `${periodLabel}: avg ${val} kg (${w.min_value}–${w.max_value}, ${w.count} entries)`
+                  : `${val} kg — ${new Date(w.logged_at).toLocaleDateString()}`;
+                return (
+                  <div key={w.id || w.period || i} className={styles.weightBar} title={tooltip}>
+                    {isGrouped && (
+                      <div className={styles.whisker} style={{
+                        bottom: `${whiskerMin}%`,
+                        height: `${whiskerMax - whiskerMin}%`,
+                      }} />
+                    )}
+                    <div className={styles.weightBarFill} style={{ height: `${barHeight}%` }} />
+                    <span className={styles.weightLabel}>{val}</span>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       )}
+
+      {/* Workout Trends */}
+      <WorkoutTrendsChart range={weightRange} />
 
       {/* Filter + History */}
       <div className={styles.historyHeader}>

@@ -5576,7 +5576,7 @@ app.get('/api/routine/today', (c) => {
   return c.json({ logs, date: today });
 });
 
-// GET /api/routine/weight — weight history for chart
+// GET /api/routine/weight — weight history for chart (with time-based grouping)
 app.get('/api/routine/weight', (c) => {
   if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const range = c.req.query('range'); // week, month, year, 3y, 10y, all
@@ -5592,10 +5592,150 @@ app.get('/api/routine/weight', (c) => {
       dateFilter = ` AND logged_at >= '${from}'`;
     }
   }
+
+  // Grouping strategy per range (Dex/Quill spec, thread #323)
+  // week/month/3m: daily points, 6m/year: weekly avg, 3y/10y/all: monthly avg
+  const grouping = (['3y', '10y', 'all'].includes(range || ''))
+    ? 'monthly'
+    : (['year'].includes(range || '') ? 'weekly' : 'daily');
+
+  if (grouping === 'daily') {
+    const rows = sqlite.prepare(
+      `SELECT id, logged_at, json_extract(data, '$.value') as value, json_extract(data, '$.unit') as unit
+       FROM routine_logs WHERE type = 'weight' AND deleted_at IS NULL${dateFilter} ORDER BY logged_at ASC`
+    ).all();
+    return c.json({ weights: rows, grouping: 'daily' });
+  }
+
+  // Grouped query — return avg, min, max per period
+  const groupExpr = grouping === 'weekly'
+    ? "strftime('%Y-W%W', logged_at)"
+    : "strftime('%Y-%m', logged_at)";
+
   const rows = sqlite.prepare(
-    `SELECT id, logged_at, json_extract(data, '$.value') as value, json_extract(data, '$.unit') as unit FROM routine_logs WHERE type = 'weight' AND deleted_at IS NULL${dateFilter} ORDER BY logged_at ASC`
+    `SELECT ${groupExpr} as period,
+            ROUND(AVG(json_extract(data, '$.value')), 1) as value,
+            ROUND(MIN(json_extract(data, '$.value')), 1) as min_value,
+            ROUND(MAX(json_extract(data, '$.value')), 1) as max_value,
+            COUNT(*) as count,
+            MIN(logged_at) as logged_at,
+            'kg' as unit
+     FROM routine_logs
+     WHERE type = 'weight' AND deleted_at IS NULL${dateFilter}
+     GROUP BY ${groupExpr}
+     ORDER BY period ASC`
   ).all();
-  return c.json({ weights: rows });
+  return c.json({ weights: rows, grouping });
+});
+
+// Helper: parse exercise name from Alpha Progression format
+// Input: "1. Lat Pulldowns with Wide Overhand Grip · Machine · 8 reps"
+function parseExerciseName(raw: string): { name: string; equipment: string } {
+  const cleaned = raw.replace(/^\d+\.\s*/, '');
+  const parts = cleaned.split(' · ');
+  return { name: parts[0] || cleaned, equipment: parts[1] || '' };
+}
+
+// GET /api/routine/workout-trends — exercise progress over time (T#397)
+app.get('/api/routine/workout-trends', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const range = c.req.query('range') || 'year';
+  const exercise = c.req.query('exercise'); // optional: filter to specific exercise
+
+  let dateFilter = '';
+  const rangeMap: Record<string, number> = {
+    week: 7, month: 30, '3m': 90, year: 365, '3y': 365 * 3, '10y': 365 * 10,
+  };
+  const days = rangeMap[range];
+  if (days) {
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    dateFilter = ` AND logged_at >= '${from}'`;
+  }
+
+  // Get all workout logs in range
+  const rows = sqlite.prepare(
+    `SELECT id, logged_at, data FROM routine_logs
+     WHERE type = 'workout' AND deleted_at IS NULL${dateFilter}
+     ORDER BY logged_at ASC`
+  ).all() as any[];
+
+  // Parse exercises from each workout, compute per-exercise stats
+  const exerciseData: Map<string, Array<{
+    date: string;
+    maxWeight: number;
+    totalVolume: number;
+    totalSets: number;
+    totalReps: number;
+    unit: string;
+  }>> = new Map();
+
+  const exerciseFrequency: Map<string, number> = new Map();
+
+  for (const row of rows) {
+    let data: any;
+    try { data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data; } catch { continue; }
+    const exercises: any[] = data.exercises || [];
+
+    for (const ex of exercises) {
+      const rawName = typeof ex === 'string' ? ex : (ex.name || '');
+      const { name } = parseExerciseName(rawName);
+      if (!name) continue;
+
+      // Filter by exercise if specified
+      if (exercise && name.toLowerCase() !== exercise.toLowerCase()) continue;
+
+      exerciseFrequency.set(name, (exerciseFrequency.get(name) || 0) + 1);
+
+      const sets: any[] = ex.sets || [];
+      if (sets.length === 0) continue;
+
+      const unit = sets[0]?.unit || 'KG';
+      let maxWeight = 0;
+      let totalVolume = 0;
+      let totalSets = sets.length;
+      let totalReps = 0;
+
+      for (const s of sets) {
+        const w = parseFloat(s.weight) || 0;
+        const r = parseInt(s.reps) || 0;
+        if (w > maxWeight) maxWeight = w;
+        totalVolume += w * r;
+        totalReps += r;
+      }
+
+      if (!exerciseData.has(name)) exerciseData.set(name, []);
+      exerciseData.get(name)!.push({
+        date: row.logged_at,
+        maxWeight,
+        totalVolume,
+        totalSets,
+        totalReps,
+        unit,
+      });
+    }
+  }
+
+  // Get top 5 exercises by frequency (or all if exercise filter is set)
+  const topExercises = exercise
+    ? [...exerciseData.keys()]
+    : [...exerciseFrequency.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name]) => name);
+
+  const trends: Record<string, any[]> = {};
+  for (const name of topExercises) {
+    trends[name] = exerciseData.get(name) || [];
+  }
+
+  return c.json({
+    exercises: topExercises,
+    trends,
+    totalWorkouts: rows.length,
+    allExercises: [...exerciseFrequency.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count })),
+  });
 });
 
 // GET /api/routine/stats — summary stats

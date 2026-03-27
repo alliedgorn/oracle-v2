@@ -166,6 +166,7 @@
   align-items: center;
   justify-content: flex-end;
   height: 100%;
+  position: relative;
 }
 
 .weightBarFill {
@@ -180,6 +181,59 @@
   font-size: 9px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+.whisker {
+  position: absolute;
+  width: 2px;
+  background: var(--text-muted);
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.5;
+  z-index: 0;
+}
+
+.trendChart {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  overflow: hidden;
+}
+
+.trendLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.trendLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.trendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.exerciseSelector {
+  margin-top: 8px;
+}
+
+.exerciseChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .historyHeader {

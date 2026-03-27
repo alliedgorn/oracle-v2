@@ -860,6 +860,7 @@ export function Forum() {
                 />
                 <div className={styles.replyActions}>
                   <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
+                  <EmojiButton onSelect={(e) => setNewMessage(prev => prev + e)} />
                   <button
                     type="submit"
                     disabled={loading || !newMessage.trim()}

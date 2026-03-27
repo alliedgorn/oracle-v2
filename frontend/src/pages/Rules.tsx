@@ -16,6 +16,10 @@ interface Rule {
   created_at: string;
   archived_at: string | null;
   archived_by: string | null;
+  approval_status: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
 }
 
 const API_BASE = '/api';
@@ -36,9 +40,24 @@ export function Rules() {
 
   async function loadRules() {
     const status = showArchived ? 'archived' : 'active';
-    const res = await fetch(`${API_BASE}/rules?type=${tab}&status=${status}`);
+    const res = await fetch(`${API_BASE}/rules?type=${tab}&status=${status}&include_pending=true`);
     const data = await res.json();
     setRules(data.rules || []);
+  }
+
+  async function approveRule(id: number) {
+    await fetch(`${API_BASE}/rules/${id}/approve`, { method: 'POST' });
+    loadRules();
+  }
+
+  async function rejectRule(id: number) {
+    const reason = prompt('Rejection reason (optional):');
+    await fetch(`${API_BASE}/rules/${id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reason || '' }),
+    });
+    loadRules();
   }
 
   async function createRule(e: React.FormEvent) {
@@ -185,7 +204,19 @@ export function Rules() {
                   Archived by {rule.archived_by} on {rule.archived_at ? formatDate(rule.archived_at) : ''}
                 </span>
               )}
-              {rule.status === 'active' && (
+              {rule.approval_status === 'pending' && (
+                <span className={styles.pendingBadge}>Pending Approval</span>
+              )}
+              {rule.approval_status === 'rejected' && (
+                <span className={styles.rejectedBadge}>Rejected{rule.rejection_reason ? `: ${rule.rejection_reason}` : ''}</span>
+              )}
+              {rule.approval_status === 'pending' && (
+                <>
+                  <button className={styles.approveBtn} onClick={() => approveRule(rule.id)}>Approve</button>
+                  <button className={styles.rejectBtn} onClick={() => rejectRule(rule.id)}>Reject</button>
+                </>
+              )}
+              {rule.status === 'active' && rule.approval_status !== 'pending' && (
                 <button className={styles.archiveBtn} onClick={() => archiveRule(rule.id)}>Archive</button>
               )}
             </div>

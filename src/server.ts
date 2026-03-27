@@ -5092,6 +5092,12 @@ sqlite.exec(`
   )
 `);
 
+// Migration: add decree approval columns
+try { sqlite.exec('ALTER TABLE rules ADD COLUMN approval_status TEXT DEFAULT NULL'); } catch {}
+try { sqlite.exec('ALTER TABLE rules ADD COLUMN approved_by TEXT DEFAULT NULL'); } catch {}
+try { sqlite.exec('ALTER TABLE rules ADD COLUMN approved_at DATETIME DEFAULT NULL'); } catch {}
+try { sqlite.exec('ALTER TABLE rules ADD COLUMN rejection_reason TEXT DEFAULT NULL'); } catch {}
+
 // Seed data — only on first run (empty table)
 const ruleCount = (sqlite.prepare('SELECT COUNT(*) as c FROM rules').get() as any).c;
 if (ruleCount === 0) {
@@ -5116,8 +5122,10 @@ app.get('/api/rules', (c) => {
   const type = c.req.query('type');
   const status = c.req.query('status') || 'active';
   const scope = c.req.query('scope');
+  const includePending = c.req.query('include_pending') === 'true';
   let query = 'SELECT * FROM rules WHERE status = ?';
   const params: any[] = [status];
+  if (!includePending) { query += " AND (approval_status IS NULL OR approval_status = 'approved')"; }
   if (type) { query += ' AND type = ?'; params.push(type); }
   if (scope) { query += ' AND scope = ?'; params.push(scope); }
   query += " ORDER BY CASE type WHEN 'decree' THEN 0 WHEN 'norm' THEN 1 END, created_at DESC";
@@ -5125,10 +5133,48 @@ app.get('/api/rules', (c) => {
   return c.json({ rules, total: rules.length });
 });
 
-// GET /api/rules/decrees — active decrees only
+// GET /api/rules/decrees — active approved decrees only
 app.get('/api/rules/decrees', (c) => {
-  const rules = sqlite.prepare("SELECT * FROM rules WHERE type = 'decree' AND status = 'active' ORDER BY created_at DESC").all();
+  const rules = sqlite.prepare("SELECT * FROM rules WHERE type = 'decree' AND status = 'active' AND (approval_status IS NULL OR approval_status = 'approved') ORDER BY created_at DESC").all();
   return c.json({ rules, total: (rules as any[]).length });
+});
+
+// GET /api/rules/pending — pending decrees awaiting Gorn approval
+app.get('/api/rules/pending', (c) => {
+  const rules = sqlite.prepare("SELECT * FROM rules WHERE type = 'decree' AND status = 'active' AND approval_status = 'pending' ORDER BY created_at DESC").all();
+  return c.json({ rules, total: (rules as any[]).length });
+});
+
+// POST /api/rules/:id/approve — Gorn approves a decree
+app.post('/api/rules/:id/approve', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Only Gorn can approve decrees' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  const rule = sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id) as any;
+  if (!rule) return c.json({ error: 'Rule not found' }, 404);
+  if (rule.type !== 'decree') return c.json({ error: 'Only decrees need approval' }, 400);
+  if (rule.approval_status !== 'pending') return c.json({ error: 'Only pending decrees can be approved' }, 400);
+  const now = new Date().toISOString();
+  sqlite.prepare('UPDATE rules SET approval_status = ?, approved_by = ?, approved_at = ?, updated_at = ? WHERE id = ?')
+    .run('approved', 'gorn', now, now, id);
+  return c.json(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id));
+});
+
+// POST /api/rules/:id/reject — Gorn rejects a decree
+app.post('/api/rules/:id/reject', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Only Gorn can reject decrees' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  const rule = sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id) as any;
+  if (!rule) return c.json({ error: 'Rule not found' }, 404);
+  if (rule.type !== 'decree') return c.json({ error: 'Only decrees can be rejected' }, 400);
+  if (rule.approval_status !== 'pending') return c.json({ error: 'Only pending decrees can be rejected' }, 400);
+  try {
+    const data = await c.req.json();
+    const reason = data.reason || '';
+    const now = new Date().toISOString();
+    sqlite.prepare('UPDATE rules SET approval_status = ?, rejection_reason = ?, updated_at = ? WHERE id = ?')
+      .run('rejected', reason, now, id);
+    return c.json(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id));
+  } catch { return c.json({ error: 'Invalid request' }, 400); }
 });
 
 // GET /api/rules/norms — active norms only
@@ -5157,10 +5203,14 @@ app.post('/api/rules', async (c) => {
       return c.json({ error: 'Only Leonard and Gorn can create decrees' }, 403);
     }
     const enforcement = type === 'decree' ? 'mandatory' : 'recommended';
+    // Decrees need Gorn approval (unless Gorn is creating it directly)
+    const approvalStatus = type === 'decree' && author !== 'gorn' ? 'pending' : (type === 'decree' ? 'approved' : null);
+    const approvedBy = type === 'decree' && author === 'gorn' ? 'gorn' : null;
+    const approvedAt = type === 'decree' && author === 'gorn' ? new Date().toISOString() : null;
     const now = new Date().toISOString();
     const result = sqlite.prepare(
-      'INSERT INTO rules (type, title, content, author, enforcement, scope, source_thread_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(type, title, content, author, enforcement, scope || 'all', source_thread_id || null, now, now);
+      'INSERT INTO rules (type, title, content, author, enforcement, scope, source_thread_id, approval_status, approved_by, approved_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(type, title, content, author, enforcement, scope || 'all', source_thread_id || null, approvalStatus, approvedBy, approvedAt, now, now);
     const rule = sqlite.prepare('SELECT * FROM rules WHERE id = ?').get((result as any).lastInsertRowid);
     return c.json(rule, 201);
   } catch { return c.json({ error: 'Invalid request' }, 400); }

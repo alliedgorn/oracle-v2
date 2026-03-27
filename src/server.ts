@@ -1156,7 +1156,9 @@ app.get('/api/pack', (c) => {
           let isProcessing = false;
           if (promptIdx > 1) {
             const abovePrompt = lines.slice(Math.max(promptIdx - 3, 0), promptIdx).join('\n');
-            isProcessing = /[✻✽·] \w+…|Running…|Thinking…|Doodling…|Crafting…|Bunning…|Brewing…|Writing…|Reading…|Searching…|esc to interrupt/.test(abovePrompt);
+            // Match any Claude Code spinner pattern — random verbs like Burrowing…, Reticulating…, Crafting…
+            // Format: "✻ Word…" or "✽ Word…" or "· Word…" or "esc to interrupt"
+            isProcessing = /[✻✽·]\s+\w+\u2026|esc to interrupt/.test(abovePrompt);
           }
 
           if (isProcessing) {

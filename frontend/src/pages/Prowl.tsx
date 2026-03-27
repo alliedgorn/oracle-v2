@@ -227,6 +227,7 @@ export function Prowl() {
                 </div>
                 <div className={styles.taskContent} onClick={() => expandTask(task)}>
                   <div className={`${styles.taskTitle} ${task.status === 'done' ? styles.taskTitleDone : ''}`}>
+                    <span className={styles.taskId}>#{task.id}</span>
                     {task.title}
                   </div>
                   <div className={styles.taskMeta}>

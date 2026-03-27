@@ -209,6 +209,14 @@
   line-height: 1.4;
 }
 
+.taskId {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  font-weight: 400;
+  margin-right: 6px;
+  opacity: 0.6;
+}
+
 .taskTitleDone {
   text-decoration: line-through;
   color: var(--text-muted);

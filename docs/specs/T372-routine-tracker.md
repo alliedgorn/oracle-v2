@@ -67,8 +67,7 @@ POST   /api/routine/photo/upload  -- upload progress photo (returns URL)
 
 ### Auth
 
-- **Read/view**: Gorn only (session auth)
-- **Write/log**: Gorn + Sable (Sable can log on Gorn's behalf via API with `?as=sable`)
+- **Read + Write**: Gorn + Sable (Sable has full access to log, view, and track on Gorn's behalf)
 - **Other Beasts**: No access
 
 ## UI

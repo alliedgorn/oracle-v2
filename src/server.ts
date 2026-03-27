@@ -1646,18 +1646,27 @@ app.post('/api/upload', async (c) => {
       const metadata = await sharp(buffer).metadata();
       if (metadata.width && metadata.width > 1920) {
         processedBuffer = await sharp(buffer)
+          .rotate() // Auto-fix EXIF orientation
           .resize(1920, null, { withoutEnlargement: true })
           .jpeg({ quality: 80 })
+          .withMetadata({ orientation: undefined }) // Strip EXIF (GPS, etc.)
           .toBuffer();
         finalExt = '.jpg';
         finalMime = 'image/jpeg';
       } else if (buffer.length > 2 * 1024 * 1024) {
-        // Over 2MB — compress without resizing
         processedBuffer = await sharp(buffer)
+          .rotate()
           .jpeg({ quality: 85 })
+          .withMetadata({ orientation: undefined })
           .toBuffer();
         finalExt = '.jpg';
         finalMime = 'image/jpeg';
+      } else {
+        // Normal size — still fix EXIF rotation and strip metadata
+        processedBuffer = await sharp(buffer)
+          .rotate()
+          .withMetadata({ orientation: undefined })
+          .toBuffer();
       }
     } catch { /* sharp not available — save original */ }
 

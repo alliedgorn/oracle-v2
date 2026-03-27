@@ -108,6 +108,7 @@ All endpoints Gorn-only (session auth required). No Beast access.
 - No Beast access — personal health data
 - Progress photos private (no public URLs, session auth required to view)
 - JSON data validated for type shape on write
+- All image uploads processed with `sharp`: EXIF auto-rotation + metadata strip (removes GPS/location for privacy)
 
 ## Phase 2 (future, not in this spec)
 

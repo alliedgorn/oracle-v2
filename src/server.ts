@@ -5128,11 +5128,15 @@ sqlite.exec(`
 const ROUTINE_UPLOADS = path.join(ORACLE_DATA_DIR, 'uploads', 'routine');
 if (!fs.existsSync(ROUTINE_UPLOADS)) fs.mkdirSync(ROUTINE_UPLOADS, { recursive: true });
 
-// Auth helper: only Gorn + Sable
+// Auth helper: only Gorn (session) + Sable (trusted local request with identity)
 function isForgeAuthorized(c: any): boolean {
   if (hasSessionAuth(c)) return true; // Gorn browser session
-  const as = (c.req.query('as') || '').toLowerCase();
-  return ['gorn', 'sable'].includes(as);
+  // Sable access: must be a trusted local request (localhost) AND identify as sable
+  if (isTrustedRequest(c)) {
+    const as = (c.req.query('as') || '').toLowerCase();
+    return ['gorn', 'sable'].includes(as);
+  }
+  return false;
 }
 
 // GET /api/routine/logs — list logs

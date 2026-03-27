@@ -107,16 +107,19 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   }, [initialLoad, messages]);
 
   // Auto-scroll on new messages only when near bottom or user just sent
+  const lastMsgIdRef = useRef(0);
   useEffect(() => {
-    if (initialLoad) return;
-    const newCount = messages.length;
-    if (newCount > prevCountRef.current && prevCountRef.current > 0) {
+    if (initialLoad || messages.length === 0) return;
+    const latestId = messages[messages.length - 1].id;
+    if (latestId !== lastMsgIdRef.current) {
+      // New message arrived
       if (userSentRef.current || wasNearBottomRef.current) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         userSentRef.current = false;
       }
+      lastMsgIdRef.current = latestId;
     }
-    prevCountRef.current = newCount;
+    prevCountRef.current = messages.length;
   }, [messages, initialLoad]);
 
   // Poll for new messages

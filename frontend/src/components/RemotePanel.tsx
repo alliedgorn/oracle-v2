@@ -163,7 +163,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
         <ChatOverlay
           beastName={chatBeast.name}
           displayName={chatBeast.displayName}
-          onClose={() => setChatBeast(null)}
+          onClose={() => { setChatBeast(null); localStorage.removeItem('chatBeast'); }}
         />
       )}
     </>

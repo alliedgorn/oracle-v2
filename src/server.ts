@@ -5117,6 +5117,19 @@ if (ruleCount === 0) {
   }
 }
 
+// Helper: decorate rule with effective status
+function decorateRule(rule: any) {
+  if (!rule) return rule;
+  // Override status to reflect approval state for decrees
+  if (rule.type === 'decree' && rule.approval_status === 'pending') {
+    return { ...rule, status: 'pending' };
+  }
+  if (rule.type === 'decree' && rule.approval_status === 'rejected') {
+    return { ...rule, status: 'rejected' };
+  }
+  return rule;
+}
+
 // GET /api/rules — list rules
 app.get('/api/rules', (c) => {
   const type = c.req.query('type');
@@ -5129,20 +5142,20 @@ app.get('/api/rules', (c) => {
   if (type) { query += ' AND type = ?'; params.push(type); }
   if (scope) { query += ' AND scope = ?'; params.push(scope); }
   query += " ORDER BY CASE type WHEN 'decree' THEN 0 WHEN 'norm' THEN 1 END, created_at DESC";
-  const rules = sqlite.prepare(query).all(...params) as any[];
+  const rules = (sqlite.prepare(query).all(...params) as any[]).map(decorateRule);
   return c.json({ rules, total: rules.length });
 });
 
 // GET /api/rules/decrees — active approved decrees only
 app.get('/api/rules/decrees', (c) => {
-  const rules = sqlite.prepare("SELECT * FROM rules WHERE type = 'decree' AND status = 'active' AND (approval_status IS NULL OR approval_status = 'approved') ORDER BY created_at DESC").all();
-  return c.json({ rules, total: (rules as any[]).length });
+  const rules = (sqlite.prepare("SELECT * FROM rules WHERE type = 'decree' AND status = 'active' AND (approval_status IS NULL OR approval_status = 'approved') ORDER BY created_at DESC").all() as any[]).map(decorateRule);
+  return c.json({ rules, total: rules.length });
 });
 
 // GET /api/rules/pending — pending decrees awaiting Gorn approval
 app.get('/api/rules/pending', (c) => {
-  const rules = sqlite.prepare("SELECT * FROM rules WHERE type = 'decree' AND status = 'active' AND approval_status = 'pending' ORDER BY created_at DESC").all();
-  return c.json({ rules, total: (rules as any[]).length });
+  const rules = (sqlite.prepare("SELECT * FROM rules WHERE type = 'decree' AND status = 'active' AND approval_status = 'pending' ORDER BY created_at DESC").all() as any[]).map(decorateRule);
+  return c.json({ rules, total: rules.length });
 });
 
 // POST /api/rules/:id/approve — Gorn approves a decree
@@ -5156,7 +5169,7 @@ app.post('/api/rules/:id/approve', async (c) => {
   const now = new Date().toISOString();
   sqlite.prepare('UPDATE rules SET approval_status = ?, approved_by = ?, approved_at = ?, updated_at = ? WHERE id = ?')
     .run('approved', 'gorn', now, now, id);
-  return c.json(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id));
+  return c.json(decorateRule(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id)));
 });
 
 // POST /api/rules/:id/reject — Gorn rejects a decree
@@ -5173,7 +5186,7 @@ app.post('/api/rules/:id/reject', async (c) => {
     const now = new Date().toISOString();
     sqlite.prepare('UPDATE rules SET approval_status = ?, rejection_reason = ?, updated_at = ? WHERE id = ?')
       .run('rejected', reason, now, id);
-    return c.json(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id));
+    return c.json(decorateRule(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id)));
   } catch { return c.json({ error: 'Invalid request' }, 400); }
 });
 
@@ -5188,7 +5201,7 @@ app.get('/api/rules/:id', (c) => {
   const id = parseInt(c.req.param('id'), 10);
   const rule = sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id);
   if (!rule) return c.json({ error: 'Rule not found' }, 404);
-  return c.json(rule);
+  return c.json(decorateRule(rule));
 });
 
 // POST /api/rules — create rule
@@ -5212,7 +5225,7 @@ app.post('/api/rules', async (c) => {
       'INSERT INTO rules (type, title, content, author, enforcement, scope, source_thread_id, approval_status, approved_by, approved_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(type, title, content, author, enforcement, scope || 'all', source_thread_id || null, approvalStatus, approvedBy, approvedAt, now, now);
     const rule = sqlite.prepare('SELECT * FROM rules WHERE id = ?').get((result as any).lastInsertRowid);
-    return c.json(rule, 201);
+    return c.json(decorateRule(rule), 201);
   } catch { return c.json({ error: 'Invalid request' }, 400); }
 });
 
@@ -5240,7 +5253,7 @@ app.patch('/api/rules/:id', async (c) => {
     updates.push('updated_at = ?'); values.push(new Date().toISOString());
     values.push(id);
     sqlite.prepare(`UPDATE rules SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-    return c.json(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id));
+    return c.json(decorateRule(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id)));
   } catch { return c.json({ error: 'Invalid request' }, 400); }
 });
 
@@ -5263,7 +5276,7 @@ app.patch('/api/rules/:id/archive', async (c) => {
     const now = new Date().toISOString();
     sqlite.prepare('UPDATE rules SET status = ?, archived_at = ?, archived_by = ?, updated_at = ? WHERE id = ?')
       .run('archived', now, requester, now, id);
-    return c.json(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id));
+    return c.json(decorateRule(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id)));
   } catch { return c.json({ error: 'Invalid request' }, 400); }
 });
 

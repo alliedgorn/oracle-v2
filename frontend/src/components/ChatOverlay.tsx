@@ -31,7 +31,7 @@ const mdComponentsStable = {
   ),
 };
 
-// Memoized message component — only re-renders when its own props change
+// Memoized message component — only re-renders when content/read_at changes
 const ChatMessage = memo(function ChatMessage({ msg, onImgClick }: {
   msg: Message;
   onImgClick: (src: string) => void;
@@ -58,7 +58,7 @@ const ChatMessage = memo(function ChatMessage({ msg, onImgClick }: {
       </span>
     </div>
   );
-});
+}, (prev, next) => prev.msg.id === next.msg.id && prev.msg.read_at === next.msg.read_at && prev.msg.content === next.msg.content);
 
 export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProps) {
   const [messages, setMessages] = useState<Message[]>([]);

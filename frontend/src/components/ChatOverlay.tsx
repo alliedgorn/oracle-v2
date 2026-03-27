@@ -168,17 +168,19 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const appendNewMessages = useCallback(async () => {
     try {
       wasNearBottomRef.current = isNearBottom();
+      // Mark as read immediately so badge clears fast
+      markAsRead();
       const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=5&order=desc`);
       const data = await res.json();
       const latest = (data.messages || []).reverse();
       setMessages(prev => {
         const existingIds = new Set(prev.map(m => m.id));
         const newMsgs = latest.filter((m: Message) => !existingIds.has(m.id));
-        if (newMsgs.length === 0) return prev; // No change — skip re-render
+        if (newMsgs.length === 0) return prev;
         return [...prev, ...newMsgs];
       });
     } catch {}
-  }, [beastName]);
+  }, [beastName, markAsRead]);
 
   useWebSocket('new_dm', appendNewMessages);
 

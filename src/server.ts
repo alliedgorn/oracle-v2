@@ -4602,12 +4602,33 @@ app.post('/api/specs/:id/review', async (c) => {
   }
 });
 
-// POST /api/specs/:id/resubmit — reset rejected spec to pending
+// POST /api/specs/:id/resubmit — reset rejected spec to pending (author/assignee only)
 app.post('/api/specs/:id/resubmit', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
   if (!spec) return c.json({ error: 'Spec not found' }, 404);
   if (spec.status !== 'rejected') return c.json({ error: 'Only rejected specs can be resubmitted' }, 400);
+  // Require identity — only spec author or task assignee can resubmit
+  let requester: string;
+  try {
+    const data = await c.req.json();
+    requester = (data.author || data.beast || '').toLowerCase();
+  } catch {
+    requester = (c.req.query('as') || '').toLowerCase();
+  }
+  if (!requester) return c.json({ error: 'Identity required: pass author in body or ?as= param' }, 400);
+  const allowed = new Set<string>();
+  if (spec.author) allowed.add(spec.author.toLowerCase());
+  if (spec.task_id) {
+    const taskIdNum = parseInt(String(spec.task_id).replace(/\D/g, ''), 10);
+    if (!isNaN(taskIdNum)) {
+      const task = sqlite.prepare('SELECT assigned_to FROM tasks WHERE id = ?').get(taskIdNum) as any;
+      if (task?.assigned_to) allowed.add(task.assigned_to.toLowerCase());
+    }
+  }
+  if (!allowed.has(requester) && requester !== 'gorn') {
+    return c.json({ error: `Only the spec author (${spec.author}) or task assignee can resubmit` }, 403);
+  }
   const now = new Date().toISOString();
   sqlite.prepare(
     'UPDATE spec_reviews SET status = ?, reviewer_feedback = NULL, reviewed_at = NULL, updated_at = ? WHERE id = ?'

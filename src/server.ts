@@ -5071,6 +5071,153 @@ app.post('/api/risks/:id/comments', async (c) => {
 });
 
 // ============================================================================
+// Rules — Decree and Norm governance (T#360)
+// ============================================================================
+
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL CHECK(type IN ('decree', 'norm')),
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    author TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'archived')),
+    enforcement TEXT NOT NULL,
+    scope TEXT DEFAULT 'all',
+    source_thread_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    archived_at DATETIME,
+    archived_by TEXT
+  )
+`);
+
+// Seed data — only on first run (empty table)
+const ruleCount = (sqlite.prepare('SELECT COUNT(*) as c FROM rules').get() as any).c;
+if (ruleCount === 0) {
+  const seedRules = [
+    { type: 'decree', title: 'SDD: All new features require spec files', content: 'All new features with endpoints or data models require a spec file in docs/specs/. Big features need Gorn approval via Sable.', author: 'leonard', enforcement: 'mandatory', source_thread_id: 256 },
+    { type: 'decree', title: 'Big features need Gorn approval via Sable', content: 'New projects, cross-team features, and significant architecture changes require spec submission to /specs and Gorn approval routed through Sable.', author: 'leonard', enforcement: 'mandatory', source_thread_id: 256 },
+    { type: 'decree', title: 'All Gorn action items route through Sable', content: 'Sable is the gatekeeper for all Gorn action items — spec approvals, reviews, decisions.', author: 'leonard', enforcement: 'mandatory', source_thread_id: 264 },
+    { type: 'decree', title: 'Nothing is deleted — archive, never delete', content: 'No git push --force. No rm -rf without backup. Supersede, don\'t delete. Timestamps are truth.', author: 'gorn', enforcement: 'mandatory' },
+    { type: 'decree', title: 'No git push --force', content: 'Force pushing violates the Nothing is Deleted principle. Always preserve history.', author: 'gorn', enforcement: 'mandatory' },
+    { type: 'decree', title: 'No commits of secrets (.env, credentials)', content: 'Never commit secrets, .env files, or credentials to any repository.', author: 'gorn', enforcement: 'mandatory' },
+    { type: 'norm', title: 'Use reactions for acknowledgments', content: 'Use emoji reactions (✅, 👀, etc.) for simple acknowledgments. Save posts for substantive content.', author: 'mara', enforcement: 'recommended' },
+    { type: 'norm', title: 'Sign all work with Beast name', content: 'End forum posts and DMs with your Beast name (— Karo, — Zaghnal, etc.) for clear attribution.', author: 'mara', enforcement: 'recommended' },
+  ];
+  const insert = sqlite.prepare('INSERT INTO rules (type, title, content, author, enforcement, source_thread_id) VALUES (?, ?, ?, ?, ?, ?)');
+  for (const r of seedRules) {
+    insert.run(r.type, r.title, r.content, r.author, r.enforcement, r.source_thread_id || null);
+  }
+}
+
+// GET /api/rules — list rules
+app.get('/api/rules', (c) => {
+  const type = c.req.query('type');
+  const status = c.req.query('status') || 'active';
+  const scope = c.req.query('scope');
+  let query = 'SELECT * FROM rules WHERE status = ?';
+  const params: any[] = [status];
+  if (type) { query += ' AND type = ?'; params.push(type); }
+  if (scope) { query += ' AND scope = ?'; params.push(scope); }
+  query += " ORDER BY CASE type WHEN 'decree' THEN 0 WHEN 'norm' THEN 1 END, created_at DESC";
+  const rules = sqlite.prepare(query).all(...params) as any[];
+  return c.json({ rules, total: rules.length });
+});
+
+// GET /api/rules/decrees — active decrees only
+app.get('/api/rules/decrees', (c) => {
+  const rules = sqlite.prepare("SELECT * FROM rules WHERE type = 'decree' AND status = 'active' ORDER BY created_at DESC").all();
+  return c.json({ rules, total: (rules as any[]).length });
+});
+
+// GET /api/rules/norms — active norms only
+app.get('/api/rules/norms', (c) => {
+  const rules = sqlite.prepare("SELECT * FROM rules WHERE type = 'norm' AND status = 'active' ORDER BY created_at DESC").all();
+  return c.json({ rules, total: (rules as any[]).length });
+});
+
+// GET /api/rules/:id — single rule
+app.get('/api/rules/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const rule = sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id);
+  if (!rule) return c.json({ error: 'Rule not found' }, 404);
+  return c.json(rule);
+});
+
+// POST /api/rules — create rule
+app.post('/api/rules', async (c) => {
+  try {
+    const data = await c.req.json();
+    const { type, title, content, scope, source_thread_id } = data;
+    const author = (data.author || '').toLowerCase();
+    if (!type || !title || !content || !author) return c.json({ error: 'type, title, content, author required' }, 400);
+    if (!['decree', 'norm'].includes(type)) return c.json({ error: 'type must be decree or norm' }, 400);
+    if (type === 'decree' && !['leonard', 'gorn'].includes(author)) {
+      return c.json({ error: 'Only Leonard and Gorn can create decrees' }, 403);
+    }
+    const enforcement = type === 'decree' ? 'mandatory' : 'recommended';
+    const now = new Date().toISOString();
+    const result = sqlite.prepare(
+      'INSERT INTO rules (type, title, content, author, enforcement, scope, source_thread_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(type, title, content, author, enforcement, scope || 'all', source_thread_id || null, now, now);
+    const rule = sqlite.prepare('SELECT * FROM rules WHERE id = ?').get((result as any).lastInsertRowid);
+    return c.json(rule, 201);
+  } catch { return c.json({ error: 'Invalid request' }, 400); }
+});
+
+// PATCH /api/rules/:id — update rule
+app.patch('/api/rules/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const rule = sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id) as any;
+  if (!rule) return c.json({ error: 'Rule not found' }, 404);
+  try {
+    const data = await c.req.json();
+    const requester = (data.author || data.beast || c.req.query('as') || '').toLowerCase();
+    if (!requester) return c.json({ error: 'Identity required' }, 400);
+    if (rule.type === 'decree' && !['leonard', 'gorn'].includes(requester)) {
+      return c.json({ error: 'Only Leonard and Gorn can edit decrees' }, 403);
+    }
+    if (rule.type === 'norm' && requester !== rule.author && requester !== 'leonard' && requester !== 'gorn') {
+      return c.json({ error: 'Only the author or Leonard can edit norms' }, 403);
+    }
+    const updates: string[] = [];
+    const values: any[] = [];
+    if (data.title) { updates.push('title = ?'); values.push(data.title); }
+    if (data.content) { updates.push('content = ?'); values.push(data.content); }
+    if (data.scope) { updates.push('scope = ?'); values.push(data.scope); }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString());
+    values.push(id);
+    sqlite.prepare(`UPDATE rules SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id));
+  } catch { return c.json({ error: 'Invalid request' }, 400); }
+});
+
+// PATCH /api/rules/:id/archive — archive rule
+app.patch('/api/rules/:id/archive', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const rule = sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id) as any;
+  if (!rule) return c.json({ error: 'Rule not found' }, 404);
+  if (rule.status === 'archived') return c.json({ error: 'Already archived' }, 400);
+  try {
+    const data = await c.req.json();
+    const requester = (data.author || data.beast || c.req.query('as') || '').toLowerCase();
+    if (!requester) return c.json({ error: 'Identity required' }, 400);
+    if (rule.type === 'decree' && !['leonard', 'gorn'].includes(requester)) {
+      return c.json({ error: 'Only Leonard and Gorn can archive decrees' }, 403);
+    }
+    if (rule.type === 'norm' && requester !== rule.author && requester !== 'leonard' && requester !== 'gorn') {
+      return c.json({ error: 'Only the author or Leonard can archive norms' }, 403);
+    }
+    const now = new Date().toISOString();
+    sqlite.prepare('UPDATE rules SET status = ?, archived_at = ?, archived_by = ?, updated_at = ? WHERE id = ?')
+      .run('archived', now, requester, now, id);
+    return c.json(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id));
+  } catch { return c.json({ error: 'Invalid request' }, 400); }
+});
+
+// ============================================================================
 // Prowl — Personal Task Manager for Gorn (T#279)
 // ============================================================================
 

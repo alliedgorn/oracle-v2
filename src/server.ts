@@ -6043,10 +6043,11 @@ app.get('/api/search', async (c) => {
 
   // Type aliases: "thread" → "forum", "post" → "forum", "entry" → "library", etc.
   const TYPE_ALIASES: Record<string, string> = {
-    thread: 'forum', post: 'forum', message: 'forum',
-    entry: 'library', doc: 'library', document: 'library',
-    issue: 'task', ticket: 'task',
-    specification: 'spec',
+    thread: 'forum', post: 'forum', message: 'forum', f: 'forum',
+    entry: 'library', doc: 'library', document: 'library', l: 'library',
+    issue: 'task', ticket: 'task', t: 'task',
+    specification: 'spec', s: 'spec',
+    r: 'risk',
   };
 
   // Type-prefix syntax: "forum:websocket" or "type:forum websocket" (T#351/T#352)

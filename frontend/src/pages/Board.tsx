@@ -262,7 +262,7 @@ export function Board() {
           >
             {viewMode === 'kanban' ? '☰' : '▦'}
           </button>
-          <button className={styles.newTaskBtn} onClick={() => { setShowNewProject(false); setShowNewTask(!showNewTask); }}>
+          <button className={styles.newTaskBtn} onClick={() => { setShowNewProject(false); setShowNewTask(!showNewTask); if (!showNewTask && projectFilter && projectFilter !== '__active__') setNewProjectId(projectFilter); }}>
             + Task
           </button>
           <button className={styles.newTaskBtn} onClick={() => { setShowNewTask(false); setShowNewProject(!showNewProject); }} style={{ background: 'var(--text-muted)' }}>
@@ -381,11 +381,11 @@ export function Board() {
               {beasts.map(b => <option key={b.name} value={b.name}>{b.displayName}</option>)}
               <option value="gorn">Gorn</option>
             </select>
-            <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)} className={styles.projectSelect}>
-              <option value="">No Project</option>
-              {board.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)} className={styles.projectSelect} required>
+              <option value="" disabled>Select Project</option>
+              {board.projects.filter(p => p.status === 'active').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-            <button type="submit" className={styles.newTaskBtn} disabled={!newTitle.trim()}>Create</button>
+            <button type="submit" className={styles.newTaskBtn} disabled={!newTitle.trim() || !newProjectId}>Create</button>
             <button type="button" className={styles.cancelBtn} onClick={() => setShowNewTask(false)}>Cancel</button>
           </div>
         </form>

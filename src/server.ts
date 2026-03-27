@@ -3037,6 +3037,7 @@ app.post('/api/tasks', async (c) => {
   const data = await c.req.json();
   const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type } = data;
   if (!title || !created_by) return c.json({ error: 'title and created_by required' }, 400);
+  if (!project_id) return c.json({ error: 'project_id required — every task must belong to a project' }, 400);
 
   const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   const validPriorities = ['critical', 'high', 'medium', 'low'];

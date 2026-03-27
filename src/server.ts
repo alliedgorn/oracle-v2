@@ -1510,6 +1510,7 @@ app.patch('/api/beast/:name', async (c) => {
     if (body.displayName !== undefined) updates.displayName = body.displayName;
     if (body.themeColor !== undefined) updates.themeColor = body.themeColor;
     if (body.avatarUrl !== undefined) updates.avatarUrl = body.avatarUrl;
+    if (body.birthdate !== undefined) updates.birthdate = body.birthdate;
 
     db.update(beastProfiles)
       .set(updates)

@@ -308,6 +308,7 @@ export const beastProfiles = sqliteTable('beast_profiles', {
   interests: text('interests'),                 // JSON array of interests/tags
   themeColor: text('theme_color'),              // Hex color for UI accent
   role: text('role'),                           // Beast role: Software Engineering, PM, etc.
+  birthdate: text('birthdate'),                 // Date string: YYYY-MM-DD (chosen birthday)
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });

@@ -1,0 +1,1 @@
+ALTER TABLE beast_profiles ADD COLUMN birthdate TEXT DEFAULT NULL;

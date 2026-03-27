@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { MermaidDiagram } from '../components/MermaidDiagram';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import styles from './Library.module.css';
@@ -330,11 +331,15 @@ export function Library() {
                 components={{
                   code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '');
+                    const lang = match?.[1];
                     const inline = !match && !String(children).includes('\n');
+                    if (lang === 'mermaid') {
+                      return <MermaidDiagram code={String(children).replace(/\n$/, '')} />;
+                    }
                     return inline ? (
                       <code className={className} {...props}>{children}</code>
                     ) : (
-                      <SyntaxHighlighter style={oneDark} language={match?.[1] || 'text'} PreTag="div">
+                      <SyntaxHighlighter style={oneDark} language={lang || 'text'} PreTag="div">
                         {String(children).replace(/\n$/, '')}
                       </SyntaxHighlighter>
                     );

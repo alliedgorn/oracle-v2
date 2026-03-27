@@ -5675,28 +5675,44 @@ app.post('/api/routine/import/alpha-progression', async (c) => {
       session.exercises = session.exercises.filter((e: any) => e.sets.length > 0);
     }
 
+    // Check for existing imports in this date range (dedup)
+    const existingDates = new Set<string>();
+    const existingRows = sqlite.prepare(
+      "SELECT logged_at FROM routine_logs WHERE type = 'workout' AND source = 'alpha-progression' AND deleted_at IS NULL"
+    ).all() as any[];
+    for (const row of existingRows) existingDates.add(row.logged_at);
+
+    // Filter out sessions that already exist (by date)
+    const newSessions = sessions.filter((s: any) => {
+      const loggedAt = new Date(s.date).toISOString();
+      return !existingDates.has(loggedAt);
+    });
+    const duplicateCount = sessions.length - newSessions.length;
+
     // Preview mode: return parsed data without importing
     const preview = c.req.query('preview') === 'true';
     if (preview) {
       return c.json({
         sessions: sessions.length,
+        new_sessions: newSessions.length,
+        duplicates: duplicateCount,
         date_range: sessions.length > 0 ? {
           from: sessions[sessions.length - 1].date,
           to: sessions[0].date,
         } : null,
-        total_exercises: sessions.reduce((sum: number, s: any) => sum + s.exercises.length, 0),
-        total_sets: sessions.reduce((sum: number, s: any) => sum + s.exercises.reduce((esum: number, e: any) => esum + e.sets.length, 0), 0),
-        sample: sessions.slice(0, 3),
+        total_exercises: newSessions.reduce((sum: number, s: any) => sum + s.exercises.length, 0),
+        total_sets: newSessions.reduce((sum: number, s: any) => sum + s.exercises.reduce((esum: number, e: any) => esum + e.sets.length, 0), 0),
+        sample: newSessions.slice(0, 3),
       });
     }
 
-    // Import: insert each session as a workout routine_log
+    // Import: insert only new sessions
     const now = new Date().toISOString();
     const insert = sqlite.prepare(
       'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
     );
     let imported = 0;
-    for (const session of sessions) {
+    for (const session of newSessions) {
       const loggedAt = new Date(session.date).toISOString();
       const data = JSON.stringify({
         workout_name: session.name,
@@ -5709,12 +5725,13 @@ app.post('/api/routine/import/alpha-progression', async (c) => {
 
     return c.json({
       imported,
-      date_range: sessions.length > 0 ? {
-        from: sessions[sessions.length - 1].date,
-        to: sessions[0].date,
+      duplicates: duplicateCount,
+      date_range: newSessions.length > 0 ? {
+        from: newSessions[newSessions.length - 1].date,
+        to: newSessions[0].date,
       } : null,
-      total_exercises: sessions.reduce((sum: number, s: any) => sum + s.exercises.length, 0),
-      total_sets: sessions.reduce((sum: number, s: any) => sum + s.exercises.reduce((esum: number, e: any) => esum + e.sets.length, 0), 0),
+      total_exercises: newSessions.reduce((sum: number, s: any) => sum + s.exercises.length, 0),
+      total_sets: newSessions.reduce((sum: number, s: any) => sum + s.exercises.reduce((esum: number, e: any) => esum + e.sets.length, 0), 0),
     });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Import failed' }, 500);

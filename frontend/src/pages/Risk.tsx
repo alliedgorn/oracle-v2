@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './Risk.module.css';
 import { EmojiButton } from '../components/EmojiButton';
+import { ImageUpload } from '../components/ImageUpload';
+import { VoiceInput } from '../components/VoiceInput';
 
 interface RiskItem {
   id: number;
@@ -406,7 +408,9 @@ export function Risk() {
                         onChange={(e) => setCommentText(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && submitComment(risk.id)}
                       />
+                      <ImageUpload onUploadComplete={(md) => setCommentText(prev => prev + md)} />
                       <EmojiButton onSelect={(e) => setCommentText(prev => prev + e)} />
+                      <VoiceInput onTranscript={(text) => setCommentText(prev => prev ? prev + ' ' + text : text)} />
                       <button
                         className={styles.commentSubmit}
                         onClick={() => submitComment(risk.id)}

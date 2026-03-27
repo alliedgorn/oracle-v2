@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './Prowl.module.css';
 import { EmojiButton } from '../components/EmojiButton';
+import { ImageUpload } from '../components/ImageUpload';
 
 interface ProwlTask {
   id: number;
@@ -292,6 +293,7 @@ export function Prowl() {
                     />
                   </div>
                   <div className={styles.expandedActions}>
+                    <ImageUpload onUploadComplete={(md) => setEditData((prev: any) => ({ ...prev, notes: (prev.notes || '') + md }))} />
                     <EmojiButton onSelect={(e) => setEditData((prev: any) => ({ ...prev, notes: (prev.notes || '') + e }))} />
                     <button className={styles.saveBtn} onClick={() => saveEdit(task.id)}>Save</button>
                     <button className={styles.deleteBtn} onClick={() => deleteTask(task.id)}>Delete</button>

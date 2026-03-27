@@ -169,6 +169,49 @@ export function Forum() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Memoized markdown components to prevent re-parsing on every keystroke
+  const mdComponents = useRef({
+    code({ className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || '');
+      const inline = !match && !String(children).includes('\n');
+      return inline ? (
+        <code className={className} {...props}>{children}</code>
+      ) : (
+        <SyntaxHighlighter
+          style={oneDark}
+          language={match?.[1] || 'text'}
+          PreTag="div"
+          customStyle={{ margin: '12px 0', borderRadius: '8px', fontSize: '0.85em' }}
+        >
+          {String(children).replace(/\n$/, '')}
+        </SyntaxHighlighter>
+      );
+    },
+    img({ src, alt }: any) {
+      return (
+        <img src={src} alt={alt || ''} style={{ cursor: 'pointer' }}
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); if (src) setLightboxSrc(src); }}
+        />
+      );
+    },
+    a({ href, children }: any) {
+      const isImage = href && /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(href);
+      if (isImage) {
+        return (
+          <img src={href} alt={String(children) || ''} style={{ cursor: 'pointer' }}
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); if (href) setLightboxSrc(href); }}
+          />
+        );
+      }
+      const isMention = href && href.startsWith('/beast/');
+      if (isMention) return <a href={href} className={styles.mention}>{children}</a>;
+      const isInternal = href && href.startsWith('/');
+      return isInternal
+        ? <a href={href}>{children}</a>
+        : <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+    },
+  }).current;
   const initialScrollDone = useRef(false);
 
   const PAGE_SIZE = 50;
@@ -742,55 +785,7 @@ export function Forum() {
                   <div className={styles.messageContent}>
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
-                      components={{
-                        code({ className, children, ...props }) {
-                          const match = /language-(\w+)/.exec(className || '');
-                          const inline = !match && !String(children).includes('\n');
-                          return inline ? (
-                            <code className={className} {...props}>{children}</code>
-                          ) : (
-                            <SyntaxHighlighter
-                              style={oneDark}
-                              language={match?.[1] || 'text'}
-                              PreTag="div"
-                              customStyle={{ margin: '12px 0', borderRadius: '8px', fontSize: '0.85em' }}
-                            >
-                              {String(children).replace(/\n$/, '')}
-                            </SyntaxHighlighter>
-                          );
-                        },
-                        img({ src, alt }) {
-                          return (
-                            <img
-                              src={src}
-                              alt={alt || ''}
-                              style={{ cursor: 'pointer' }}
-                              onClick={(e) => { e.stopPropagation(); if (src) setLightboxSrc(src); }}
-                            />
-                          );
-                        },
-                        a({ href, children }) {
-                          const isImage = href && /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(href);
-                          if (isImage) {
-                            return (
-                              <img
-                                src={href}
-                                alt={String(children) || ''}
-                                style={{ cursor: 'pointer' }}
-                                onClick={(e) => { e.stopPropagation(); if (href) setLightboxSrc(href); }}
-                              />
-                            );
-                          }
-                          const isMention = href && href.startsWith('/beast/');
-                          if (isMention) {
-                            return <a href={href} className={styles.mention}>{children}</a>;
-                          }
-                          const isInternal = href && href.startsWith('/');
-                          return isInternal
-                            ? <a href={href}>{children}</a>
-                            : <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
-                        },
-                      }}
+                      components={mdComponents}
                     >
                       {autolinkIds(msg.content)}
                     </ReactMarkdown>

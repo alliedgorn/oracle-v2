@@ -25,7 +25,16 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const prevCountRef = useRef(0);
+  const userSentRef = useRef(false);
+
+  function isNearBottom(): boolean {
+    const el = messagesContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   const loadMessages = useCallback(async () => {
     try {
@@ -41,8 +50,16 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     inputRef.current?.focus();
   }, [loadMessages]);
 
+  // Only auto-scroll when new messages arrive AND user is near bottom (or just sent a message)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const newCount = messages.length;
+    if (newCount > prevCountRef.current) {
+      if (userSentRef.current || isNearBottom()) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        userSentRef.current = false;
+      }
+    }
+    prevCountRef.current = newCount;
   }, [messages]);
 
   // Poll for new messages
@@ -58,6 +75,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     e.preventDefault();
     if (!newMessage.trim()) return;
     setLoading(true);
+    userSentRef.current = true;
     try {
       await fetch(`${API_BASE}/dm`, {
         method: 'POST',
@@ -79,7 +97,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
         <span className={styles.title}>Chat with {displayName}</span>
         <button className={styles.closeBtn} onClick={onClose}>✕</button>
       </div>
-      <div className={styles.messages}>
+      <div className={styles.messages} ref={messagesContainerRef}>
         {messages.length === 0 && (
           <div className={styles.empty}>No messages yet. Say hello!</div>
         )}

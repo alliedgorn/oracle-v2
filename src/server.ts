@@ -5130,6 +5130,9 @@ sqlite.exec(`
   )
 `);
 
+// Unique constraint on active rules to prevent duplicates
+try { sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_rules_unique_active ON rules (title, type) WHERE status = 'active'"); } catch {}
+
 // Migration: add decree approval columns
 try { sqlite.exec('ALTER TABLE rules ADD COLUMN approval_status TEXT DEFAULT NULL'); } catch {}
 try { sqlite.exec('ALTER TABLE rules ADD COLUMN approved_by TEXT DEFAULT NULL'); } catch {}

@@ -1,19 +1,116 @@
-.title {
-  font-size: 32px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 8px;
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--space-lg);
 }
 
-.subtitle {
-  font-size: 16px;
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--space-md);
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.total {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: var(--space-lg);
+}
+
+.filterBtn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: transparent;
   color: var(--text-secondary);
-  margin-bottom: 32px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.filterBtn:hover {
+  border-color: var(--text-muted);
+}
+
+.filterActive {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
 }
 
 .feed {
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+
+.eventCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.eventCard:hover {
+  border-color: var(--accent);
+}
+
+.eventHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.eventIcon {
+  font-size: 14px;
+}
+
+.eventType {
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.eventActor {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.eventTime {
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.eventTitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.eventMessage {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .loading {
@@ -22,21 +119,19 @@
   padding: 24px;
 }
 
-.loadMore {
-  display: block;
-  width: 100%;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-  padding: 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
-  margin-top: 16px;
+.empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 48px;
 }
 
-.loadMore:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+@media (max-width: 768px) {
+  .container {
+    padding: var(--space-md);
+  }
+
+  .filters {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
 }

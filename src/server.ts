@@ -764,44 +764,69 @@ const FEED_LOG = path.join(process.env.HOME || '/home/nat', '.oracle', 'feed.log
 app.get('/api/feed', (c) => {
   try {
     const limit = Math.min(200, parseInt(c.req.query('limit') || '50'));
-    const oracle = c.req.query('oracle') || undefined;
-    const event = c.req.query('event') || undefined;
-    const since = c.req.query('since') || undefined; // ISO timestamp
+    const type = c.req.query('type') || undefined; // forum, task, spec, rule, risk
+    const since = c.req.query('since') || undefined;
 
-    if (!fs.existsSync(FEED_LOG)) return c.json({ events: [], total: 0 });
+    // Aggregate feed from multiple sources
+    const events: any[] = [];
 
-    const raw = fs.readFileSync(FEED_LOG, 'utf-8').trim().split('\n').filter(Boolean);
-    let events = raw.map(line => {
-      const [ts, oracleName, host, eventType, project, rest] = line.split(' | ').map(s => s.trim());
-      const [sessionId, ...msgParts] = (rest || '').split(' » ');
-      return {
-        timestamp: ts,
-        oracle: oracleName,
-        host,
-        event: eventType,
-        project,
-        session_id: sessionId?.trim(),
-        message: msgParts.join(' » ').trim(),
-      };
-    });
+    // Forum posts (most recent)
+    const forumQuery = since
+      ? 'SELECT m.id, m.content, m.author, m.created_at, t.title as thread_title, t.id as thread_id FROM forum_messages m JOIN forum_threads t ON m.thread_id = t.id WHERE m.created_at > ? ORDER BY m.created_at DESC LIMIT ?'
+      : 'SELECT m.id, m.content, m.author, m.created_at, t.title as thread_title, t.id as thread_id FROM forum_messages m JOIN forum_threads t ON m.thread_id = t.id ORDER BY m.created_at DESC LIMIT ?';
+    const forumParams = since ? [since, limit] : [limit];
+    if (!type || type === 'forum') {
+      const posts = sqlite.prepare(forumQuery).all(...forumParams) as any[];
+      for (const p of posts) {
+        events.push({
+          type: 'forum', id: p.id, timestamp: p.created_at,
+          actor: p.author, title: p.thread_title,
+          message: p.content.slice(0, 200),
+          url: `/forum?thread=${p.thread_id}`,
+        });
+      }
+    }
 
-    if (oracle) events = events.filter(e => e.oracle === oracle);
-    if (event) events = events.filter(e => e.event === event);
-    if (since) events = events.filter(e => e.timestamp >= since);
+    // Task updates
+    if (!type || type === 'task') {
+      const taskQuery = since
+        ? 'SELECT t.id, t.title, t.status, t.assigned_to, t.created_by, t.updated_at, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.updated_at > ? ORDER BY t.updated_at DESC LIMIT ?'
+        : 'SELECT t.id, t.title, t.status, t.assigned_to, t.created_by, t.updated_at, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id ORDER BY t.updated_at DESC LIMIT ?';
+      const taskParams = since ? [since, limit] : [limit];
+      const tasks = sqlite.prepare(taskQuery).all(...taskParams) as any[];
+      for (const t of tasks) {
+        events.push({
+          type: 'task', id: t.id, timestamp: t.updated_at,
+          actor: t.assigned_to || t.created_by, title: `T#${t.id}: ${t.title}`,
+          message: `Status: ${t.status}${t.project_name ? ` | ${t.project_name}` : ''}`,
+          url: `/board?task=${t.id}`,
+        });
+      }
+    }
 
-    events.reverse(); // newest first
+    // Spec reviews
+    if (!type || type === 'spec') {
+      const specQuery = since
+        ? 'SELECT id, title, author, status, updated_at FROM spec_reviews WHERE updated_at > ? ORDER BY updated_at DESC LIMIT ?'
+        : 'SELECT id, title, author, status, updated_at FROM spec_reviews ORDER BY updated_at DESC LIMIT ?';
+      const specParams = since ? [since, limit] : [limit];
+      const specs = sqlite.prepare(specQuery).all(...specParams) as any[];
+      for (const s of specs) {
+        events.push({
+          type: 'spec', id: s.id, timestamp: s.updated_at,
+          actor: s.author, title: `Spec #${s.id}: ${s.title}`,
+          message: `Status: ${s.status}`,
+          url: `/specs?spec=${s.id}`,
+        });
+      }
+    }
+
+    // Sort all events by timestamp (newest first) and limit
+    events.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
     const total = events.length;
-    events = events.slice(0, limit);
+    const sliced = events.slice(0, limit);
 
-    // Derive active oracles (unique oracles from last 5 min)
-    const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString().replace('T', ' ').slice(0, 19);
-    const recentAll = raw.map(line => {
-      const [ts, oracleName] = line.split(' | ').map(s => s.trim());
-      return { timestamp: ts, oracle: oracleName };
-    }).filter(e => e.timestamp >= fiveMinAgo);
-    const activeOracles = [...new Set(recentAll.map(e => e.oracle))];
-
-    return c.json({ events, total, active_oracles: activeOracles });
+    return c.json({ events: sliced, total });
   } catch (e: any) {
     return c.json({ error: e.message, events: [], total: 0 }, 500);
   }

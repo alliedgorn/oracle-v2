@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BeastCard } from './BeastCard';
+import { ChatOverlay } from './ChatOverlay';
 import styles from './RemotePanel.module.css';
 
 interface Beast {
@@ -28,6 +29,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [chatBeast, setChatBeast] = useState<{ name: string; displayName: string } | null>(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -121,13 +123,21 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
                 badge={isAttached ? 'ATTACHED' : undefined}
                 onClick={() => !loading && handleClick(beast)}
                 onProfileClick={(e) => { e.stopPropagation(); onClose(); navigate(`/?beast=${beast.name}`); }}
-                onDmClick={(e) => { e.stopPropagation(); onClose(); navigate(`/dms?conv=gorn-${beast.name}`); }}
+                onDmClick={(e) => { e.stopPropagation(); setChatBeast({ name: beast.name, displayName: beast.displayName }); }}
               />
             );
           })}
         </div>
         </div>
       </div>
+
+      {chatBeast && (
+        <ChatOverlay
+          beastName={chatBeast.name}
+          displayName={chatBeast.displayName}
+          onClose={() => setChatBeast(null)}
+        />
+      )}
     </>
   );
 }

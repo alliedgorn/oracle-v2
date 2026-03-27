@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { autolinkIds } from '../utils/autolink';
+import { ImageUpload } from './ImageUpload';
 import styles from './ChatOverlay.module.css';
 
 const API_BASE = '/api';
@@ -93,18 +94,21 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
         <div ref={messagesEndRef} />
       </div>
       <form onSubmit={handleSend} className={styles.inputArea}>
-        <textarea
-          ref={inputRef}
-          value={newMessage}
-          onChange={e => setNewMessage(e.target.value)}
-          onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
-          placeholder={`Message ${displayName}...`}
-          className={styles.input}
-          rows={2}
-        />
-        <button type="submit" className={styles.sendBtn} disabled={loading || !newMessage.trim()}>
-          {loading ? '...' : 'Send'}
-        </button>
+        <div className={styles.inputRow}>
+          <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev ? `${prev}\n${md}` : md)} />
+          <textarea
+            ref={inputRef}
+            value={newMessage}
+            onChange={e => setNewMessage(e.target.value)}
+            onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
+            placeholder={`Message ${displayName}...`}
+            className={styles.input}
+            rows={2}
+          />
+          <button type="submit" className={styles.sendBtn} disabled={loading || !newMessage.trim()}>
+            {loading ? '...' : 'Send'}
+          </button>
+        </div>
       </form>
     </div>
   );

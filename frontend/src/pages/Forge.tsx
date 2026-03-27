@@ -18,6 +18,8 @@ const TYPE_ICONS: Record<string, string> = {
 export function Forge() {
   const [logs, setLogs] = useState<RoutineLog[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
   const [weights, setWeights] = useState<any[]>([]);
   const [activeForm, setActiveForm] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -127,7 +129,47 @@ export function Forge() {
             <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
           </button>
         ))}
+        <label className={styles.quickAddBtn} style={{ cursor: 'pointer' }}>
+          <input
+            type="file"
+            accept=".csv"
+            style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setImporting(true);
+              setImportResult(null);
+              try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await fetch(`${API_BASE}/routine/import/alpha-progression`, { method: 'POST', body: formData });
+                const data = await res.json();
+                setImportResult(data);
+                if (data.imported) loadData();
+              } catch { setImportResult({ error: 'Import failed' }); }
+              setImporting(false);
+              e.target.value = '';
+            }}
+            disabled={importing}
+          />
+          <span className={styles.quickAddIcon}>📥</span>
+          <span>{importing ? 'Importing...' : 'Import CSV'}</span>
+        </label>
       </div>
+
+      {importResult && (
+        <div className={styles.form} style={{ marginBottom: 16 }}>
+          {importResult.error ? (
+            <p style={{ color: 'var(--danger, red)' }}>{importResult.error}</p>
+          ) : (
+            <p style={{ color: 'var(--success, green)' }}>
+              Imported {importResult.imported} sessions ({importResult.total_exercises} exercises, {importResult.total_sets} sets)
+              {importResult.date_range && ` from ${importResult.date_range.from} to ${importResult.date_range.to}`}
+            </p>
+          )}
+          <button className={styles.formButton} onClick={() => setImportResult(null)}>Dismiss</button>
+        </div>
+      )}
 
       {/* Inline form */}
       {activeForm && (

@@ -1599,7 +1599,29 @@ app.get('/api/forum/unread/:beast', (c) => {
 
 // Image upload with validation and resize
 const UPLOADS_DIR = path.join(ORACLE_DATA_DIR, 'uploads');
-const MAX_FILE_SIZE = 30 * 1024 * 1024; // 30MB — resize on server
+const MAX_IMAGE_SIZE = 30 * 1024 * 1024; // 30MB for images
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB for other files
+
+// Allowed file types (allowlist — per Talon/Bertus security review)
+const ALLOWED_EXTENSIONS: Record<string, { mime: string; category: string }> = {
+  '.jpg': { mime: 'image/jpeg', category: 'image' },
+  '.jpeg': { mime: 'image/jpeg', category: 'image' },
+  '.png': { mime: 'image/png', category: 'image' },
+  '.gif': { mime: 'image/gif', category: 'image' },
+  '.webp': { mime: 'image/webp', category: 'image' },
+  '.pdf': { mime: 'application/pdf', category: 'document' },
+  '.txt': { mime: 'text/plain', category: 'document' },
+  '.md': { mime: 'text/markdown', category: 'document' },
+  '.csv': { mime: 'text/csv', category: 'document' },
+  '.json': { mime: 'application/json', category: 'document' },
+  '.doc': { mime: 'application/msword', category: 'document' },
+  '.docx': { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', category: 'document' },
+  '.xls': { mime: 'application/vnd.ms-excel', category: 'document' },
+  '.xlsx': { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', category: 'document' },
+  '.ppt': { mime: 'application/vnd.ms-powerpoint', category: 'document' },
+  '.pptx': { mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', category: 'document' },
+  '.zip': { mime: 'application/zip', category: 'archive' },
+};
 
 // Allowed image types by magic bytes
 const IMAGE_MAGIC: Record<string, { ext: string; mime: string }> = {
@@ -1625,101 +1647,255 @@ app.post('/api/upload', async (c) => {
   try {
     const formData = await c.req.formData();
     const file = formData.get('file') as File;
-    const context = formData.get('context') as string; // 'forum' or 'dm'
-    const messageId = formData.get('message_id');
+    const context = (formData.get('context') as string) || 'forum';
+    const contextId = formData.get('context_id') || formData.get('message_id');
     const beast = formData.get('beast');
 
     if (!file) return c.json({ error: 'No file provided' }, 400);
-    if (file.size > MAX_FILE_SIZE) return c.json({ error: `File too large. Max ${MAX_FILE_SIZE / 1024 / 1024}MB` }, 400);
+
+    // Check file extension against allowlist
+    const ext = path.extname(file.name).toLowerCase();
+    const allowed = ALLOWED_EXTENSIONS[ext];
+    const imageType = detectImageType(Buffer.from(await file.slice(0, 12).arrayBuffer()));
+    const isImage = !!imageType;
+
+    // Reject double extensions (e.g., file.pdf.html)
+    const nameParts = file.name.split('.');
+    if (nameParts.length > 2) {
+      const secondToLast = '.' + nameParts[nameParts.length - 2].toLowerCase();
+      if (ALLOWED_EXTENSIONS[secondToLast] && secondToLast !== ext) {
+        return c.json({ error: 'Double extensions not allowed' }, 400);
+      }
+    }
+
+    // For images: validate via magic bytes (existing behavior)
+    // For non-images: validate via extension allowlist
+    if (!isImage && !allowed) {
+      return c.json({ error: `File type '${ext}' not allowed. Allowed: ${Object.keys(ALLOWED_EXTENSIONS).join(', ')}` }, 400);
+    }
+
+    // Size limits
+    const sizeLimit = isImage ? MAX_IMAGE_SIZE : MAX_FILE_SIZE;
+    if (file.size > sizeLimit) return c.json({ error: `File too large. Max ${sizeLimit / 1024 / 1024}MB` }, 400);
 
     const buffer = Buffer.from(await file.arrayBuffer());
-
-    // Magic byte validation — no SVGs, only raster images
-    const imageType = detectImageType(buffer);
-    if (!imageType) return c.json({ error: 'Invalid image. Only JPG, PNG, GIF, WebP allowed.' }, 400);
-
-    // Ensure uploads dir exists
     if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-    // Resize large images (max 1920px wide, JPEG 80% quality)
     let processedBuffer = buffer;
-    let finalExt = imageType.ext;
-    let finalMime = imageType.mime;
-    try {
-      const sharp = require('sharp');
-      const metadata = await sharp(buffer).metadata();
-      if (metadata.width && metadata.width > 1920) {
-        processedBuffer = await sharp(buffer)
-          .rotate() // Auto-fix EXIF orientation
-          .resize(1920, null, { withoutEnlargement: true })
-          .jpeg({ quality: 80 })
-          .withMetadata({ orientation: undefined }) // Strip EXIF (GPS, etc.)
-          .toBuffer();
-        finalExt = '.jpg';
-        finalMime = 'image/jpeg';
-      } else if (buffer.length > 2 * 1024 * 1024) {
-        processedBuffer = await sharp(buffer)
-          .rotate()
-          .jpeg({ quality: 85 })
-          .withMetadata({ orientation: undefined })
-          .toBuffer();
-        finalExt = '.jpg';
-        finalMime = 'image/jpeg';
-      } else {
-        // Normal size — still fix EXIF rotation and strip metadata
-        processedBuffer = await sharp(buffer)
-          .rotate()
-          .withMetadata({ orientation: undefined })
-          .toBuffer();
-      }
-    } catch { /* sharp not available — save original */ }
+    let finalExt = isImage ? (imageType!.ext) : ext;
+    let finalMime = isImage ? (imageType!.mime) : (allowed?.mime || 'application/octet-stream');
 
-    // Hash-based filename (UUID, no original name in path)
+    // Image processing: resize, EXIF strip (existing behavior)
+    if (isImage) {
+      try {
+        const sharp = require('sharp');
+        const metadata = await sharp(buffer).metadata();
+        if (metadata.width && metadata.width > 1920) {
+          processedBuffer = await sharp(buffer)
+            .rotate()
+            .resize(1920, null, { withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .withMetadata({ orientation: undefined })
+            .toBuffer();
+          finalExt = '.jpg';
+          finalMime = 'image/jpeg';
+        } else if (buffer.length > 2 * 1024 * 1024) {
+          processedBuffer = await sharp(buffer)
+            .rotate()
+            .jpeg({ quality: 85 })
+            .withMetadata({ orientation: undefined })
+            .toBuffer();
+          finalExt = '.jpg';
+          finalMime = 'image/jpeg';
+        } else {
+          processedBuffer = await sharp(buffer)
+            .rotate()
+            .withMetadata({ orientation: undefined })
+            .toBuffer();
+        }
+      } catch { /* sharp not available — save original */ }
+    }
+
     const filename = `${crypto.randomUUID()}${finalExt}`;
     const filePath = path.join(UPLOADS_DIR, filename);
-
-    // Write processed file
     fs.writeFileSync(filePath, processedBuffer);
 
-    // Record in DB
     const now = Date.now();
+    const category = isImage ? 'image' : (allowed?.category || 'other');
+
+    // Insert into files table (T#382)
     const result = sqlite.prepare(`
+      INSERT INTO files (filename, original_name, mime_type, size_bytes, uploaded_by, context, context_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(filename, file.name, finalMime, processedBuffer.length, beast || null, context, contextId ? Number(contextId) : null, now);
+
+    // Also insert into forum_attachments for backwards compatibility
+    sqlite.prepare(`
       INSERT INTO forum_attachments (message_id, filename, original_name, mime_type, size_bytes, uploaded_by, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(messageId ? Number(messageId) : null, filename, file.name, finalMime, processedBuffer.length, beast || null, now);
+    `).run(contextId ? Number(contextId) : null, filename, file.name, finalMime, processedBuffer.length, beast || null, now);
 
     return c.json({
       id: (result as any).lastInsertRowid,
       filename,
       original_name: file.name,
-      url: `/api/forum/file/${filename}`,
-      size_bytes: file.size,
+      mime_type: finalMime,
+      category,
+      url: `/api/files/${(result as any).lastInsertRowid}/download`,
+      legacy_url: `/api/forum/file/${filename}`,
+      size_bytes: processedBuffer.length,
     });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Upload failed' }, 500);
   }
 });
 
-// Serve uploaded files
+// Serve uploaded files (legacy endpoint — kept for backwards compatibility)
 app.get('/api/forum/file/:filename', (c) => {
   const filename = c.req.param('filename');
-  // Sanitize — no path traversal
-  if (filename.includes('..') || filename.includes('/')) {
-    return c.json({ error: 'Invalid filename' }, 400);
-  }
+  if (filename.includes('..') || filename.includes('/')) return c.json({ error: 'Invalid filename' }, 400);
   const filePath = path.join(UPLOADS_DIR, filename);
   if (!fs.existsSync(filePath)) return c.json({ error: 'File not found' }, 404);
 
-  const meta = sqlite.prepare('SELECT mime_type, original_name FROM forum_attachments WHERE filename = ?').get(filename) as any;
+  const meta = sqlite.prepare('SELECT mime_type, original_name, deleted_at FROM files WHERE filename = ?').get(filename) as any
+    || sqlite.prepare('SELECT mime_type, original_name FROM forum_attachments WHERE filename = ?').get(filename) as any;
+  if (meta?.deleted_at) return c.json({ error: 'File not found' }, 404);
+
   const content = fs.readFileSync(filePath);
-  // Safe content type — only serve known image types, everything else as octet-stream
-  const safeTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
-  const contentType = safeTypes.has(meta?.mime_type) ? meta.mime_type : 'application/octet-stream';
+  const safeImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+  const isImage = safeImageTypes.has(meta?.mime_type);
+  const contentType = isImage ? meta.mime_type : 'application/octet-stream';
+
   c.header('Content-Type', contentType);
-  c.header('Content-Disposition', 'inline');
+  c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${(meta?.original_name || filename).replace(/"/g, '_')}"`);
+  c.header('Content-Security-Policy', 'sandbox');
   c.header('Cache-Control', 'public, max-age=31536000, immutable');
   return c.body(content);
 });
+
+// ============================================================================
+// File Manager API (T#382)
+// ============================================================================
+
+// GET /api/files — list files with pagination and filters
+app.get('/api/files', (c) => {
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '20', 10)));
+  const offset = (page - 1) * limit;
+  const type = c.req.query('type'); // image, document, archive
+  const uploadedBy = c.req.query('uploaded_by');
+  const context = c.req.query('context'); // forum, board, dm, forge
+
+  let where = 'deleted_at IS NULL';
+  const params: any[] = [];
+
+  if (type) {
+    const typeExts: Record<string, string[]> = {
+      image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+      document: ['application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'application/json',
+        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+      archive: ['application/zip'],
+    };
+    const mimes = typeExts[type];
+    if (mimes) {
+      where += ` AND mime_type IN (${mimes.map(() => '?').join(',')})`;
+      params.push(...mimes);
+    }
+  }
+  if (uploadedBy) { where += ' AND uploaded_by = ?'; params.push(uploadedBy); }
+  if (context) { where += ' AND context = ?'; params.push(context); }
+
+  const total = (sqlite.prepare(`SELECT COUNT(*) as c FROM files WHERE ${where}`).get(...params) as any)?.c || 0;
+  const files = sqlite.prepare(`SELECT * FROM files WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as any[];
+
+  return c.json({
+    files: files.map(f => ({
+      ...f,
+      url: `/api/files/${f.id}/download`,
+      is_image: f.mime_type.startsWith('image/'),
+      thumbnail_url: f.mime_type.startsWith('image/') ? `/api/forum/file/${f.filename}` : null,
+    })),
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  });
+});
+
+// GET /api/files/stats — storage statistics (must be before :id)
+app.get('/api/files/stats', (c) => {
+  const total = sqlite.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as total_size FROM files WHERE deleted_at IS NULL').get() as any;
+  const byType = sqlite.prepare(`
+    SELECT
+      CASE
+        WHEN mime_type LIKE 'image/%' THEN 'image'
+        WHEN mime_type IN ('application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'application/json',
+          'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') THEN 'document'
+        WHEN mime_type = 'application/zip' THEN 'archive'
+        ELSE 'other'
+      END as category,
+      COUNT(*) as count,
+      COALESCE(SUM(size_bytes), 0) as total_size
+    FROM files WHERE deleted_at IS NULL
+    GROUP BY category
+  `).all() as any[];
+  const byContext = sqlite.prepare('SELECT context, COUNT(*) as count FROM files WHERE deleted_at IS NULL GROUP BY context').all() as any[];
+
+  return c.json({
+    total_files: total.count,
+    total_size: total.total_size,
+    by_type: byType,
+    by_context: byContext,
+  });
+});
+
+// GET /api/files/:id — file metadata
+app.get('/api/files/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const file = sqlite.prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL').get(id) as any;
+  if (!file) return c.json({ error: 'File not found' }, 404);
+  return c.json({
+    ...file,
+    url: `/api/files/${file.id}/download`,
+    is_image: file.mime_type.startsWith('image/'),
+    thumbnail_url: file.mime_type.startsWith('image/') ? `/api/forum/file/${file.filename}` : null,
+  });
+});
+
+// GET /api/files/:id/download — download with security headers
+app.get('/api/files/:id/download', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const file = sqlite.prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL').get(id) as any;
+  if (!file) return c.json({ error: 'File not found' }, 404);
+
+  const filePath = path.join(UPLOADS_DIR, file.filename);
+  if (!fs.existsSync(filePath)) return c.json({ error: 'File not found on disk' }, 404);
+
+  const content = fs.readFileSync(filePath);
+  const safeImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+  const isImage = safeImageTypes.has(file.mime_type);
+
+  c.header('Content-Type', isImage ? file.mime_type : 'application/octet-stream');
+  c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${file.original_name.replace(/"/g, '_')}"`);
+  c.header('Content-Security-Policy', 'sandbox');
+  c.header('Cache-Control', 'public, max-age=31536000, immutable');
+  return c.body(content);
+});
+
+// DELETE /api/files/:id — soft delete (Nothing is Deleted)
+app.delete('/api/files/:id', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const file = sqlite.prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL').get(id) as any;
+  if (!file) return c.json({ error: 'File not found' }, 404);
+
+  const now = Date.now();
+  sqlite.prepare('UPDATE files SET deleted_at = ? WHERE id = ?').run(now, id);
+  return c.json({ deleted: true, id });
+});
+
+// (stats endpoint moved above :id routes)
 
 // Get attachments for a message
 app.get('/api/message/:id/attachments', (c) => {

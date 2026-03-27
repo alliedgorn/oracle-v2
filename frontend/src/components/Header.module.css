@@ -33,6 +33,13 @@
   display: flex;
   gap: var(--space-xs);
   align-items: center;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav::-webkit-scrollbar {
+  display: none;
 }
 
 .navLink {
@@ -43,6 +50,8 @@
   font-size: 14px;
   font-weight: 500;
   text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .navLink:hover {

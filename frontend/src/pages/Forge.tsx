@@ -87,7 +87,14 @@ export function Forge() {
     const d = parseData(log);
     switch (log.type) {
       case 'meal': return `${d.description || 'Meal'}${d.calories ? ` — ${d.calories} cal` : ''}${d.protein ? ` / ${d.protein}g protein` : ''}`;
-      case 'workout': return `${d.type || 'Workout'}${d.duration_min ? ` (${d.duration_min} min)` : ''}${d.exercises?.length ? ` — ${d.exercises.join(', ')}` : ''}`;
+      case 'workout': {
+        const name = d.workout_name || d.type || 'Workout';
+        const dur = d.duration_min ? ` (${d.duration_min} min)` : (d.duration ? ` (${d.duration})` : '');
+        const exList = d.exercises?.length
+          ? ` — ${d.exercises.map((e: any) => typeof e === 'string' ? e : (e.name || '')).join(', ')}`
+          : '';
+        return `${name}${dur}${exList}`;
+      }
       case 'weight': return `${d.value} ${d.unit || 'kg'}`;
       case 'note': return d.text || 'Note';
       case 'photo': return `${d.tag ? `[${d.tag}] ` : ''}${d.notes || 'Progress photo'}`;

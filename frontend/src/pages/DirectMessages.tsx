@@ -152,46 +152,41 @@ export function DirectMessages() {
     fetch(`${API_BASE}/beasts`).then(r => r.json()).then(d => setBeasts(d.beasts || [])).catch(() => {});
   }, []);
 
-  // Poll for new messages and conversations
+  // Refresh on visibility change (catch updates missed while tab was hidden)
   useEffect(() => {
-    const pollMessages = setInterval(() => {
-      if (document.hidden || lightboxSrc) return;
-      if (document.activeElement?.tagName === 'TEXTAREA') return; // Skip while typing
-      if (selectedConv && convParam) {
-        const [p1, p2] = convParam.split('-');
-        if (p1 && p2) {
-          fetchMessages(p1, p2, 5, 0, 'desc').then(data => {
-            if (data.total !== totalMessagesRef.current) {
-              setMessages(prev => {
-                if (!prev) return prev;
-                const existingIds = new Set(prev.messages.map(m => m.id));
-                const newMsgs = data.messages.filter(m => !existingIds.has(m.id)).reverse();
-                if (newMsgs.length === 0) return prev;
-                return { ...prev, messages: [...prev.messages, ...newMsgs], total: data.total };
-              });
-              totalMessagesRef.current = data.total;
-              setTotalMessages(data.total);
-            }
-          }).catch(() => {});
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        loadDashboard();
+        if (convParam) {
+          const [p1, p2] = convParam.split('-');
+          if (p1 && p2) {
+            fetchMessages(p1, p2, 5, 0, 'desc').then(data => {
+              if (data.total !== totalMessagesRef.current) {
+                setMessages(prev => {
+                  if (!prev) return prev;
+                  const existingIds = new Set(prev.messages.map(m => m.id));
+                  const newMsgs = data.messages.filter(m => !existingIds.has(m.id)).reverse();
+                  if (newMsgs.length === 0) return prev;
+                  return { ...prev, messages: [...prev.messages, ...newMsgs], total: data.total };
+                });
+                totalMessagesRef.current = data.total;
+                setTotalMessages(data.total);
+              }
+            }).catch(() => {});
+          }
         }
       }
-    }, 3000);
-
-    const pollDashboard = setInterval(() => {
-      if (document.hidden) return;
-      if (document.activeElement?.tagName === 'TEXTAREA') return;
-      loadDashboard();
-    }, 10000);
-
-    return () => {
-      clearInterval(pollMessages);
-      clearInterval(pollDashboard);
     };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [selectedConv?.id, convParam]);
 
   // Real-time WebSocket updates — fetch only new messages
+  // Skip full dashboard reload while user is typing to prevent re-render/scroll jumps
   const handleWsDm = useCallback((_data: any) => {
-    loadDashboard();
+    if (document.activeElement?.tagName !== 'TEXTAREA') {
+      loadDashboard();
+    }
     if (convParam) {
       const [p1, p2] = convParam.split('-');
       if (p1 && p2) {

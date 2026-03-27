@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { autolinkIds } from '../utils/autolink';
@@ -167,6 +167,13 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     };
   }, [hasMore, loadingMore, messages]);
 
+  // Memoize markdown components to prevent img re-mount on every render
+  const mdComponents = useMemo(() => ({
+    img: ({ src, alt, ...props }: any) => (
+      <img {...props} src={src} alt={alt || ''} style={{ cursor: 'pointer' }} onClick={() => src && setLightboxSrc(src)} />
+    ),
+  }), []);
+
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     if (!newMessage.trim()) return;
@@ -204,11 +211,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
             <div className={styles.msgContent}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                components={{
-                  img: ({ src, alt, ...props }) => (
-                    <img {...props} src={src} alt={alt || ''} style={{ cursor: 'pointer' }} onClick={() => src && setLightboxSrc(src)} />
-                  ),
-                }}
+                components={mdComponents}
               >{autolinkIds(msg.content)}</ReactMarkdown>
             </div>
             <span className={styles.msgTime}>

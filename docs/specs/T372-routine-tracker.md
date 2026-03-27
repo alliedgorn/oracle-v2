@@ -67,7 +67,9 @@ POST   /api/routine/photo/upload  -- upload progress photo (returns URL)
 
 ### Auth
 
-All endpoints Gorn-only (session auth required). No Beast access.
+- **Read/view**: Gorn only (session auth)
+- **Write/log**: Gorn + Sable (Sable can log on Gorn's behalf via API with `?as=sable`)
+- **Other Beasts**: No access
 
 ## UI
 

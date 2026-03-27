@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { autolinkIds } from '../utils/autolink';
@@ -22,6 +22,43 @@ interface ChatOverlayProps {
   displayName: string;
   onClose: () => void;
 }
+
+// Stable references to prevent ReactMarkdown re-parsing
+const remarkPluginsStable = [remarkGfm];
+const mdComponentsStable = {
+  img: ({ src, alt, ...props }: any) => (
+    <img {...props} src={src} alt={alt || ''} className={styles.chatImg} />
+  ),
+};
+
+// Memoized message component — only re-renders when its own props change
+const ChatMessage = memo(function ChatMessage({ msg, onImgClick }: {
+  msg: Message;
+  onImgClick: (src: string) => void;
+}) {
+  return (
+    <div className={`${styles.message} ${msg.sender === 'gorn' ? styles.sent : styles.received}`}>
+      <div className={styles.msgContent} onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'IMG') {
+          const src = (target as HTMLImageElement).src;
+          if (src) onImgClick(src);
+        }
+      }}>
+        <ReactMarkdown
+          remarkPlugins={remarkPluginsStable}
+          components={mdComponentsStable}
+        >{autolinkIds(msg.content)}</ReactMarkdown>
+      </div>
+      <span className={styles.msgTime}>
+        {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+        {msg.sender === 'gorn' && (
+          <span className={styles.readStatus}>{msg.read_at ? ' ✓✓' : ' ✓'}</span>
+        )}
+      </span>
+    </div>
+  );
+});
 
 export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -167,12 +204,8 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     };
   }, [hasMore, loadingMore, messages]);
 
-  // Memoize markdown components to prevent img re-mount on every render
-  const mdComponents = useMemo(() => ({
-    img: ({ src, alt, ...props }: any) => (
-      <img {...props} src={src} alt={alt || ''} style={{ cursor: 'pointer' }} onClick={() => src && setLightboxSrc(src)} />
-    ),
-  }), []);
+  // Stable callback for image clicks (used by memoized ChatMessage)
+  const handleImgClick = useCallback((src: string) => setLightboxSrc(src), []);
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -190,10 +223,6 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     } finally { setLoading(false); }
   }
 
-  function formatTime(iso: string) {
-    return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  }
-
   return (
     <div className={styles.overlay}>
       <div className={styles.header}>
@@ -207,20 +236,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
           <div className={styles.empty}>No messages yet. Say hello!</div>
         )}
         {messages.map(msg => (
-          <div key={msg.id} className={`${styles.message} ${msg.sender === 'gorn' ? styles.sent : styles.received}`}>
-            <div className={styles.msgContent}>
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={mdComponents}
-              >{autolinkIds(msg.content)}</ReactMarkdown>
-            </div>
-            <span className={styles.msgTime}>
-              {formatTime(msg.created_at)}
-              {msg.sender === 'gorn' && (
-                <span className={styles.readStatus}>{msg.read_at ? ' ✓✓' : ' ✓'}</span>
-              )}
-            </span>
-          </div>
+          <ChatMessage key={msg.id} msg={msg} onImgClick={handleImgClick} />
         ))}
         <div ref={messagesEndRef} />
       </div>
@@ -251,7 +267,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
 
       {lightboxSrc && (
         <div className={styles.lightbox} onClick={() => setLightboxSrc(null)}>
-          <img src={lightboxSrc} alt="Full size" className={styles.lightboxImg} />
+          <img src={lightboxSrc} alt="Full size" className={styles.lightboxImg} onClick={(e) => e.stopPropagation()} />
           <button className={styles.lightboxClose} onClick={() => setLightboxSrc(null)}>✕</button>
         </div>
       )}

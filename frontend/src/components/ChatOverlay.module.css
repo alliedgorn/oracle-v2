@@ -105,12 +105,14 @@
   margin: 0;
 }
 
+.chatImg,
 .msgContent img {
   max-width: 100%;
   height: auto;
   border-radius: 8px;
   display: block;
   margin: 4px 0;
+  cursor: pointer;
 }
 
 .msgContent a {
@@ -212,6 +214,7 @@
   background: rgba(0, 0, 0, 0.85);
   z-index: 10000;
   display: flex;
+  cursor: pointer;
   align-items: center;
   justify-content: center;
   cursor: pointer;
@@ -222,6 +225,7 @@
   max-height: 90vh;
   object-fit: contain;
   border-radius: 8px;
+  cursor: default;
 }
 
 .lightboxClose {

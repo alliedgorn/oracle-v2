@@ -26,7 +26,6 @@ export function PackView() {
   const [searchParams] = useSearchParams();
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [selected, setSelected] = useState<Beast | null>(null);
-  const autoSelectRef = useRef(searchParams.get('beast'));
   const [interactive, setInteractive] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,10 +63,9 @@ export function PackView() {
   // React to URL ?beast= changes (e.g. clicking terminal icon from RemotePanel)
   const beastParam = searchParams.get('beast');
   useEffect(() => {
-    if (beastParam && beasts.length > 0 && (!selected || selected.name !== beastParam)) {
-      const match = beasts.find(b => b.name === beastParam);
-      if (match) setSelected(match);
-    }
+    if (!beastParam || beasts.length === 0) return;
+    const match = beasts.find(b => b.name === beastParam);
+    if (match) setSelected(match);
   }, [beastParam, beasts]);
 
   // Initialize terminal when a beast is selected

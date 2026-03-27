@@ -127,11 +127,23 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     prevCountRef.current = messages.length;
   }, [messages, initialLoad]);
 
-  // WebSocket: reload messages when new DM arrives (replaces polling)
-  useWebSocket('new_dm', useCallback(() => {
-    wasNearBottomRef.current = isNearBottom();
-    loadMessages();
-  }, [loadMessages]));
+  // WebSocket: append new messages when DM arrives (no full reload)
+  const appendNewMessages = useCallback(async () => {
+    try {
+      wasNearBottomRef.current = isNearBottom();
+      const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=5&order=desc`);
+      const data = await res.json();
+      const latest = (data.messages || []).reverse();
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const newMsgs = latest.filter((m: Message) => !existingIds.has(m.id));
+        if (newMsgs.length === 0) return prev; // No change — skip re-render
+        return [...prev, ...newMsgs];
+      });
+    } catch {}
+  }, [beastName]);
+
+  useWebSocket('new_dm', appendNewMessages);
 
   // Scroll detection: load-more at top + show scroll-down button
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

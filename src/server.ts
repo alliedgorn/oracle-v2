@@ -6862,7 +6862,7 @@ console.log(`
 
 export default {
   port: Number(PORT),
-  hostname: '0.0.0.0',
+  hostname: process.env.BIND_HOST || '127.0.0.1',
   fetch(req: Request, server: any) {
     // Handle WebSocket upgrade
     if (new URL(req.url).pathname === '/ws') {

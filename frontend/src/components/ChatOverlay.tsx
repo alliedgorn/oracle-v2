@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { autolinkIds } from '../utils/autolink';
-import { ImageUpload } from './ImageUpload';
+import { FileUpload } from './FileUpload';
 import styles from './ChatOverlay.module.css';
 
 const API_BASE = '/api';
@@ -219,7 +219,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
       )}
       <form onSubmit={handleSend} className={styles.inputArea}>
         <div className={styles.inputRow}>
-          <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev ? `${prev}\n${md}` : md)} />
+          <FileUpload onUploadComplete={(md) => setNewMessage(prev => prev ? `${prev}\n${md}` : md)} />
           <textarea
             ref={inputRef}
             value={newMessage}

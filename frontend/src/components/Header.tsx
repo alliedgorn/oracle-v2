@@ -45,6 +45,7 @@ const navGroups = [
         label: 'Knowledge',
         items: [
           { path: '/library', label: 'Library' },
+          { path: '/files', label: 'Files' },
           { path: '/playbook', label: 'Playbook' },
           { path: '/search', label: 'Search' },
           { path: '/feed', label: 'Feed' },

@@ -5,7 +5,7 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import styles from './DirectMessages.module.css';
 import { SearchInput } from '../components/SearchInput';
-import { ImageUpload } from '../components/ImageUpload';
+import { FileUpload } from '../components/FileUpload';
 import { EmojiButton } from '../components/EmojiButton';
 import { VoiceInput } from '../components/VoiceInput';
 import ReactMarkdown from 'react-markdown';
@@ -526,7 +526,7 @@ export function DirectMessages() {
                   <div className={styles.replyActions}>
                     <EmojiButton onSelect={(e) => setNewMessage(prev => prev + e)} />
                     <VoiceInput onTranscript={(text) => setNewMessage(prev => prev ? prev + ' ' + text : text)} />
-                    <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
+                    <FileUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
                     <button
                       type="submit"
                       disabled={loading || !newMessage.trim()}

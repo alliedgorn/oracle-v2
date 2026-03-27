@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { ImageUpload } from '../components/ImageUpload';
+import { FileUpload } from '../components/FileUpload';
 import { EmojiButton } from '../components/EmojiButton';
 import styles from './SpecReview.module.css';
 
@@ -413,7 +413,7 @@ export function SpecReview() {
               rows={3}
             />
             <div className={styles.commentActions}>
-              <ImageUpload onUploadComplete={(md) => setCommentText(prev => prev + md)} />
+              <FileUpload onUploadComplete={(md) => setCommentText(prev => prev + md)} />
               <EmojiButton onSelect={(e) => setCommentText(prev => prev + e)} />
               <button
                 className={styles.commentSubmit}

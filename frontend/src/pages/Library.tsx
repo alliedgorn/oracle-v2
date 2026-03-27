@@ -7,7 +7,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import styles from './Library.module.css';
 import { FilterTabs } from '../components/FilterTabs';
 import { EmojiButton } from '../components/EmojiButton';
-import { ImageUpload } from '../components/ImageUpload';
+import { FileUpload } from '../components/FileUpload';
 import { VoiceInput } from '../components/VoiceInput';
 
 interface Suggestion {
@@ -298,7 +298,7 @@ export function Library() {
                 rows={20}
               />
               <div className={styles.editActions}>
-                <ImageUpload onUploadComplete={(md) => setEditContent(prev => prev + md)} />
+                <FileUpload onUploadComplete={(md) => setEditContent(prev => prev + md)} />
                 <EmojiButton onSelect={(e) => setEditContent(prev => prev + e)} />
                 <VoiceInput onTranscript={(text) => setEditContent(prev => prev ? prev + ' ' + text : text)} />
                 <button className={styles.editSave} onClick={saveEdit} disabled={saving}>

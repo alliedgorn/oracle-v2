@@ -4,7 +4,7 @@ import styles from './Board.module.css';
 import ReactMarkdown from 'react-markdown';
 import { autolinkIds } from '../utils/autolink';
 import { EmojiButton } from '../components/EmojiButton';
-import { ImageUpload } from '../components/ImageUpload';
+import { FileUpload } from '../components/FileUpload';
 import { VoiceInput } from '../components/VoiceInput';
 
 interface Project {
@@ -569,7 +569,7 @@ export function Board() {
                     rows={2}
                   />
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <ImageUpload onUploadComplete={(md) => setNewComment(prev => prev + md)} />
+                    <FileUpload onUploadComplete={(md) => setNewComment(prev => prev + md)} />
                     <EmojiButton onSelect={(e) => setNewComment(prev => prev + e)} />
                     <VoiceInput onTranscript={(text) => setNewComment(prev => prev ? prev + ' ' + text : text)} />
                     <button type="submit" className={styles.newTaskBtn} disabled={!newComment.trim()}>Comment</button>

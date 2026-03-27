@@ -1,0 +1,79 @@
+/* Compact inline attachment bar for non-image files in messages */
+.attachment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary, var(--border));
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  max-width: 360px;
+  text-decoration: none;
+  color: var(--text-primary);
+  transition: border-color 0.2s;
+  margin-top: var(--space-xs);
+}
+
+.attachment:hover {
+  border-color: var(--accent);
+}
+
+.attachment:hover .download {
+  color: var(--accent);
+}
+
+.icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-elevated, var(--bg-card));
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.size {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.download {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+/* Multiple attachments stack */
+.attachment + .attachment {
+  margin-top: 4px;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .attachment {
+    max-width: 100%;
+  }
+
+  .badge {
+    display: none;
+  }
+}

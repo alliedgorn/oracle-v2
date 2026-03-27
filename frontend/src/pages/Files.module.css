@@ -1,0 +1,363 @@
+.container {
+  max-width: none;
+  padding: var(--space-lg);
+  height: calc(100vh - 53px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+  flex-shrink: 0;
+}
+
+.header h1 {
+  font-family: var(--font-heading);
+  color: var(--text-primary);
+  margin: 0;
+  font-size: 24px;
+}
+
+.stats {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Filters */
+.filters {
+  display: flex;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.filterSelect {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filterSelect:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Table */
+.tableWrap {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.table th {
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.thPreview {
+  width: 48px;
+}
+
+.thActions {
+  width: 80px;
+}
+
+.row {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+
+.row:hover {
+  background: var(--bg-secondary);
+}
+
+.row td {
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+
+/* Preview column */
+.tdPreview {
+  width: 48px;
+}
+
+.previewThumb {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.previewIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+}
+
+/* Name column */
+.tdName {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+/* Type badge */
+.typeBadge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--bg-elevated, var(--bg-card));
+  color: var(--text-muted);
+}
+
+.badgeimage {
+  color: var(--accent);
+  background: var(--accent-glow, rgba(214, 158, 46, 0.1));
+}
+
+.badgedocument {
+  color: var(--text-muted);
+  background: var(--bg-elevated, var(--bg-card));
+}
+
+.badgearchive {
+  color: var(--accent);
+  background: var(--accent-glow, rgba(214, 158, 46, 0.1));
+}
+
+/* Size */
+.tdSize {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Uploader */
+.tdUploader {
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+/* Context */
+.tdContext {
+  white-space: nowrap;
+}
+
+.contextLink {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.contextLink:hover {
+  text-decoration: underline;
+}
+
+.contextNone {
+  color: var(--text-muted);
+}
+
+/* Date */
+.tdDate {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Actions */
+.tdActions {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.actionBtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.confirmDelete {
+  display: flex;
+  gap: 4px;
+}
+
+.confirmYes {
+  background: var(--danger);
+  border: none;
+  color: white;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.confirmNo {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) 0;
+  flex-shrink: 0;
+}
+
+.pageBtn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pageBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pageBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageInfo {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Empty / Loading states */
+.loading, .empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .container {
+    padding: var(--space-md);
+  }
+
+  .filters {
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .filterSelect {
+    flex: 1;
+    min-width: 100px;
+  }
+
+  /* Card layout on mobile */
+  .tableWrap {
+    border: none;
+  }
+
+  .table thead {
+    display: none;
+  }
+
+  .table, .table tbody, .table tr, .table td {
+    display: block;
+  }
+
+  .row {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--space-sm);
+    padding: var(--space-sm);
+  }
+
+  .row td {
+    padding: 2px 0;
+  }
+
+  .tdPreview {
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  .tdName {
+    display: inline-block;
+    font-weight: 500;
+    max-width: calc(100% - 48px);
+  }
+
+  .tdActions {
+    justify-content: flex-end;
+    padding-top: var(--space-sm) !important;
+    border-top: 1px solid var(--border);
+    margin-top: var(--space-xs);
+  }
+
+  .thPreview, .thActions {
+    width: auto;
+  }
+}

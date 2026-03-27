@@ -10,7 +10,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { autolinkIds } from '../utils/autolink';
 import styles from './Forum.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
-import { ImageUpload } from '../components/ImageUpload';
+import { FileUpload } from '../components/FileUpload';
 import { EmojiButton } from '../components/EmojiButton';
 import { VoiceInput } from '../components/VoiceInput';
 import { SearchInput } from '../components/SearchInput';
@@ -724,7 +724,7 @@ export function Forum() {
                 rows={14}
               />
               <div className={styles.replyActions}>
-                <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
+                <FileUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
                 <EmojiButton onSelect={(e) => setNewMessage(prev => prev + e)} />
                 <VoiceInput onTranscript={(text) => setNewMessage(prev => prev ? prev + ' ' + text : text)} />
                 <button
@@ -867,7 +867,7 @@ export function Forum() {
                   rows={3}
                 />
                 <div className={styles.replyActions}>
-                  <ImageUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
+                  <FileUpload onUploadComplete={(md) => setNewMessage(prev => prev + md)} />
                   <EmojiButton onSelect={(e) => setNewMessage(prev => prev + e)} />
                   <VoiceInput onTranscript={(text) => setNewMessage(prev => prev ? prev + ' ' + text : text)} />
                   <button

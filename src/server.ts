@@ -5456,6 +5456,35 @@ app.get('/api/search', async (c) => {
   let q = c.req.query('q')?.trim();
   if (!q) return c.json({ results: [], total: 0, query: '' });
 
+  // Direct ID lookup shortcuts: "thread 344", "#344", "T#455", "task 123", "spec 16", "risk 5", "library 36"
+  const idMatch = q.match(/^(?:thread|t#?|task)\s*#?(\d+)$/i) || q.match(/^#(\d+)$/);
+  if (idMatch) {
+    const id = parseInt(idMatch[1], 10);
+    // Try thread first, then task
+    const thread = sqlite.prepare('SELECT id, title FROM forum_threads WHERE id = ?').get(id) as any;
+    if (thread) return c.json({ results: [{ source_type: 'forum', source_id: thread.id, title: thread.title, snippet: '', author: '', url: `/forum?thread=${thread.id}` }], total: 1, query: q, engine: 'id_lookup' });
+    const task = sqlite.prepare('SELECT id, title, assigned_to FROM tasks WHERE id = ?').get(id) as any;
+    if (task) return c.json({ results: [{ source_type: 'task', source_id: task.id, title: task.title, snippet: '', author: task.assigned_to || '', url: `/board?task=${task.id}` }], total: 1, query: q, engine: 'id_lookup' });
+  }
+  const specMatch = q.match(/^spec\s*#?(\d+)$/i);
+  if (specMatch) {
+    const id = parseInt(specMatch[1], 10);
+    const spec = sqlite.prepare('SELECT id, title FROM spec_reviews WHERE id = ?').get(id) as any;
+    if (spec) return c.json({ results: [{ source_type: 'spec', source_id: spec.id, title: spec.title, snippet: '', author: '', url: `/specs?spec=${spec.id}` }], total: 1, query: q, engine: 'id_lookup' });
+  }
+  const riskMatch = q.match(/^risk\s*#?(\d+)$/i);
+  if (riskMatch) {
+    const id = parseInt(riskMatch[1], 10);
+    const risk = sqlite.prepare('SELECT id, title FROM risks WHERE id = ?').get(id) as any;
+    if (risk) return c.json({ results: [{ source_type: 'risk', source_id: risk.id, title: risk.title, snippet: '', author: '', url: `/risk` }], total: 1, query: q, engine: 'id_lookup' });
+  }
+  const libMatch = q.match(/^library\s*#?(\d+)$/i);
+  if (libMatch) {
+    const id = parseInt(libMatch[1], 10);
+    const entry = sqlite.prepare('SELECT id, title FROM library_entries WHERE id = ?').get(id) as any;
+    if (entry) return c.json({ results: [{ source_type: 'library', source_id: entry.id, title: entry.title, snippet: '', author: '', url: `/library?entry=${entry.id}` }], total: 1, query: q, engine: 'id_lookup' });
+  }
+
   let type = c.req.query('type') || undefined;
   const limit = Math.min(50, Math.max(1, parseInt(c.req.query('limit') || '20', 10)));
   const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10));

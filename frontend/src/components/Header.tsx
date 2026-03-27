@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './Header.module.css';
 
 interface QuickResult {
@@ -141,25 +142,34 @@ export function Header({ onRemoteToggle }: HeaderProps) {
     }
   }
 
-  useEffect(() => {
-    async function loadBadges() {
-      try {
-        const [specsRes, prowlRes] = await Promise.all([
-          fetch('/api/specs?status=pending'),
-          fetch('/api/prowl?status=pending'),
-        ]);
-        const specsData = await specsRes.json();
-        const prowlData = await prowlRes.json();
-        setBadges({
-          specs: specsData.specs?.length || 0,
-          prowl: prowlData.counts?.pending || 0,
-        });
-      } catch {}
-    }
-    loadBadges();
-    const interval = setInterval(loadBadges, 30000);
-    return () => clearInterval(interval);
+  const loadBadges = useCallback(async () => {
+    try {
+      const [specsRes, prowlRes] = await Promise.all([
+        fetch('/api/specs?status=pending'),
+        fetch('/api/prowl?status=pending'),
+      ]);
+      const specsData = await specsRes.json();
+      const prowlData = await prowlRes.json();
+      setBadges({
+        specs: specsData.specs?.length || 0,
+        prowl: prowlData.counts?.pending || 0,
+      });
+    } catch {}
   }, []);
+
+  // Initial load + refresh on visibility change
+  useEffect(() => {
+    loadBadges();
+    const handleVisibility = () => { if (!document.hidden) loadBadges(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [loadBadges]);
+
+  // WebSocket updates for badges (replaced 30s polling)
+  useWebSocket('spec_submitted', loadBadges);
+  useWebSocket('spec_reviewed', loadBadges);
+  useWebSocket('spec_resubmitted', loadBadges);
+  useWebSocket('prowl_update', loadBadges);
 
   function formatDuration(ms: number): string {
     const minutes = Math.floor(ms / 60000);

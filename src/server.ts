@@ -4630,6 +4630,12 @@ app.post('/api/specs/:id/resubmit', async (c) => {
     return c.json({ error: `Only the spec author (${spec.author}) or task assignee can resubmit` }, 403);
   }
   const now = new Date().toISOString();
+  // Preserve rejection history as a spec comment before clearing
+  if (spec.reviewer_feedback) {
+    sqlite.prepare(
+      'INSERT INTO spec_comments (spec_id, author, content, created_at) VALUES (?, ?, ?, ?)'
+    ).run(id, 'system', `**Previous review (${spec.status})**: ${spec.reviewer_feedback}`, spec.reviewed_at || now);
+  }
   sqlite.prepare(
     'UPDATE spec_reviews SET status = ?, reviewer_feedback = NULL, reviewed_at = NULL, updated_at = ? WHERE id = ?'
   ).run('pending', now, id);

@@ -98,6 +98,14 @@
   margin: 0;
 }
 
+.msgContent img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
+  margin: 4px 0;
+}
+
 .msgContent a {
   color: inherit;
   text-decoration: underline;

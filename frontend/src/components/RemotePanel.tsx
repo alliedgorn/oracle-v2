@@ -163,7 +163,14 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
         <ChatOverlay
           beastName={chatBeast.name}
           displayName={chatBeast.displayName}
-          onClose={() => { setChatBeast(null); localStorage.removeItem('chatBeast'); }}
+          onClose={() => {
+            // Mark as read before closing, then refresh unread counts
+            fetch(`${API_BASE}/dm/gorn/${chatBeast.name}/read`, { method: 'PATCH' })
+              .then(() => loadUnread())
+              .catch(() => {});
+            setChatBeast(null);
+            localStorage.removeItem('chatBeast');
+          }}
         />
       )}
     </>

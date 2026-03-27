@@ -4607,7 +4607,7 @@ app.post('/api/specs/:id/resubmit', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
   if (!spec) return c.json({ error: 'Spec not found' }, 404);
-  if (spec.status !== 'rejected') return c.json({ error: 'Only rejected specs can be resubmitted' }, 400);
+  if (spec.status === 'approved') return c.json({ error: 'Approved specs cannot be resubmitted' }, 400);
   // Require identity — only spec author or task assignee can resubmit
   let requester: string;
   try {

@@ -1770,7 +1770,7 @@ app.get('/api/forum/file/:filename', (c) => {
 
   c.header('Content-Type', contentType);
   c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${(meta?.original_name || filename).replace(/"/g, '_')}"`);
-  c.header('Content-Security-Policy', 'sandbox');
+  if (!isImage) c.header('Content-Security-Policy', 'sandbox');
   c.header('Cache-Control', 'public, max-age=31536000, immutable');
   return c.body(content);
 });
@@ -1881,7 +1881,7 @@ app.get('/api/files/:id/download', (c) => {
 
   c.header('Content-Type', isImage ? file.mime_type : 'application/octet-stream');
   c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${file.original_name.replace(/"/g, '_')}"`);
-  c.header('Content-Security-Policy', 'sandbox');
+  if (!isImage) c.header('Content-Security-Policy', 'sandbox');
   c.header('Cache-Control', 'public, max-age=31536000, immutable');
   return c.body(content);
 });

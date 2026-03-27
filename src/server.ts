@@ -3930,9 +3930,12 @@ app.post('/api/schedules/:id/execute', async (c) => {
   const safeTask = schedule.task.replace(/[^a-zA-Z0-9 _./-]/g, '');
   const safeCommand = schedule.command ? schedule.command.replace(/[^a-zA-Z0-9 _./:@=-]/g, '') : '';
   const notification = `# [Scheduler] Due now: ${safeTask} (schedule #${schedule.id})${safeCommand ? ` | Command: ${safeCommand}` : ''}`;
+  const reminder = `# Remember: mark done with PATCH /api/schedules/${schedule.id}/run?as=${schedule.beast}`;
 
   try {
     execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(notification)}`, { timeout: 2000 });
+    execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} Enter`, { timeout: 2000 });
+    execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(reminder)}`, { timeout: 2000 });
     execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} Enter`, { timeout: 2000 });
 
     const now = new Date().toISOString();
@@ -4026,9 +4029,12 @@ function runSchedulerCycle() {
       const safeTask = schedule.task.replace(/[^a-zA-Z0-9 _./-]/g, '');
       const safeCommand = schedule.command ? schedule.command.replace(/[^a-zA-Z0-9 _./:@=-]/g, '') : '';
       const notification = `# [Scheduler] Due now: ${safeTask} (schedule #${schedule.id})${safeCommand ? ` | Command: ${safeCommand}` : ''}`;
+      const reminder = `# Remember: mark done with PATCH /api/schedules/${schedule.id}/run?as=${schedule.beast}`;
 
       try {
         execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(notification)}`, { timeout: 2000 });
+        execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} Enter`, { timeout: 2000 });
+        execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(reminder)}`, { timeout: 2000 });
         execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} Enter`, { timeout: 2000 });
 
         // Mark as triggered

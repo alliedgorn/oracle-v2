@@ -346,3 +346,89 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Workout card — structured layout per Dex/Quill spec */
+.workoutCard {
+  width: 100%;
+}
+
+.workoutHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--space-sm);
+}
+
+.workoutName {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.workoutDur {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.workoutExercises {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-sm);
+}
+
+.exerciseRow {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+}
+
+.exerciseNum {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  min-width: 16px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.exerciseInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.exerciseName {
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.exerciseDetail {
+  display: flex;
+  gap: var(--space-sm);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.exerciseEquip {
+  color: var(--text-muted);
+}
+
+.exerciseSets {
+  color: var(--accent);
+}
+
+.workoutToggle {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: var(--space-xs) 0;
+  margin-top: var(--space-xs);
+}
+
+.workoutToggle:hover {
+  text-decoration: underline;
+}

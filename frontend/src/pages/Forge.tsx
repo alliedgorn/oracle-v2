@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import styles from './Forge.module.css';
 
 const API_BASE = '/api';
@@ -14,6 +14,70 @@ interface RoutineLog {
 const TYPE_ICONS: Record<string, string> = {
   meal: '🍽️', workout: '💪', weight: '⚖️', note: '📝', photo: '📷', bodyfat: '📊',
 };
+
+function parseExerciseName(raw: string): { name: string; equipment: string } {
+  // Input: "1. Lat Pulldowns with Wide Overhand Grip · Machine · 8 reps"
+  const cleaned = raw.replace(/^\d+\.\s*/, '');
+  const parts = cleaned.split(' · ');
+  return { name: parts[0] || cleaned, equipment: parts[1] || '' };
+}
+
+function formatSets(sets: any[]): string {
+  if (!sets?.length) return '';
+  const unit = sets[0]?.unit || 'KG';
+  // Group identical sets: "3×8 @ 220 LB"
+  const groups: string[] = [];
+  let i = 0;
+  while (i < sets.length) {
+    let count = 1;
+    while (i + count < sets.length && sets[i + count].weight === sets[i].weight && sets[i + count].reps === sets[i].reps) count++;
+    groups.push(`${count > 1 ? count + '\u00d7' : ''}${sets[i].reps} @ ${sets[i].weight} ${unit.toLowerCase()}`);
+    i += count;
+  }
+  return groups.join(', ');
+}
+
+function WorkoutCard({ data }: { data: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const name = (data.workout_name || data.type || 'Workout').replace(/ · Standalone workout$/, '').replace(/^Standalone workout · /, '');
+  const dur = data.duration_min ? `${data.duration_min} min` : (data.duration || '');
+  const exercises: any[] = data.exercises || [];
+  const showCount = 3;
+  const visible = expanded ? exercises : exercises.slice(0, showCount);
+  const hasMore = exercises.length > showCount;
+
+  return (
+    <div className={styles.workoutCard}>
+      <div className={styles.workoutHeader}>
+        <span className={styles.workoutName}>{name}</span>
+        {dur && <span className={styles.workoutDur}>{dur}</span>}
+      </div>
+      <div className={styles.workoutExercises}>
+        {visible.map((ex: any, i: number) => {
+          const { name: exName, equipment } = parseExerciseName(typeof ex === 'string' ? ex : ex.name || '');
+          const setsStr = ex.sets ? formatSets(ex.sets) : '';
+          return (
+            <div key={i} className={styles.exerciseRow}>
+              <span className={styles.exerciseNum}>{i + 1}</span>
+              <div className={styles.exerciseInfo}>
+                <span className={styles.exerciseName}>{exName}</span>
+                <span className={styles.exerciseDetail}>
+                  {equipment && <span className={styles.exerciseEquip}>{equipment}</span>}
+                  {setsStr && <span className={styles.exerciseSets}>{setsStr}</span>}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {hasMore && (
+        <button className={styles.workoutToggle} onClick={() => setExpanded(!expanded)}>
+          {expanded ? 'Show less' : `+${exercises.length - showCount} more`}
+        </button>
+      )}
+    </div>
+  );
+}
 
 export function Forge() {
   const [logs, setLogs] = useState<RoutineLog[]>([]);
@@ -106,18 +170,11 @@ export function Forge() {
     return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
-  function formatLogContent(log: RoutineLog) {
+  function formatLogContent(log: RoutineLog): React.ReactNode {
     const d = parseData(log);
     switch (log.type) {
       case 'meal': return `${d.description || 'Meal'}${d.calories ? ` — ${d.calories} cal` : ''}${d.protein ? ` / ${d.protein}g protein` : ''}`;
-      case 'workout': {
-        const name = d.workout_name || d.type || 'Workout';
-        const dur = d.duration_min ? ` (${d.duration_min} min)` : (d.duration ? ` (${d.duration})` : '');
-        const exList = d.exercises?.length
-          ? ` — ${d.exercises.map((e: any) => typeof e === 'string' ? e : (e.name || '')).join(', ')}`
-          : '';
-        return `${name}${dur}${exList}`;
-      }
+      case 'workout': return <WorkoutCard data={d} />;
       case 'weight': return `${d.value} ${d.unit || 'kg'}`;
       case 'bodyfat': return `${d.value}% body fat`;
       case 'note': return d.text || 'Note';

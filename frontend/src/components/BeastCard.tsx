@@ -16,6 +16,7 @@ interface BeastCardProps {
   onNameClick?: (e: React.MouseEvent) => void;
   onDmClick?: (e: React.MouseEvent) => void;
   onProfileClick?: (e: React.MouseEvent) => void;
+  unreadCount?: number;
 }
 
 export function BeastCard({
@@ -33,6 +34,7 @@ export function BeastCard({
   onNameClick,
   onDmClick,
   onProfileClick,
+  unreadCount = 0,
 }: BeastCardProps) {
   const isProcessing = status === 'processing';
   const isOffline = status === 'offline' || !online;
@@ -67,7 +69,12 @@ export function BeastCard({
             <button className={`${styles.dmButton} ${styles.terminalBtn}`} title={`Open ${displayName}'s terminal`} onClick={onProfileClick}>&#9002;</button>
           )}
           {onDmClick && (
-            <button className={styles.dmButton} title={`DM ${displayName}`} onClick={onDmClick}>💬</button>
+            <button className={styles.dmButton} title={`DM ${displayName}`} onClick={onDmClick}>
+              💬
+              {unreadCount > 0 && (
+                <span className={styles.unreadBadge}>{unreadCount > 99 ? '99+' : unreadCount}</span>
+              )}
+            </button>
           )}
         </div>
       )}

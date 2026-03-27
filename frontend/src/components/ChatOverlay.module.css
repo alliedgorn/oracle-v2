@@ -60,6 +60,13 @@
   font-size: 13px;
 }
 
+.loadingMore {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 8px;
+  font-size: 11px;
+}
+
 .message {
   max-width: 85%;
   display: flex;

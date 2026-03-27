@@ -6,6 +6,7 @@ import { ImageUpload } from './ImageUpload';
 import styles from './ChatOverlay.module.css';
 
 const API_BASE = '/api';
+const PAGE_SIZE = 30;
 
 interface Message {
   id: number;
@@ -24,6 +25,9 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -36,40 +40,111 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
+  // Load latest messages (for initial load + polling)
   const loadMessages = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=50&order=desc`);
+      const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&order=desc`);
       const data = await res.json();
       const msgs = (data.messages || []).reverse();
       setMessages(msgs);
+      setHasMore((data.total || msgs.length) > msgs.length);
     } catch {}
   }, [beastName]);
 
+  // Load older messages when scrolling to top
+  const offsetRef = useRef(PAGE_SIZE);
+  async function loadOlderMessages() {
+    if (loadingMore || !hasMore || messages.length === 0) return;
+    setLoadingMore(true);
+    const el = messagesContainerRef.current;
+    const prevScrollHeight = el?.scrollHeight || 0;
+    try {
+      const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&offset=${offsetRef.current}&order=desc`);
+      const data = await res.json();
+      const older = (data.messages || []).reverse();
+      if (older.length === 0) {
+        setHasMore(false);
+      } else {
+        offsetRef.current += older.length;
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const newOlder = older.filter((m: Message) => !existingIds.has(m.id));
+          return [...newOlder, ...prev];
+        });
+        // Restore scroll position after prepending
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop = el.scrollHeight - prevScrollHeight;
+        });
+      }
+    } catch {}
+    setLoadingMore(false);
+  }
+
+  // Initial load — scroll to bottom
   useEffect(() => {
-    loadMessages();
+    loadMessages().then(() => {
+      setInitialLoad(false);
+    });
     inputRef.current?.focus();
   }, [loadMessages]);
 
-  // Only auto-scroll when new messages arrive AND user is near bottom (or just sent a message)
+  // Scroll to bottom on initial load
   useEffect(() => {
+    if (!initialLoad && prevCountRef.current === 0 && messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView();
+      prevCountRef.current = messages.length;
+    }
+  }, [initialLoad, messages]);
+
+  // Auto-scroll on new messages only when near bottom or user just sent
+  useEffect(() => {
+    if (initialLoad) return;
     const newCount = messages.length;
-    if (newCount > prevCountRef.current) {
+    if (newCount > prevCountRef.current && prevCountRef.current > 0) {
       if (userSentRef.current || isNearBottom()) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         userSentRef.current = false;
       }
     }
     prevCountRef.current = newCount;
-  }, [messages]);
+  }, [messages, initialLoad]);
 
   // Poll for new messages
   useEffect(() => {
     const interval = setInterval(() => {
       if (document.hidden) return;
-      loadMessages();
+      // Only poll latest — don't reset if user loaded older messages
+      (async () => {
+        try {
+          const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&order=desc`);
+          const data = await res.json();
+          const latest = (data.messages || []).reverse();
+          if (latest.length > 0) {
+            setMessages(prev => {
+              // Merge: keep older messages that aren't in the latest batch
+              const latestIds = new Set(latest.map((m: Message) => m.id));
+              const older = prev.filter(m => !latestIds.has(m.id) && m.id < latest[0].id);
+              return [...older, ...latest];
+            });
+          }
+        } catch {}
+      })();
     }, 3000);
     return () => clearInterval(interval);
-  }, [loadMessages]);
+  }, [beastName]);
+
+  // Scroll-to-top detection for loading more
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    function handleScroll() {
+      if (el!.scrollTop < 50 && hasMore && !loadingMore) {
+        loadOlderMessages();
+      }
+    }
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [hasMore, loadingMore, messages]);
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -98,7 +173,9 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
         <button className={styles.closeBtn} onClick={onClose}>✕</button>
       </div>
       <div className={styles.messages} ref={messagesContainerRef}>
-        {messages.length === 0 && (
+        {loadingMore && <div className={styles.loadingMore}>Loading older messages...</div>}
+        {!hasMore && messages.length > 0 && <div className={styles.loadingMore}>Beginning of conversation</div>}
+        {messages.length === 0 && !initialLoad && (
           <div className={styles.empty}>No messages yet. Say hello!</div>
         )}
         {messages.map(msg => (

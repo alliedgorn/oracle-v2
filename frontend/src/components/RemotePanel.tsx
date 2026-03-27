@@ -30,17 +30,25 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [chatBeast, setChatBeast] = useState<{ name: string; displayName: string } | null>(null);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   const loadStatus = useCallback(async () => {
     try {
-      const [packRes, statusRes] = await Promise.all([
+      const [packRes, statusRes, dmRes] = await Promise.all([
         fetch(`${API_BASE}/pack`),
         fetch(`${API_BASE}/remote/status`),
+        fetch(`${API_BASE}/dm/gorn?limit=50`),
       ]);
       const packData = await packRes.json();
       const statusData = await statusRes.json();
+      const dmData = await dmRes.json();
       setBeasts(packData.beasts);
       setAttachedBeast(statusData.attached_beast);
+      const counts: Record<string, number> = {};
+      for (const conv of dmData.conversations || []) {
+        if (conv.unread_count > 0) counts[conv.with] = conv.unread_count;
+      }
+      setUnreadCounts(counts);
     } catch { /* ignore */ }
   }, []);
 
@@ -123,6 +131,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
                 badge={isAttached ? 'ATTACHED' : undefined}
                 onClick={() => !loading && handleClick(beast)}
                 onProfileClick={(e) => { e.stopPropagation(); onClose(); navigate(`/?beast=${beast.name}`); }}
+                unreadCount={unreadCounts[beast.name] || 0}
                 onDmClick={(e) => { e.stopPropagation(); setChatBeast({ name: beast.name, displayName: beast.displayName }); }}
               />
             );

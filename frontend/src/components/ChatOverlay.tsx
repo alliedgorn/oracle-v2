@@ -207,6 +207,14 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   // Stable callback for image clicks (used by memoized ChatMessage)
   const handleImgClick = useCallback((src: string) => setLightboxSrc(src), []);
 
+  // ESC closes lightbox
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxSrc(null); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lightboxSrc]);
+
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     if (!newMessage.trim()) return;

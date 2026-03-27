@@ -3192,7 +3192,7 @@ app.post('/api/tasks/:id/comments', async (c) => {
           {
             type: 'PM Board',
             label: `task #${taskId}`,
-            hint: `Use /board to view. Comment on task with: curl -s -X POST 'http://localhost:47778/api/tasks/${taskId}/comments' -H 'Content-Type: application/json' -d '{"author":"YOUR_NAME","content":"YOUR_REPLY"}'`,
+            hint: `Use /board task ${taskId} to view. Use /board comment ${taskId} <message> to reply.`,
           }
         );
       }

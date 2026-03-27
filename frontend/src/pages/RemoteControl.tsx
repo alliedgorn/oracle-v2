@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ANIMAL_EMOJI } from '../utils/animals';
+import { ChatOverlay } from '../components/ChatOverlay';
 import styles from './RemoteControl.module.css';
 
 interface Beast {
@@ -21,6 +22,7 @@ export function RemoteControl() {
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [chatBeast, setChatBeast] = useState<{ name: string; displayName: string } | null>(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -126,13 +128,21 @@ export function RemoteControl() {
                 <button
                   className={styles.actionButton}
                   title={`DM ${beast.displayName}`}
-                  onClick={(e) => { e.stopPropagation(); navigate(`/dms?conv=gorn-${beast.name}`); }}
+                  onClick={(e) => { e.stopPropagation(); setChatBeast({ name: beast.name, displayName: beast.displayName }); }}
                 >💬</button>
               </div>
             </div>
           );
         })}
       </div>
+
+      {chatBeast && (
+        <ChatOverlay
+          beastName={chatBeast.name}
+          displayName={chatBeast.displayName}
+          onClose={() => setChatBeast(null)}
+        />
+      )}
     </div>
   );
 }

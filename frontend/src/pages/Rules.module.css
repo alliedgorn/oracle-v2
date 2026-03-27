@@ -218,6 +218,14 @@
   color: var(--text-primary);
 }
 
+.ruleId {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  font-weight: 400;
+  margin-right: 6px;
+  opacity: 0.6;
+}
+
 .scopeBadge {
   font-size: 11px;
   padding: 2px 8px;

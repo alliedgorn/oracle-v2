@@ -182,7 +182,7 @@ export function Rules() {
               <span className={`${styles.typeBadge} ${rule.type === 'decree' ? styles.typeBadgeDecree : styles.typeBadgeNorm}`}>
                 {rule.type === 'decree' ? 'Decree' : 'Norm'}
               </span>
-              <h3 className={styles.ruleTitle}>{rule.title}</h3>
+              <h3 className={styles.ruleTitle}><span className={styles.ruleId}>#{rule.id}</span>{rule.title}</h3>
               {rule.scope !== 'all' && (
                 <span className={styles.scopeBadge}>{rule.scope}</span>
               )}

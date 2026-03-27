@@ -29,7 +29,17 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [chatBeast, setChatBeast] = useState<{ name: string; displayName: string } | null>(null);
+  const [chatBeast, setChatBeastState] = useState<{ name: string; displayName: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem('chatBeast');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const setChatBeast = useCallback((val: { name: string; displayName: string } | null) => {
+    setChatBeastState(val);
+    if (val) localStorage.setItem('chatBeast', JSON.stringify(val));
+    else localStorage.removeItem('chatBeast');
+  }, []);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   const loadStatus = useCallback(async () => {

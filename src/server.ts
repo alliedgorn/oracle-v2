@@ -3442,6 +3442,7 @@ app.post('/api/tasks/:id/comments', async (c) => {
     }
   } catch { /* notification failure is non-critical */ }
 
+  wsBroadcast('task_comment_added', { task_id: taskId, comment_id: (result as any).lastInsertRowid });
   return c.json(comment, 201);
 });
 

@@ -117,11 +117,18 @@ export function RemoteControl() {
                 <span className={styles.role}>{beast.role || beast.animal}</span>
               </div>
               {isAttached && <span className={styles.attachedLabel}>ATTACHED</span>}
-              <button
-                className={styles.dmButton}
-                title={`DM ${beast.displayName}`}
-                onClick={(e) => { e.stopPropagation(); navigate(`/dms?conv=gorn-${beast.name}`); }}
-              >💬</button>
+              <div className={styles.cardActions}>
+                <button
+                  className={styles.actionButton}
+                  title={`View ${beast.displayName} on Pack page`}
+                  onClick={(e) => { e.stopPropagation(); navigate(`/pack?beast=${beast.name}`); }}
+                >🖥️</button>
+                <button
+                  className={styles.actionButton}
+                  title={`DM ${beast.displayName}`}
+                  onClick={(e) => { e.stopPropagation(); navigate(`/dms?conv=gorn-${beast.name}`); }}
+                >💬</button>
+              </div>
             </div>
           );
         })}

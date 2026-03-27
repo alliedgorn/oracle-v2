@@ -153,20 +153,30 @@
   flex-shrink: 0;
 }
 
-.dmButton {
+.cardActions {
   margin-left: auto;
+  display: flex;
+  gap: 4px;
   flex-shrink: 0;
+}
+
+.actionButton {
   background: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm, 6px);
-  padding: 4px 8px;
+  width: 32px;
+  height: 32px;
   font-size: 14px;
   cursor: pointer;
   opacity: 0.5;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s, background 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
-.dmButton:hover {
+.actionButton:hover {
   opacity: 1;
   background: var(--bg-secondary);
 }

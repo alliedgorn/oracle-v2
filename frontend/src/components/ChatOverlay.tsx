@@ -12,6 +12,7 @@ interface Message {
   id: number;
   sender: string;
   content: string;
+  read_at: string | null;
   created_at: string;
 }
 
@@ -196,7 +197,12 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
             <div className={styles.msgContent}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{autolinkIds(msg.content)}</ReactMarkdown>
             </div>
-            <span className={styles.msgTime}>{formatTime(msg.created_at)}</span>
+            <span className={styles.msgTime}>
+              {formatTime(msg.created_at)}
+              {msg.sender === 'gorn' && (
+                <span className={styles.readStatus}>{msg.read_at ? ' ✓✓' : ' ✓'}</span>
+              )}
+            </span>
           </div>
         ))}
         <div ref={messagesEndRef} />

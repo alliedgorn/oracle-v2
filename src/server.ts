@@ -1412,7 +1412,7 @@ app.get('/api/beast/:name/avatar.svg', (c) => {
   };
 
   const animal = profile?.animal?.toLowerCase() || 'unknown';
-  const color = BEAST_COLORS[animal] || '#6b7280';
+  const color = profile?.themeColor || BEAST_COLORS[animal] || '#6b7280';
   const emoji = ANIMAL_EMOJI[animal] || '🐾';
   const displayName = profile?.displayName || name;
   const initial = displayName.charAt(0).toUpperCase();

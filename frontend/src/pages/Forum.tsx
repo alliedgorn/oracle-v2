@@ -312,9 +312,10 @@ export function Forum() {
   useEffect(() => {
     const pollMessages = setInterval(() => {
       if (document.hidden) return;
+      // Pause polling while user is typing to prevent re-renders
+      if (document.activeElement?.tagName === 'TEXTAREA') return;
       if (selectedThread) {
         fetchThread(selectedThread.thread.id, 5, 0, 'desc').then(data => {
-          // Dedup inside functional updater to use latest state
           setSelectedThread(prev => {
             if (!prev) return prev;
             const existingIds = new Set(prev.messages.map(m => m.id));
@@ -323,13 +324,14 @@ export function Forum() {
             loadReactionsForThread(newMsgs);
             return { ...prev, messages: [...prev.messages, ...newMsgs] };
           });
-          setTotalMessages(data.total);
+          setTotalMessages(prev => prev === data.total ? prev : data.total);
         }).catch(() => {});
       }
     }, 3000);
 
     const pollThreads = setInterval(() => {
       if (document.hidden) return;
+      if (document.activeElement?.tagName === 'TEXTAREA') return;
       loadThreads();
       loadUnreadCounts();
     }, 10000);

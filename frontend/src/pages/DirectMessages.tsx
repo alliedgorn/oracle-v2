@@ -155,7 +155,8 @@ export function DirectMessages() {
   // Poll for new messages and conversations
   useEffect(() => {
     const pollMessages = setInterval(() => {
-      if (document.hidden || lightboxSrc) return; // Skip polling when lightbox is open
+      if (document.hidden || lightboxSrc) return;
+      if (document.activeElement?.tagName === 'TEXTAREA') return; // Skip while typing
       if (selectedConv && convParam) {
         const [p1, p2] = convParam.split('-');
         if (p1 && p2) {
@@ -178,6 +179,7 @@ export function DirectMessages() {
 
     const pollDashboard = setInterval(() => {
       if (document.hidden) return;
+      if (document.activeElement?.tagName === 'TEXTAREA') return;
       loadDashboard();
     }, 10000);
 

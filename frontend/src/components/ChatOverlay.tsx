@@ -40,6 +40,11 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
+  // Mark messages as read
+  const markAsRead = useCallback(async () => {
+    try { await fetch(`${API_BASE}/dm/gorn/${beastName}/read`, { method: 'PATCH' }); } catch {}
+  }, [beastName]);
+
   // Load latest messages (for initial load + polling)
   const loadMessages = useCallback(async () => {
     try {
@@ -48,8 +53,9 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
       const msgs = (data.messages || []).reverse();
       setMessages(msgs);
       setHasMore((data.total || msgs.length) > msgs.length);
+      markAsRead();
     } catch {}
-  }, [beastName]);
+  }, [beastName, markAsRead]);
 
   // Load older messages when scrolling to top
   const offsetRef = useRef(PAGE_SIZE);

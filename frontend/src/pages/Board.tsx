@@ -131,6 +131,16 @@ export function Board() {
   useWebSocket('task_updated', handleWsUpdate);
   useWebSocket('tasks_bulk_updated', handleWsUpdate);
 
+  // Refresh comments when a comment is added to the currently viewed task
+  const handleCommentAdded = useCallback((data: { task_id: number }) => {
+    if (selectedTask && data.task_id === selectedTask.id) {
+      fetch(`${API_BASE}/tasks/${data.task_id}`).then(r => r.json()).then(d => {
+        setTaskComments(d.comments || []);
+      }).catch(() => {});
+    }
+  }, [selectedTask]);
+  useWebSocket('task_comment_added', handleCommentAdded);
+
   // Refresh when page becomes visible (catch updates missed while hidden)
   useEffect(() => {
     const handleVisibility = () => {

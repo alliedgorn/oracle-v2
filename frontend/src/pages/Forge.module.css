@@ -26,7 +26,7 @@
 
 .quickAdd {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
   margin-bottom: var(--space-lg);
 }
@@ -237,7 +237,28 @@
   padding: 10px 14px;
   background: var(--bg-card);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
   border-radius: var(--radius-sm);
+}
+
+.logCard[data-type="meal"] {
+  border-left-color: #3fb950;
+}
+
+.logCard[data-type="workout"] {
+  border-left-color: #58a6ff;
+}
+
+.logCard[data-type="weight"] {
+  border-left-color: #d29922;
+}
+
+.logCard[data-type="note"] {
+  border-left-color: #8b949e;
+}
+
+.logCard[data-type="photo"] {
+  border-left-color: #bc8cff;
 }
 
 .logIcon {

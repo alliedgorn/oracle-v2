@@ -195,7 +195,7 @@ export function Forge() {
       <div className={styles.history}>
         {logs.length === 0 && <div className={styles.empty}>No logs yet. Start logging!</div>}
         {logs.map(log => (
-          <div key={log.id} className={styles.logCard}>
+          <div key={log.id} className={styles.logCard} data-type={log.type}>
             <span className={styles.logIcon}>{TYPE_ICONS[log.type] || '📄'}</span>
             <div className={styles.logContent}>
               <div className={styles.logText}>{formatLogContent(log)}</div>

@@ -4324,18 +4324,19 @@ function runSchedulerCycle() {
     // Find overdue schedules that need triggering:
     // - enabled and overdue (next_due_at <= now)
     // - NULL: never triggered before
-    // - 'triggered': sent notification but beast hasn't /run yet — re-trigger after 5 min cooldown
-    // - 'failed': previous attempt failed — retry after 5 min cooldown
-    // - 'pending': beast called /run, next_due advanced — only re-trigger when next_due passes
+    // - 'pending': beast called /run, next_due advanced — re-trigger when next_due passes
+    // - 'failed': previous attempt failed — retry after schedule's own interval cooldown
+    // - 'triggered': already notified, waiting for beast — do NOT re-trigger (beast will /run when ready)
     // - 'completed': one-time schedule finished — never re-trigger
     const overdue = sqlite.prepare(
       `SELECT * FROM beast_schedules
        WHERE enabled = 1 AND datetime(next_due_at) <= datetime(?)
        AND trigger_status IS NOT 'completed'
+       AND trigger_status IS NOT 'triggered'
        AND (
          trigger_status IS NULL
          OR trigger_status = 'pending'
-         OR (trigger_status IN ('triggered', 'failed') AND datetime(last_triggered_at) <= datetime(?, '-5 minutes'))
+         OR (trigger_status = 'failed' AND datetime(last_triggered_at) <= datetime(?, '-' || CAST(interval_seconds AS TEXT) || ' seconds'))
        )
        ORDER BY next_due_at`
     ).all(now, now) as any[];
@@ -4374,6 +4375,21 @@ function runSchedulerCycle() {
   } catch (err) {
     console.error(`[Scheduler] Cycle error: ${err}`);
   }
+}
+
+// On startup: reset all 'triggered' schedules to 'pending' so they fire exactly once
+// This prevents the repeat-fire bug (T#383) where old triggered status + expired cooldown
+// causes schedules to fire multiple times on restart
+try {
+  const resetCount = sqlite.prepare(
+    `UPDATE beast_schedules SET trigger_status = 'pending', updated_at = datetime('now')
+     WHERE trigger_status = 'triggered' AND enabled = 1`
+  ).run();
+  if (resetCount.changes > 0) {
+    console.log(`[Scheduler] Reset ${resetCount.changes} triggered schedules to pending on startup`);
+  }
+} catch (err) {
+  console.error(`[Scheduler] Startup reset error: ${err}`);
 }
 
 // Start the daemon

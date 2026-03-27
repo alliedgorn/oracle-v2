@@ -421,13 +421,14 @@
   background: var(--accent);
   border: none;
   color: white;
-  padding: 14px 24px;
-  border-radius: 8px;
-  font-size: 16px;
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;
-  align-self: flex-end;
+  height: 36px;
+  flex-shrink: 0;
 }
 
 .submitButton:hover:not(:disabled) {

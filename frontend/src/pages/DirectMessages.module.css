@@ -413,9 +413,9 @@
 
 .replyActions {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: stretch;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
 }
 
 .emojiBtn {
@@ -494,13 +494,14 @@
   background: var(--accent);
   border: none;
   color: white;
-  padding: 12px 20px;
-  border-radius: 8px;
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;
-  align-self: flex-end;
+  height: 36px;
+  flex-shrink: 0;
 }
 
 .submitButton:hover:not(:disabled) {

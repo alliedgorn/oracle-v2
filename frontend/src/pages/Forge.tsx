@@ -27,19 +27,38 @@ export function Forge() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [typeFilter, setTypeFilter] = useState('');
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const PAGE_SIZE = 30;
 
   const loadData = useCallback(async () => {
-    const params = new URLSearchParams({ limit: '50' });
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
     if (typeFilter) params.set('type', typeFilter);
     const [logsRes, statsRes, weightRes] = await Promise.all([
       fetch(`${API_BASE}/routine/logs?${params}`),
       fetch(`${API_BASE}/routine/stats`),
       fetch(`${API_BASE}/routine/weight`),
     ]);
-    setLogs((await logsRes.json()).logs || []);
+    const logsData = await logsRes.json();
+    const newLogs = logsData.logs || [];
+    setLogs(newLogs);
+    setHasMore(newLogs.length >= PAGE_SIZE);
     setStats(await statsRes.json());
     setWeights((await weightRes.json()).weights || []);
   }, [typeFilter]);
+
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(logs.length) });
+    if (typeFilter) params.set('type', typeFilter);
+    const res = await fetch(`${API_BASE}/routine/logs?${params}`);
+    const data = await res.json();
+    const moreLogs = data.logs || [];
+    setLogs(prev => [...prev, ...moreLogs]);
+    setHasMore(moreLogs.length >= PAGE_SIZE);
+    setLoadingMore(false);
+  }
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -286,6 +305,11 @@ export function Forge() {
             <button className={styles.deleteBtn} onClick={() => deleteLog(log.id)} title="Delete">×</button>
           </div>
         ))}
+        {hasMore && (
+          <button className={styles.formButton} onClick={loadMore} disabled={loadingMore} style={{ width: '100%', marginTop: 8 }}>
+            {loadingMore ? 'Loading...' : 'Load more'}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -44,9 +44,10 @@ export function PackView() {
       const beastList = data.beasts || [];
       setBeasts(beastList);
       // Auto-select beast from URL param (?beast=name)
-      if (autoSelectRef.current && !selected) {
-        const match = beastList.find((b: Beast) => b.name === autoSelectRef.current);
-        if (match) { setSelected(match); autoSelectRef.current = null; }
+      const beastParam = searchParams.get('beast');
+      if (beastParam && (!selected || selected.name !== beastParam)) {
+        const match = beastList.find((b: Beast) => b.name === beastParam);
+        if (match) { setSelected(match); }
       }
     } catch { /* ignore */ }
   }, []);
@@ -59,6 +60,15 @@ export function PackView() {
     }, 10000); // refresh online status every 10s
     return () => clearInterval(interval);
   }, [loadPack]);
+
+  // React to URL ?beast= changes (e.g. clicking terminal icon from RemotePanel)
+  useEffect(() => {
+    const beastParam = searchParams.get('beast');
+    if (beastParam && beasts.length > 0 && (!selected || selected.name !== beastParam)) {
+      const match = beasts.find(b => b.name === beastParam);
+      if (match) setSelected(match);
+    }
+  }, [searchParams, beasts]);
 
   // Initialize terminal when a beast is selected
   useEffect(() => {

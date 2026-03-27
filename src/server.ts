@@ -4570,6 +4570,13 @@ app.post('/api/specs/:id/review', async (c) => {
             if (task.assigned_to) toNotify.add(task.assigned_to.toLowerCase());
             if (task.created_by) toNotify.add(task.created_by.toLowerCase());
             if (spec.author) toNotify.add(spec.author.toLowerCase());
+            // Add spec comment participants
+            const specParticipants = sqlite.prepare(
+              'SELECT DISTINCT author FROM spec_comments WHERE spec_id = ?'
+            ).all(id) as any[];
+            for (const p of specParticipants) {
+              if (p.author) toNotify.add(p.author.toLowerCase());
+            }
             toNotify.delete('gorn');
             if (toNotify.size > 0) {
               notifyMentioned(

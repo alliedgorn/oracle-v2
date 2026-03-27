@@ -105,9 +105,13 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Clipboard paste support
+  // Clipboard paste support — only when focus is within the same form/container
+  const containerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     function handlePaste(e: ClipboardEvent) {
+      // Only handle paste if focus is within this component's parent form/container
+      const form = containerRef.current?.closest('form') || containerRef.current?.closest('[class*="overlay"]');
+      if (form && !form.contains(document.activeElement)) return;
       const items = e.clipboardData?.items;
       if (!items) return;
       for (const item of items) {
@@ -272,6 +276,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
 
       <button
         type="button"
+        ref={el => { containerRef.current = el; }}
         className={`${styles.uploadBtn} ${uploading ? styles.uploading : ''}`}
         onClick={() => fileRef.current?.click()}
         title="Attach file"

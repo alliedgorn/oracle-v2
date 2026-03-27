@@ -159,6 +159,10 @@ export function Forum() {
     if (newMessageRef.current) newMessageRef.current.value = newVal;
     _setNewMessage(newVal);
   }, []);
+  // Sync uncontrolled textarea typing to state (for button disabled check)
+  const handleTextareaInput = useCallback(() => {
+    _setNewMessage(newMessageRef.current?.value || '');
+  }, []);
   const [newTitle, setNewTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [beastProfiles, setBeastProfiles] = useState<Map<string, BeastProfile>>(new Map());
@@ -719,6 +723,7 @@ export function Forum() {
                 placeholder="What's on your mind? (⌘+Enter to send)"
                 ref={newMessageRef}
                 defaultValue={newMessage}
+                onInput={handleTextareaInput}
                 onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
                 className={styles.textarea}
                 rows={14}

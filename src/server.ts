@@ -6215,13 +6215,22 @@ function fts5Search(q: string, type: string | undefined, limit: number, offset: 
     return row ? `/forum?thread=${row.thread_id}` : '#';
   }
 
-  return {
-    results: rows.map(r => ({
+  // Deduplicate by URL — keep first (best-ranked) result per URL
+  const seen = new Set<string>();
+  const deduped = rows.reduce((acc: any[], r: any) => {
+    const url = r.source_type === 'forum' ? forumUrl(r.source_id) : (urlMap[r.source_type] || (() => '#'))(r.source_id);
+    if (url !== '#' && seen.has(url)) return acc;
+    if (url !== '#') seen.add(url);
+    acc.push({
       source_type: r.source_type, source_id: r.source_id, title: r.title,
-      snippet: r.snippet, author: r.author,
-      url: r.source_type === 'forum' ? forumUrl(r.source_id) : (urlMap[r.source_type] || (() => '#'))(r.source_id),
-    })),
-    total, query: q, engine: 'fts5' as const,
+      snippet: r.snippet, author: r.author, url,
+    });
+    return acc;
+  }, []);
+
+  return {
+    results: deduped,
+    total: deduped.length, query: q, engine: 'fts5' as const,
   };
 }
 
@@ -6318,13 +6327,22 @@ app.get('/api/search', async (c) => {
         attributesToCrop: ['content'],
         cropLength: 50,
       });
-      return c.json({
-        results: (results.hits || []).map((h: any) => ({
+      // Deduplicate by URL — keep first (best-ranked) result per URL
+      const seen = new Set<string>();
+      const deduped = (results.hits || []).reduce((acc: any[], h: any) => {
+        const url = h.url || '#';
+        if (url !== '#' && seen.has(url)) return acc;
+        if (url !== '#') seen.add(url);
+        acc.push({
           source_type: h.source_type, source_id: h.source_id, title: h.title,
           snippet: h._formatted?.content || h.content?.slice(0, 200) || '',
-          author: h.author, url: h.url || '#',
-        })),
-        total: results.estimatedTotalHits || 0,
+          author: h.author, url,
+        });
+        return acc;
+      }, []);
+      return c.json({
+        results: deduped,
+        total: deduped.length,
         query: q,
         engine: 'meilisearch',
         processingTimeMs: results.processingTimeMs,

@@ -23,7 +23,8 @@ CREATE TABLE routine_logs (
   logged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   data JSON NOT NULL,
   source TEXT DEFAULT 'manual',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME DEFAULT NULL
 );
 ```
 
@@ -50,10 +51,10 @@ CREATE TABLE routine_logs (
 
 ### Log CRUD
 ```
-GET    /api/routine/logs          -- list (filterable: ?type=meal&from=2026-03-01&to=2026-03-27)
+GET    /api/routine/logs          -- list (filterable: ?type=meal&from=2026-03-01&to=2026-03-27&limit=50&offset=0)
 POST   /api/routine/logs          -- create { type, data, logged_at? }
 PATCH  /api/routine/logs/:id      -- edit { data?, logged_at? }
-DELETE /api/routine/logs/:id      -- soft delete
+DELETE /api/routine/logs/:id      -- soft delete (sets deleted_at, not actual delete)
 ```
 
 ### Analytics
@@ -110,6 +111,24 @@ POST   /api/routine/photo/upload  -- upload progress photo (returns URL)
 - Progress photos private (no public URLs, session auth required to view)
 - JSON data validated for type shape on write
 - All image uploads processed with `sharp`: EXIF auto-rotation + metadata strip (removes GPS/location for privacy)
+
+## Test Plan
+
+- Create log entry (each type: meal, workout, weight, note, photo) — 201
+- Create log without type — 400
+- List logs with pagination (?limit=10&offset=0) — correct count
+- List logs filtered by type (?type=meal) — only meals returned
+- List logs filtered by date range (?from=...&to=...) — correct range
+- Soft delete log — deleted_at set, entry excluded from default list
+- Photo upload — returns URL, file on disk, EXIF stripped
+- Photo upload invalid file type — 400
+- Photo upload over size limit — 400
+- Weight history endpoint — returns [{value, logged_at}] sorted
+- Stats endpoint — returns summary object
+- Auth: Gorn session — all endpoints accessible
+- Auth: Sable (?as=sable) — all endpoints accessible
+- Auth: other Beast (?as=karo) — 403 on all endpoints
+- Auth: no identity — 401
 
 ## Phase 2 (future, not in this spec)
 

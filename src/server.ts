@@ -5399,7 +5399,7 @@ app.post('/api/risks/:id/comments', async (c) => {
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS routine_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type TEXT NOT NULL CHECK(type IN ('meal', 'workout', 'weight', 'note', 'photo')),
+    type TEXT NOT NULL,
     logged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     data JSON NOT NULL,
     source TEXT DEFAULT 'manual',
@@ -5407,6 +5407,25 @@ sqlite.exec(`
     deleted_at DATETIME DEFAULT NULL
   )
 `);
+
+// Remove CHECK constraint on existing table (allows 'bodyfat' type)
+try {
+  sqlite.exec(`
+    CREATE TABLE routine_logs_new AS SELECT * FROM routine_logs;
+    DROP TABLE routine_logs;
+    CREATE TABLE routine_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      logged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      data JSON NOT NULL,
+      source TEXT DEFAULT 'manual',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      deleted_at DATETIME DEFAULT NULL
+    );
+    INSERT INTO routine_logs SELECT * FROM routine_logs_new;
+    DROP TABLE routine_logs_new;
+  `);
+} catch { /* already migrated or no constraint to remove */ }
 
 // Ensure uploads/routine dir exists
 const ROUTINE_UPLOADS = path.join(ORACLE_DATA_DIR, 'uploads', 'routine');
@@ -5733,6 +5752,104 @@ app.post('/api/routine/import/alpha-progression', async (c) => {
       total_exercises: newSessions.reduce((sum: number, s: any) => sum + s.exercises.length, 0),
       total_sets: newSessions.reduce((sum: number, s: any) => sum + s.exercises.reduce((esum: number, e: any) => esum + e.sets.length, 0), 0),
     });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Import failed' }, 500);
+  }
+});
+
+// POST /api/routine/import/alpha-measurements — import Alpha Progression Measurements CSV (T#392)
+app.post('/api/routine/import/alpha-measurements', async (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access denied' }, 403);
+
+  try {
+    const formData = await c.req.formData();
+    const file = formData.get('file') as File;
+    if (!file) return c.json({ error: 'No file provided' }, 400);
+
+    const text = await file.text();
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+    const entries: { type: string; date: string; value: number; unit: string }[] = [];
+    let currentType = '';
+    let currentUnit = '';
+
+    for (const line of lines) {
+      // Section header: "Body fat percentage" or Bodyweight
+      if (line === '"Body fat percentage"' || line === 'Body fat percentage') {
+        currentType = 'bodyfat';
+        continue;
+      }
+      if (line === 'Bodyweight' || line === '"Bodyweight"') {
+        currentType = 'weight';
+        continue;
+      }
+      // Unit row: DATE;% or DATE;KG
+      if (line.startsWith('DATE;')) {
+        currentUnit = line.split(';')[1] || '';
+        continue;
+      }
+      // Data row: "date";value
+      if (currentType && line.startsWith('"')) {
+        const parts = line.split(';');
+        const date = parts[0].replace(/^"|"$/g, '');
+        const value = parseFloat(parts[1]);
+        if (!isNaN(value)) {
+          entries.push({ type: currentType, date, value, unit: currentUnit });
+        }
+      }
+    }
+
+    // Dedup: check existing entries
+    const existingDates = new Map<string, Set<string>>();
+    const existingRows = sqlite.prepare(
+      "SELECT type, logged_at FROM routine_logs WHERE type IN ('weight', 'bodyfat') AND source = 'alpha-progression' AND deleted_at IS NULL"
+    ).all() as any[];
+    for (const row of existingRows) {
+      if (!existingDates.has(row.type)) existingDates.set(row.type, new Set());
+      existingDates.get(row.type)!.add(row.logged_at);
+    }
+
+    const newEntries = entries.filter(e => {
+      const loggedAt = new Date(e.date).toISOString();
+      return !existingDates.get(e.type)?.has(loggedAt);
+    });
+    const duplicateCount = entries.length - newEntries.length;
+
+    const preview = c.req.query('preview') === 'true';
+    const bodyfatCount = newEntries.filter(e => e.type === 'bodyfat').length;
+    const weightCount = newEntries.filter(e => e.type === 'weight').length;
+
+    if (preview) {
+      return c.json({
+        total_entries: entries.length,
+        new_entries: newEntries.length,
+        duplicates: duplicateCount,
+        bodyfat: bodyfatCount,
+        weight: weightCount,
+        date_range: entries.length > 0 ? {
+          from: entries[entries.length - 1].date,
+          to: entries[0].date,
+        } : null,
+      });
+    }
+
+    // Import
+    const now = new Date().toISOString();
+    const insert = sqlite.prepare(
+      'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
+    );
+    let imported = 0;
+    for (const entry of newEntries) {
+      const loggedAt = new Date(entry.date).toISOString();
+      const data = JSON.stringify({
+        value: entry.value,
+        unit: entry.unit === '%' ? '%' : 'kg',
+      });
+      insert.run(entry.type === 'weight' ? 'weight' : 'bodyfat', loggedAt, data, 'alpha-progression', now);
+      imported++;
+    }
+
+    return c.json({ imported, duplicates: duplicateCount, bodyfat: bodyfatCount, weight: weightCount });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Import failed' }, 500);
   }

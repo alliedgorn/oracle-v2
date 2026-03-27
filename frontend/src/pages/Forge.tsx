@@ -12,7 +12,7 @@ interface RoutineLog {
 }
 
 const TYPE_ICONS: Record<string, string> = {
-  meal: '🍽️', workout: '💪', weight: '⚖️', note: '📝', photo: '📷',
+  meal: '🍽️', workout: '💪', weight: '⚖️', note: '📝', photo: '📷', bodyfat: '📊',
 };
 
 export function Forge() {
@@ -119,6 +119,7 @@ export function Forge() {
         return `${name}${dur}${exList}`;
       }
       case 'weight': return `${d.value} ${d.unit || 'kg'}`;
+      case 'bodyfat': return `${d.value}% body fat`;
       case 'note': return d.text || 'Note';
       case 'photo': return `${d.tag ? `[${d.tag}] ` : ''}${d.notes || 'Progress photo'}`;
       default: return JSON.stringify(d);
@@ -166,15 +167,45 @@ export function Forge() {
                 const formData = new FormData();
                 formData.append('file', file);
                 const res = await fetch(`${API_BASE}/routine/import/alpha-progression?preview=true`, { method: 'POST', body: formData });
-                setImportPreview(await res.json());
+                const preview = await res.json();
+                preview._importType = 'workouts';
+                setImportPreview(preview);
               } catch { setImportPreview({ error: 'Failed to parse CSV' }); }
               setImporting(false);
               e.target.value = '';
             }}
             disabled={importing}
           />
-          <span className={styles.quickAddIcon}>📥</span>
-          <span>{importing ? 'Parsing...' : 'Import CSV'}</span>
+          <span className={styles.quickAddIcon}>💪</span>
+          <span>{importing ? 'Parsing...' : 'Import Workouts'}</span>
+        </label>
+        <label className={styles.quickAddBtn} style={{ cursor: 'pointer' }}>
+          <input
+            type="file"
+            accept=".csv"
+            style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setImporting(true);
+              setImportResult(null);
+              setImportPreview(null);
+              setImportFile(file);
+              try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await fetch(`${API_BASE}/routine/import/alpha-measurements?preview=true`, { method: 'POST', body: formData });
+                const preview = await res.json();
+                preview._importType = 'measurements';
+                setImportPreview(preview);
+              } catch { setImportPreview({ error: 'Failed to parse CSV' }); }
+              setImporting(false);
+              e.target.value = '';
+            }}
+            disabled={importing}
+          />
+          <span className={styles.quickAddIcon}>📊</span>
+          <span>{importing ? 'Parsing...' : 'Import Measurements'}</span>
         </label>
       </div>
 
@@ -184,16 +215,24 @@ export function Forge() {
             <p style={{ color: 'var(--danger, red)' }}>{importPreview.error}</p>
           ) : (
             <>
-              <p>Found <strong>{importPreview.sessions} sessions</strong> ({importPreview.total_exercises} exercises, {importPreview.total_sets} sets)
-              {importPreview.date_range && <> from {importPreview.date_range.from} to {importPreview.date_range.to}</>}</p>
+              {importPreview._importType === 'measurements' ? (
+                <p>Found <strong>{importPreview.new_entries} new entries</strong> ({importPreview.bodyfat} body fat, {importPreview.weight} weight)
+                {importPreview.duplicates > 0 && <>, {importPreview.duplicates} duplicates skipped</>}
+                {importPreview.date_range && <> from {importPreview.date_range.from} to {importPreview.date_range.to}</>}</p>
+              ) : (
+                <p>Found <strong>{importPreview.new_sessions || importPreview.sessions} sessions</strong> ({importPreview.total_exercises} exercises, {importPreview.total_sets} sets)
+                {importPreview.duplicates > 0 && <>, {importPreview.duplicates} duplicates skipped</>}
+                {importPreview.date_range && <> from {importPreview.date_range.from} to {importPreview.date_range.to}</>}</p>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className={styles.formButton} disabled={importing} onClick={async () => {
                   if (!importFile) return;
                   setImporting(true);
+                  const endpoint = importPreview._importType === 'measurements' ? 'alpha-measurements' : 'alpha-progression';
                   try {
                     const formData = new FormData();
                     formData.append('file', importFile);
-                    const res = await fetch(`${API_BASE}/routine/import/alpha-progression`, { method: 'POST', body: formData });
+                    const res = await fetch(`${API_BASE}/routine/import/${endpoint}`, { method: 'POST', body: formData });
                     const data = await res.json();
                     setImportResult(data);
                     setImportPreview(null);

@@ -57,9 +57,8 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
       const msgs = (data.messages || []).reverse();
       setMessages(msgs);
       setHasMore((data.total || msgs.length) > msgs.length);
-      markAsRead();
     } catch {}
-  }, [beastName, markAsRead]);
+  }, [beastName]);
 
   // Load older messages when scrolling to top
   const offsetRef = useRef(PAGE_SIZE);
@@ -90,10 +89,11 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
     setLoadingMore(false);
   }
 
-  // Initial load — scroll to bottom
+  // Initial load — scroll to bottom + mark as read
   useEffect(() => {
     loadMessages().then(() => {
       setInitialLoad(false);
+      markAsRead();
     });
     inputRef.current?.focus();
   }, [loadMessages]);
@@ -117,6 +117,9 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         userSentRef.current = false;
       }
+      // Mark as read only when new messages appear from the beast
+      const latestMsg = messages[messages.length - 1];
+      if (latestMsg.sender !== 'gorn') markAsRead();
       lastMsgIdRef.current = latestId;
     }
     prevCountRef.current = messages.length;
@@ -133,7 +136,6 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
           const data = await res.json();
           const latest = (data.messages || []).reverse();
           if (latest.length > 0) {
-            markAsRead();
             setMessages(prev => {
               if (prev.length === 0) return latest;
               const latestIds = new Set(latest.map((m: Message) => m.id));

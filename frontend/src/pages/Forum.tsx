@@ -151,7 +151,14 @@ export function Forum() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedThread, setSelectedThread] = useState<ThreadDetail | null>(null);
-  const [newMessage, setNewMessage] = useState('');
+  // Use ref for input value to avoid re-rendering message list on every keystroke
+  const newMessageRef = useRef<HTMLTextAreaElement>(null);
+  const [newMessage, _setNewMessage] = useState('');
+  const setNewMessage = useCallback((val: string | ((prev: string) => string)) => {
+    const newVal = typeof val === 'function' ? val(newMessageRef.current?.value || '') : val;
+    if (newMessageRef.current) newMessageRef.current.value = newVal;
+    _setNewMessage(newVal);
+  }, []);
   const [newTitle, setNewTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [beastProfiles, setBeastProfiles] = useState<Map<string, BeastProfile>>(new Map());
@@ -443,18 +450,19 @@ export function Forum() {
 
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
-    if (!newMessage.trim()) return;
+    const messageText = newMessageRef.current?.value || newMessage;
+    if (!messageText.trim()) return;
 
     setLoading(true);
     try {
       if (selectedThread) {
-        const result = await sendMessage(newMessage, selectedThread.thread.id, undefined, replyTo?.id);
+        const result = await sendMessage(messageText, selectedThread.thread.id, undefined, replyTo?.id);
         // Append the new message locally instead of re-fetching (avoids WebSocket duplicate)
         if (result.message_id) {
           const newMsg = {
             id: result.message_id,
             role: 'human' as const,
-            content: newMessage,
+            content: messageText,
             author: 'gorn',
             reply_to_id: replyTo?.id || null,
             principles_found: null,
@@ -469,7 +477,7 @@ export function Forum() {
         }
       } else if (showNewThread) {
         // Create new thread
-        const result = await sendMessage(newMessage, undefined, newTitle || undefined);
+        const result = await sendMessage(messageText, undefined, newTitle || undefined);
         // Set category if not default
         if (newCategory && newCategory !== 'discussion' && result.thread_id) {
           await fetch(`${API_BASE}/thread/${result.thread_id}/category`, {
@@ -481,7 +489,8 @@ export function Forum() {
         await loadThreads();
         setSearchParams({ thread: result.thread_id.toString() });
       }
-      setNewMessage('');
+      _setNewMessage('');
+      if (newMessageRef.current) newMessageRef.current.value = '';
       setNewTitle('');
       setNewCategory('discussion');
       setReplyTo(null);
@@ -706,8 +715,8 @@ export function Forum() {
               </div>
               <textarea
                 placeholder="What's on your mind? (⌘+Enter to send)"
-                value={newMessage}
-                onChange={e => setNewMessage(e.target.value)}
+                ref={newMessageRef}
+                defaultValue={newMessage}
                 onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
                 className={styles.textarea}
                 rows={14}
@@ -849,8 +858,8 @@ export function Forum() {
               <div className={styles.replyInputRow}>
                 <textarea
                   placeholder={replyTo ? `Reply to ${replyTo.author || 'message'}...` : 'Continue the discussion... (⌘+Enter to send)'}
-                  value={newMessage}
-                  onChange={e => setNewMessage(e.target.value)}
+                  ref={newMessageRef}
+                  defaultValue={newMessage}
                   onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
                   className={styles.textarea}
                   rows={3}

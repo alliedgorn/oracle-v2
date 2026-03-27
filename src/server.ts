@@ -3083,7 +3083,8 @@ app.post('/api/library', async (c) => {
     const tags = JSON.stringify(data.tags || []);
     const now = Date.now();
 
-    const shelfId = data.shelf_id !== undefined ? (data.shelf_id || null) : null;
+    const shelfId = data.shelf_id ? Number(data.shelf_id) : null;
+    if (!shelfId) return c.json({ error: 'shelf_id required — every entry must belong to a shelf' }, 400);
     const result = sqlite.prepare(
       'INSERT INTO library (title, content, type, author, tags, shelf_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(data.title, data.content, type, data.author, tags, shelfId, now, now);

@@ -82,8 +82,8 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
     return () => clearInterval(interval);
   }, [collapsed, loadStatus]);
 
-  // WebSocket: refresh unread counts on new DM
-  useWebSocket('new_dm', useCallback(() => { loadUnread(); }, [loadUnread]));
+  // WebSocket: refresh unread counts on new DM (slight delay so ChatOverlay's markAsRead completes first)
+  useWebSocket('new_dm', useCallback(() => { setTimeout(() => loadUnread(), 500); }, [loadUnread]));
 
   async function handleClick(beast: Beast) {
     if (beast.status === 'offline') return;
@@ -164,12 +164,10 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
           beastName={chatBeast.name}
           displayName={chatBeast.displayName}
           onClose={() => {
-            // Mark as read before closing, then refresh unread counts
-            fetch(`${API_BASE}/dm/gorn/${chatBeast.name}/read`, { method: 'PATCH' })
-              .then(() => loadUnread())
-              .catch(() => {});
             setChatBeast(null);
             localStorage.removeItem('chatBeast');
+            // Refresh unread counts after close
+            loadUnread();
           }}
         />
       )}

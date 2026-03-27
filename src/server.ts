@@ -5573,6 +5573,138 @@ app.get('/api/routine/photo/:filename', (c) => {
   return new Response(fs.readFileSync(filePath), { headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' } });
 });
 
+// POST /api/routine/import/alpha-progression — import Alpha Progression CSV (T#389)
+app.post('/api/routine/import/alpha-progression', async (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access denied' }, 403);
+
+  try {
+    const formData = await c.req.formData();
+    const file = formData.get('file') as File;
+    if (!file) return c.json({ error: 'No file provided' }, 400);
+
+    const text = await file.text();
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+    const sessions: any[] = [];
+    let currentSession: any = null;
+    let currentExercise: any = null;
+    let unit = 'KG';
+    let hasRir = false;
+
+    for (const line of lines) {
+      // Session header: "Workout Name";"date";"duration"
+      if (line.startsWith('"') && line.includes('";"')) {
+        const parts = line.split('";').map(s => s.replace(/^"|"$/g, ''));
+        if (parts.length >= 3 && parts[1].match(/\d{4}-\d{2}-\d{2}/)) {
+          if (currentSession) {
+            if (currentExercise) currentSession.exercises.push(currentExercise);
+            sessions.push(currentSession);
+          }
+          currentSession = {
+            name: parts[0],
+            date: parts[1],
+            duration: parts[2],
+            exercises: [],
+          };
+          currentExercise = null;
+          continue;
+        }
+      }
+
+      // Exercise header: "1. Exercise Name · Equipment · N reps"
+      if (line.startsWith('"') && line.match(/^"\d+\./)) {
+        if (currentExercise && currentSession) currentSession.exercises.push(currentExercise);
+        const name = line.replace(/^"|"$/g, '');
+        currentExercise = { name, sets: [], unit: 'KG' };
+        continue;
+      }
+
+      // Unit row: #;KG;REPS or #;LB;REPS or #;KG;REPS;RIR
+      if (line.startsWith('#;')) {
+        const parts = line.split(';');
+        unit = parts[1] || 'KG';
+        hasRir = parts.includes('RIR');
+        if (currentExercise) currentExercise.unit = unit;
+        continue;
+      }
+
+      // Set row: 1;220;8 or 1;+0;12 or 1;-;-
+      if (currentExercise && line.match(/^\d+;/)) {
+        const parts = line.split(';');
+        const setNum = parseInt(parts[0], 10);
+        const weightStr = parts[1];
+        const repsStr = parts[2];
+        const rirStr = hasRir ? parts[3] : undefined;
+
+        if (weightStr === '-' || repsStr === '-') continue; // Skip empty sets
+
+        const weight = weightStr.startsWith('+') ? parseFloat(weightStr) : parseFloat(weightStr);
+        const reps = parseInt(repsStr, 10);
+        if (isNaN(weight) || isNaN(reps)) continue;
+
+        const set: any = { set: setNum, weight, reps, unit };
+        if (rirStr && rirStr !== '-') set.rir = rirStr;
+        currentExercise.sets.push(set);
+      }
+    }
+
+    // Push last session
+    if (currentSession) {
+      if (currentExercise) currentSession.exercises.push(currentExercise);
+      sessions.push(currentSession);
+    }
+
+    // Filter out exercises with no completed sets
+    for (const session of sessions) {
+      session.exercises = session.exercises.filter((e: any) => e.sets.length > 0);
+    }
+
+    // Preview mode: return parsed data without importing
+    const preview = c.req.query('preview') === 'true';
+    if (preview) {
+      return c.json({
+        sessions: sessions.length,
+        date_range: sessions.length > 0 ? {
+          from: sessions[sessions.length - 1].date,
+          to: sessions[0].date,
+        } : null,
+        total_exercises: sessions.reduce((sum: number, s: any) => sum + s.exercises.length, 0),
+        total_sets: sessions.reduce((sum: number, s: any) => sum + s.exercises.reduce((esum: number, e: any) => esum + e.sets.length, 0), 0),
+        sample: sessions.slice(0, 3),
+      });
+    }
+
+    // Import: insert each session as a workout routine_log
+    const now = new Date().toISOString();
+    const insert = sqlite.prepare(
+      'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
+    );
+    let imported = 0;
+    for (const session of sessions) {
+      const loggedAt = new Date(session.date).toISOString();
+      const data = JSON.stringify({
+        workout_name: session.name,
+        duration: session.duration,
+        exercises: session.exercises,
+      });
+      insert.run('workout', loggedAt, data, 'alpha-progression', now);
+      imported++;
+    }
+
+    return c.json({
+      imported,
+      date_range: sessions.length > 0 ? {
+        from: sessions[sessions.length - 1].date,
+        to: sessions[0].date,
+      } : null,
+      total_exercises: sessions.reduce((sum: number, s: any) => sum + s.exercises.length, 0),
+      total_sets: sessions.reduce((sum: number, s: any) => sum + s.exercises.reduce((esum: number, e: any) => esum + e.sets.length, 0), 0),
+    });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Import failed' }, 500);
+  }
+});
+
 // ============================================================================
 // Rules — Decree and Norm governance (T#360)
 // ============================================================================

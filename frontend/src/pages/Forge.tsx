@@ -93,6 +93,7 @@ export function Forge() {
   const [typeFilter, setTypeFilter] = useState('');
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [weightRange, setWeightRange] = useState('year');
   const PAGE_SIZE = 30;
 
   const loadData = useCallback(async () => {
@@ -101,7 +102,7 @@ export function Forge() {
     const [logsRes, statsRes, weightRes] = await Promise.all([
       fetch(`${API_BASE}/routine/logs?${params}`),
       fetch(`${API_BASE}/routine/stats`),
-      fetch(`${API_BASE}/routine/weight`),
+      fetch(`${API_BASE}/routine/weight?range=${weightRange}`),
     ]);
     const logsData = await logsRes.json();
     const newLogs = logsData.logs || [];
@@ -109,7 +110,7 @@ export function Forge() {
     setHasMore(newLogs.length >= PAGE_SIZE);
     setStats(await statsRes.json());
     setWeights((await weightRes.json()).weights || []);
-  }, [typeFilter]);
+  }, [typeFilter, weightRange]);
 
   async function loadMore() {
     if (loadingMore || !hasMore) return;
@@ -359,11 +360,29 @@ export function Forge() {
       {/* Weight trend */}
       {weights.length > 0 && (
         <div className={styles.weightSection}>
-          <h3>Weight Trend</h3>
+          <div className={styles.historyHeader}>
+            <h3>Weight Trend</h3>
+            <div className={styles.filters}>
+              {[
+                { id: 'week', label: '1W' },
+                { id: 'month', label: '1M' },
+                { id: 'year', label: '1Y' },
+                { id: '3y', label: '3Y' },
+                { id: '10y', label: '10Y' },
+                { id: 'all', label: 'All' },
+              ].map(r => (
+                <button
+                  key={r.id}
+                  className={`${styles.filterBtn} ${weightRange === r.id ? styles.filterActive : ''}`}
+                  onClick={() => setWeightRange(r.id)}
+                >{r.label}</button>
+              ))}
+            </div>
+          </div>
           <div className={styles.weightChart}>
-            {weights.slice(-14).map((w: any, i: number) => {
-              const min = Math.min(...weights.slice(-14).map((x: any) => x.value));
-              const max = Math.max(...weights.slice(-14).map((x: any) => x.value));
+            {weights.map((w: any, i: number) => {
+              const min = Math.min(...weights.map((x: any) => x.value));
+              const max = Math.max(...weights.map((x: any) => x.value));
               const range = max - min || 1;
               const height = ((w.value - min) / range) * 80 + 20;
               return (

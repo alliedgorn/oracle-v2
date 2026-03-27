@@ -5478,8 +5478,21 @@ app.get('/api/routine/today', (c) => {
 // GET /api/routine/weight — weight history for chart
 app.get('/api/routine/weight', (c) => {
   if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const range = c.req.query('range'); // week, month, year, 3y, 10y, all
+  let dateFilter = '';
+  if (range) {
+    const now = new Date();
+    const rangeMap: Record<string, number> = {
+      week: 7, month: 30, year: 365, '3y': 365 * 3, '10y': 365 * 10,
+    };
+    const days = rangeMap[range];
+    if (days) {
+      const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+      dateFilter = ` AND logged_at >= '${from}'`;
+    }
+  }
   const rows = sqlite.prepare(
-    "SELECT id, logged_at, json_extract(data, '$.value') as value, json_extract(data, '$.unit') as unit FROM routine_logs WHERE type = 'weight' AND deleted_at IS NULL ORDER BY logged_at ASC"
+    `SELECT id, logged_at, json_extract(data, '$.value') as value, json_extract(data, '$.unit') as unit FROM routine_logs WHERE type = 'weight' AND deleted_at IS NULL${dateFilter} ORDER BY logged_at ASC`
   ).all();
   return c.json({ weights: rows });
 });

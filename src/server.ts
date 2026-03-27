@@ -5907,62 +5907,6 @@ if (fs.existsSync(FRONTEND_DIST)) {
     return c.notFound();
   });
 
-  // PWA files — service worker, manifest, icons
-  app.get('/sw.js', (c) => {
-    const filePath = path.join(FRONTEND_DIST, 'sw.js');
-    if (fs.existsSync(filePath)) {
-      c.header('Content-Type', 'application/javascript');
-      c.header('Cache-Control', 'no-cache');
-      c.header('Service-Worker-Allowed', '/');
-      return c.body(fs.readFileSync(filePath));
-    }
-    return c.notFound();
-  });
-
-  app.get('/manifest.webmanifest', (c) => {
-    const filePath = path.join(FRONTEND_DIST, 'manifest.webmanifest');
-    if (fs.existsSync(filePath)) {
-      c.header('Content-Type', 'application/manifest+json');
-      return c.body(fs.readFileSync(filePath));
-    }
-    return c.notFound();
-  });
-
-  app.get('/registerSW.js', (c) => {
-    const filePath = path.join(FRONTEND_DIST, 'registerSW.js');
-    if (fs.existsSync(filePath)) {
-      c.header('Content-Type', 'application/javascript');
-      return c.body(fs.readFileSync(filePath));
-    }
-    return c.notFound();
-  });
-
-  app.get('/workbox-*', (c) => {
-    const filePath = path.join(FRONTEND_DIST, c.req.path.slice(1));
-    if (fs.existsSync(filePath)) {
-      c.header('Content-Type', 'application/javascript');
-      c.header('Cache-Control', 'public, max-age=31536000, immutable');
-      return c.body(fs.readFileSync(filePath));
-    }
-    return c.notFound();
-  });
-
-  app.get('/icons/*', (c) => {
-    const filePath = path.join(FRONTEND_DIST, c.req.path);
-    if (fs.existsSync(filePath)) {
-      const ext = path.extname(filePath);
-      const mimeTypes: Record<string, string> = {
-        '.png': 'image/png',
-        '.svg': 'image/svg+xml',
-        '.ico': 'image/x-icon',
-      };
-      c.header('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-      c.header('Cache-Control', 'public, max-age=86400');
-      return c.body(fs.readFileSync(filePath));
-    }
-    return c.notFound();
-  });
-
   // SPA fallback — serve index.html for all non-API routes
   app.get('*', (c) => {
     if (c.req.path.startsWith('/api/')) return c.notFound();

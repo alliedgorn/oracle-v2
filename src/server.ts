@@ -4106,7 +4106,7 @@ app.post('/api/schedules/:id/execute', async (c) => {
   const safeTask = schedule.task.replace(/[^a-zA-Z0-9 _./-]/g, '');
   const safeCommand = schedule.command ? schedule.command.replace(/[^a-zA-Z0-9 _./:@=-]/g, '') : '';
   const notification = `# [Scheduler] Due now: ${safeTask} (schedule #${schedule.id})${safeCommand ? ` | Command: ${safeCommand}` : ''}`;
-  const reminder = `# Remember: mark done with PATCH /api/schedules/${schedule.id}/run?as=${schedule.beast}`;
+  const reminder = `# Remember: mark done with curl -s -X PATCH http://localhost:47778/api/schedules/${schedule.id}/run?as=${schedule.beast}`;
 
   try {
     execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(notification)}`, { timeout: 2000 });
@@ -4204,7 +4204,7 @@ function runSchedulerCycle() {
       const safeTask = schedule.task.replace(/[^a-zA-Z0-9 _./-]/g, '');
       const safeCommand = schedule.command ? schedule.command.replace(/[^a-zA-Z0-9 _./:@=-]/g, '') : '';
       const notification = `# [Scheduler] Due now: ${safeTask} (schedule #${schedule.id})${safeCommand ? ` | Command: ${safeCommand}` : ''}`;
-      const reminder = `# Remember: mark done with PATCH /api/schedules/${schedule.id}/run?as=${schedule.beast}`;
+      const reminder = `# Remember: mark done with curl -s -X PATCH http://localhost:47778/api/schedules/${schedule.id}/run?as=${schedule.beast}`;
 
       try {
         execSync(`tmux send-keys -t ${JSON.stringify(sessionName)} -l ${JSON.stringify(notification)}`, { timeout: 2000 });

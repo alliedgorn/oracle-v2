@@ -15,6 +15,8 @@ interface EmojiButtonProps {
 export function EmojiButton({ onSelect }: EmojiButtonProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [pickerStyle, setPickerStyle] = useState<React.CSSProperties>({});
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -24,16 +26,42 @@ export function EmojiButton({ onSelect }: EmojiButtonProps) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  useEffect(() => {
+    if (open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceAbove = rect.top;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const pickerHeight = 320;
+
+      if (spaceAbove > pickerHeight || spaceAbove > spaceBelow) {
+        // Open above
+        setPickerStyle({
+          position: 'fixed',
+          bottom: window.innerHeight - rect.top + 4,
+          left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)),
+        });
+      } else {
+        // Open below
+        setPickerStyle({
+          position: 'fixed',
+          top: rect.bottom + 4,
+          left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)),
+        });
+      }
+    }
+  }, [open]);
+
   return (
     <div className={styles.wrapper} ref={ref}>
       <button
+        ref={triggerRef}
         type="button"
         className={styles.trigger}
         onClick={() => setOpen(!open)}
         title="Insert emoji"
       >😊</button>
       {open && (
-        <div className={styles.picker}>
+        <div className={styles.picker} style={pickerStyle}>
           {EMOJI_GROUPS.map(g => (
             <div key={g.label} className={styles.group}>
               <div className={styles.groupLabel}>{g.label}</div>

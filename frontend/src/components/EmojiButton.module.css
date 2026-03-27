@@ -20,15 +20,12 @@
 }
 
 .picker {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  margin-bottom: 4px;
+  position: fixed;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 8px;
-  z-index: 200;
+  z-index: 10000;
   width: 280px;
   max-height: 300px;
   overflow-y: auto;
@@ -77,11 +74,9 @@
 
 @media (max-width: 480px) {
   .picker {
-    width: 240px;
-    position: fixed;
-    bottom: 60px;
-    left: 8px;
-    right: 8px;
     width: auto;
+    left: 8px !important;
+    right: 8px;
+    max-width: calc(100vw - 16px);
   }
 }

@@ -6019,11 +6019,24 @@ app.post('/api/routine/photo/upload', async (c) => {
     const imageType = detectImageType(buffer);
     if (!imageType) return c.json({ error: 'Invalid image. Only JPG, PNG, GIF, WebP allowed.' }, 400);
 
-    // Process with sharp: EXIF rotation + metadata strip + resize
+    // Process with sharp: EXIF rotation + keep date + strip GPS + resize
     let processedBuffer = buffer;
     let ext = imageType.ext;
+    let captureDate: string | null = null;
     try {
       const sharp = require('sharp');
+      // Extract EXIF date before processing
+      const metadata = await sharp(buffer).metadata();
+      if (metadata.exif) {
+        try {
+          // Parse EXIF for DateTimeOriginal (tag 0x9003)
+          const exifStr = metadata.exif.toString('binary');
+          const dateMatch = exifStr.match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+          if (dateMatch) {
+            captureDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T${dateMatch[4]}:${dateMatch[5]}:${dateMatch[6]}.000Z`;
+          }
+        } catch { /* date extraction failed */ }
+      }
       processedBuffer = await sharp(buffer)
         .rotate()
         .resize(1920, null, { withoutEnlargement: true })
@@ -6036,12 +6049,13 @@ app.post('/api/routine/photo/upload', async (c) => {
     const filename = `${crypto.randomUUID()}${ext}`;
     fs.writeFileSync(path.join(ROUTINE_UPLOADS, filename), processedBuffer);
 
-    // Create log entry
+    // Create log entry — use EXIF capture date if available, otherwise now
     const now = new Date().toISOString();
-    const photoData = JSON.stringify({ url: `/api/routine/photo/${filename}`, tag, notes });
+    const loggedAt = captureDate || now;
+    const photoData = JSON.stringify({ url: `/api/routine/photo/${filename}`, tag, notes, captureDate: captureDate || undefined });
     const result = sqlite.prepare(
       'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).run('photo', now, photoData, 'manual', now);
+    ).run('photo', loggedAt, photoData, 'manual', now);
     const log = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ?').get((result as any).lastInsertRowid);
     return c.json(log, 201);
   } catch { return c.json({ error: 'Upload failed' }, 500); }

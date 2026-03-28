@@ -6312,6 +6312,13 @@ app.post('/api/routine/logs', async (c) => {
     if (!['meal', 'workout', 'weight', 'note', 'photo'].includes(type)) {
       return c.json({ error: 'type must be meal, workout, weight, note, or photo' }, 400);
     }
+    // Meal macro validation — calories, protein, carbs, fat required (T#423)
+    if (type === 'meal') {
+      const mealData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+      if (!mealData.description) return c.json({ error: 'Meal description required' }, 400);
+      const missing = ['calories', 'protein', 'carbs', 'fat'].filter(f => mealData[f] == null || mealData[f] === '');
+      if (missing.length > 0) return c.json({ error: `Meal macros required: ${missing.join(', ')}` }, 400);
+    }
     const jsonData = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
     const now = new Date().toISOString();
     const result = sqlite.prepare(

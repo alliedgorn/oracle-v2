@@ -529,6 +529,7 @@ export function Forge() {
   const [summary, setSummary] = useState<any>(null);
   const [personalRecords, setPersonalRecords] = useState<any[]>([]);
   const [prTimeFilter, setPrTimeFilter] = useState<'all' | 'month'>('all');
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
 
   const PAGE_SIZE = 30;
 
@@ -1080,14 +1081,20 @@ export function Forge() {
                       onClick={() => setWeightRange(r.id)}
                     >{r.label}</button>
                   ))}
+                  <button
+                    className={`${styles.filterBtn} ${styles.filterActive}`}
+                    onClick={() => setWeightUnit(weightUnit === 'kg' ? 'lbs' : 'kg')}
+                    style={{ marginLeft: 8, fontWeight: 600 }}
+                  >{weightUnit.toUpperCase()}</button>
                 </div>
               </div>
               <div className={styles.trendChart}>
                 {(() => {
-                  const GOAL_WEIGHT = 120;
+                  const cv = (v: number) => convertWeight(v, 'kg', weightUnit);
+                  const GOAL_WEIGHT = cv(120);
                   const W = 600, H = 200, PAD_L = 45, PAD_R = 15, PAD_T = 15, PAD_B = 30;
 
-                  const values = weights.map((w: any) => w.value);
+                  const values = weights.map((w: any) => cv(w.value));
                   const dates = weights.map((w: any) => new Date(w.logged_at).getTime());
                   const allMin = Math.min(...values);
                   const allMax = Math.max(...values, GOAL_WEIGHT);
@@ -1104,8 +1111,9 @@ export function Forge() {
 
                   const pts = weights.map((w: any) => ({
                     x: toX(new Date(w.logged_at).getTime()),
-                    y: toY(w.value),
+                    y: toY(cv(w.value)),
                     w,
+                    displayVal: cv(w.value),
                   }));
                   const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
@@ -1125,7 +1133,7 @@ export function Forge() {
                     <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
                       {/* Y-axis label */}
                       <text x={12} y={H / 2} fill="var(--text-muted)" fontSize={10} textAnchor="middle"
-                        transform={`rotate(-90, 12, ${H / 2})`}>kg</text>
+                        transform={`rotate(-90, 12, ${H / 2})`}>{weightUnit}</text>
                       {/* Y-axis grid + labels */}
                       {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                         const val = chartMin + valRange * frac;
@@ -1154,9 +1162,10 @@ export function Forge() {
                         const w = p.w;
                         const isGrouped = weightGrouping !== 'daily' && w.min_value != null;
                         const periodLabel = w.period || new Date(w.logged_at).toLocaleDateString();
+                        const dv = Math.round(p.displayVal * 10) / 10;
                         const tooltip = isGrouped
-                          ? `${periodLabel}: avg ${w.value} kg (${w.min_value}–${w.max_value}, ${w.count} entries)`
-                          : `${w.value} kg — ${new Date(w.logged_at).toLocaleDateString()}`;
+                          ? `${periodLabel}: avg ${dv} ${weightUnit} (${Math.round(cv(w.min_value) * 10) / 10}–${Math.round(cv(w.max_value) * 10) / 10}, ${w.count} entries)`
+                          : `${dv} ${weightUnit} — ${new Date(w.logged_at).toLocaleDateString()}`;
                         return (
                           <circle key={i} cx={p.x} cy={p.y} r={3} fill="#d29922" style={{ cursor: 'pointer' }}>
                             <title>{tooltip}</title>

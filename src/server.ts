@@ -5753,6 +5753,120 @@ app.delete('/api/oauth/withings/disconnect', async (c) => {
   return c.json({ disconnected: true });
 });
 
+// Withings measurement type mapping
+const WITHINGS_MEASTYPES: Record<number, string> = {
+  1: 'weight', 5: 'fat_free_mass', 6: 'body_fat_pct', 8: 'fat_mass',
+  76: 'muscle_mass', 77: 'hydration', 88: 'bone_mass', 170: 'visceral_fat',
+};
+
+// Fetch and store Withings measurements for a date range
+async function syncWithingsMeasurements(startdate: number, enddate: number): Promise<{ synced: number; skipped: number }> {
+  const tokenData = await ensureFreshWithingsToken();
+  if (!tokenData) throw new Error('No Withings connection');
+
+  const params: Record<string, string> = {
+    action: 'getmeas',
+    meastypes: '1,5,6,8,76,77,88,170',
+    category: '1',
+  };
+  if (startdate) params.startdate = String(startdate);
+  if (enddate) params.enddate = String(enddate);
+
+  const res = await fetch('https://wbsapi.withings.net/measure', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Bearer ${tokenData.accessToken}` },
+    body: new URLSearchParams(params),
+  });
+  const data = await res.json() as any;
+  if (data.status !== 0) throw new Error(`Withings API error: ${data.error || data.status}`);
+
+  const measuregrps = data.body?.measuregrps || [];
+  let synced = 0, skipped = 0;
+
+  for (const grp of measuregrps) {
+    const grpid = grp.grpid;
+    // Dedup by withings_grpid
+    const existing = sqlite.prepare("SELECT id FROM routine_logs WHERE source = 'withings' AND json_extract(data, '$.withings_grpid') = ? AND deleted_at IS NULL").get(grpid);
+    if (existing) { skipped++; continue; }
+
+    const measurements: Record<string, number> = {};
+    for (const m of grp.measures || []) {
+      const field = WITHINGS_MEASTYPES[m.type];
+      if (field) {
+        measurements[field] = m.value * Math.pow(10, m.unit);
+      }
+    }
+    if (Object.keys(measurements).length === 0) continue;
+
+    const loggedAt = new Date(grp.date * 1000).toISOString();
+    const logData = JSON.stringify({ ...measurements, withings_grpid: grpid });
+    sqlite.prepare(
+      'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run('measurement', loggedAt, logData, 'withings', new Date().toISOString());
+    synced++;
+  }
+
+  console.log(`[Withings] Synced ${synced} measurements, skipped ${skipped} duplicates`);
+  return { synced, skipped };
+}
+
+// POST /api/webhooks/withings — receive Withings push notifications (T#415)
+app.post('/api/webhooks/withings', async (c) => {
+  // Withings requires 200 response within 2 seconds — respond first, sync async
+  const body = await c.req.parseBody();
+  const userid = String(body.userid || '');
+  const appli = String(body.appli || '');
+  const startdate = parseInt(String(body.startdate || '0'), 10);
+  const enddate = parseInt(String(body.enddate || '0'), 10);
+
+  console.log(`[Withings] Webhook received: userid=${userid} appli=${appli} startdate=${startdate} enddate=${enddate}`);
+
+  // Validate userid matches stored token
+  const token = sqlite.prepare("SELECT user_id FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
+  if (!token || token.user_id !== userid) {
+    console.log(`[Withings] Webhook rejected: unknown userid ${userid}`);
+    return c.text('OK', 200); // Still return 200 to avoid Withings retries
+  }
+
+  // Only handle weight/body comp (appli=1)
+  if (appli !== '1') {
+    return c.text('OK', 200);
+  }
+
+  // Async sync — don't block the 200 response
+  syncWithingsMeasurements(startdate, enddate).catch(err => {
+    console.error('[Withings] Async sync failed:', err);
+  });
+
+  return c.text('OK', 200);
+});
+
+// POST /api/oauth/withings/sync — manual sync trigger (T#415)
+app.post('/api/oauth/withings/sync', async (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access required' }, 403);
+
+  const token = sqlite.prepare("SELECT * FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
+  if (!token) return c.json({ error: 'Withings not connected' }, 400);
+
+  try {
+    // Get last sync time from most recent Withings log
+    const lastLog = sqlite.prepare(
+      "SELECT logged_at FROM routine_logs WHERE source = 'withings' AND deleted_at IS NULL ORDER BY logged_at DESC LIMIT 1"
+    ).get() as any;
+
+    const now = Math.floor(Date.now() / 1000);
+    // If we have previous data, sync from last entry; otherwise sync last 30 days
+    const startdate = lastLog
+      ? Math.floor(new Date(lastLog.logged_at).getTime() / 1000)
+      : now - 30 * 86400;
+
+    const result = await syncWithingsMeasurements(startdate, now);
+    return c.json({ success: true, ...result });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Sync failed' }, 500);
+  }
+});
+
 // ============================================================================
 // Forge — Personal Routine Tracker for Gorn (T#372)
 // ============================================================================

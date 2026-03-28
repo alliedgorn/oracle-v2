@@ -274,7 +274,9 @@ export function ChatOverlay({ beastName, displayName, onClose, expandSignal }: C
 
   return (
     <div className={`${styles.overlay} ${collapsed ? styles.overlayCollapsed : ''}`}>
-      <div className={styles.header} onClick={() => {
+      <div className={styles.header} onMouseDown={(e) => {
+        if ((e.target as HTMLElement).closest('button')) return;
+        e.preventDefault();
         const wasCollapsed = collapsed;
         setCollapsed(!collapsed);
         if (wasCollapsed) {

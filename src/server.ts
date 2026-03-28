@@ -2876,6 +2876,7 @@ app.patch('/api/dm/:name/:other/read', (c) => {
     }
   }
   const result = markRead(reader, other);
+  if (result.markedRead > 0) wsBroadcast('dm_read', { conversation_id: result.conversationId, reader });
   return c.json({
     marked_read: result.markedRead,
     conversation_id: result.conversationId,
@@ -2894,6 +2895,7 @@ app.patch('/api/dm/:name/:other/read-all', (c) => {
     }
   }
   const result = markAllRead(name, other);
+  if (result.markedRead > 0) wsBroadcast('dm_read', { conversation_id: result.conversationId, reader: name });
   return c.json({
     marked_read: result.markedRead,
     conversation_id: result.conversationId,

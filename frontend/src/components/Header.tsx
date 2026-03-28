@@ -178,6 +178,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   useWebSocket('spec_resubmitted', loadBadges);
   useWebSocket('prowl_update', loadBadges);
   useWebSocket('new_dm', loadBadges);
+  useWebSocket('dm_read', loadBadges);
 
   function formatDuration(ms: number): string {
     const minutes = Math.floor(ms / 60000);

@@ -124,6 +124,14 @@ export function Board() {
     return () => window.removeEventListener('keydown', handler);
   }, [selectedTask]);
 
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    if (selectedTask) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [selectedTask]);
+
   // WebSocket real-time updates (replaced 10s polling)
   const handleWsUpdate = useCallback(() => {
     loadBoard();

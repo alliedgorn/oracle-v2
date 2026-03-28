@@ -5035,61 +5035,43 @@ app.post('/api/specs/:id/review', async (c) => {
     ).run(status, feedback || null, now, now, id);
     const updated = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
     wsBroadcast('spec_reviewed', { id: (updated as any).id, action });
-    // Auto-comment on associated PM Board task + notify assignee
-    if (spec.task_id) {
-      const taskIdNum = parseInt(spec.task_id.replace(/\D/g, ''), 10);
-      if (!isNaN(taskIdNum)) {
-        const task = sqlite.prepare('SELECT id, assigned_to, created_by, title FROM tasks WHERE id = ?').get(taskIdNum) as any;
-        if (task) {
-          const commentContent = action === 'approve'
-            ? `Spec approved by Gorn.${feedback ? ` ${feedback}` : ''} Implementation unblocked.`
-            : `Spec rejected by Gorn: ${feedback}`;
-          sqlite.prepare(
-            'INSERT INTO task_comments (task_id, author, content, created_at) VALUES (?, ?, ?, ?)'
-          ).run(taskIdNum, 'gorn', commentContent, now);
-          // Notify assignee and creator
-          try {
-            const { notifyMentioned } = await import('./forum/mentions.ts');
-            const toNotify = new Set<string>();
-            if (task.assigned_to) toNotify.add(task.assigned_to.toLowerCase());
-            if (task.created_by) toNotify.add(task.created_by.toLowerCase());
-            if (spec.author) toNotify.add(spec.author.toLowerCase());
-            // Add spec comment participants
-            const specParticipants = sqlite.prepare(
-              'SELECT DISTINCT author FROM spec_comments WHERE spec_id = ?'
-            ).all(id) as any[];
-            for (const p of specParticipants) {
-              if (p.author) toNotify.add(p.author.toLowerCase());
-            }
-            toNotify.delete('gorn');
-            if (toNotify.size > 0) {
-              notifyMentioned(
-                [...toNotify],
-                0,
-                `Task #${taskIdNum}: ${task.title || 'Untitled'}`,
-                'gorn',
-                `Spec ${action}d: ${commentContent.slice(0, 100)}`,
-                {
-                  type: 'Specs',
-                  label: `Spec #${id} (task #${taskIdNum})`,
-                  hint: `Use /spec to view spec details. Use /board task ${taskIdNum} to view task.`,
-                }
-              );
-            }
-          } catch { /* notification failure is non-critical */ }
+    // Notify spec participants (assignee, creator, author, commenters)
+    try {
+      const { notifyMentioned } = await import('./forum/mentions.ts');
+      const toNotify = new Set<string>();
+      if (spec.author) toNotify.add(spec.author.toLowerCase());
+      if (spec.task_id) {
+        const taskIdNum = parseInt(spec.task_id.replace(/\D/g, ''), 10);
+        if (!isNaN(taskIdNum)) {
+          const task = sqlite.prepare('SELECT assigned_to, created_by, title FROM tasks WHERE id = ?').get(taskIdNum) as any;
+          if (task?.assigned_to) toNotify.add(task.assigned_to.toLowerCase());
+          if (task?.created_by) toNotify.add(task.created_by.toLowerCase());
         }
       }
-    }
+      const specParticipants = sqlite.prepare('SELECT DISTINCT author FROM spec_comments WHERE spec_id = ?').all(id) as any[];
+      for (const p of specParticipants) { if (p.author) toNotify.add(p.author.toLowerCase()); }
+      toNotify.delete('gorn');
+      const commentContent = action === 'approve'
+        ? `Spec approved by Gorn.${feedback ? ` ${feedback}` : ''} Implementation unblocked.`
+        : `Spec rejected by Gorn: ${feedback}`;
+      if (toNotify.size > 0) {
+        notifyMentioned([...toNotify], 0, `Spec #${id}: ${spec.title}`, 'gorn', `Spec ${action}d: ${commentContent.slice(0, 100)}`, {
+          type: 'Specs', label: `Spec #${id}`, hint: `Use /spec to view spec details.`,
+        });
+      }
+    } catch { /* notification failure is non-critical */ }
 
-    // Auto-post to linked forum thread (T#413)
-    if (updated.thread_id) {
+    // Auto-post to ALL linked forum threads (per Gorn: threads only, no task comments)
+    const linkedThreads = sqlite.prepare("SELECT link_id FROM spec_links WHERE spec_id = ? AND link_type = 'thread'").all(id) as any[];
+    // Also include legacy thread_id
+    const threadIds = new Set<number>(linkedThreads.map((l: any) => l.link_id));
+    if (updated.thread_id) threadIds.add(updated.thread_id);
+    for (const threadId of threadIds) {
       try {
         const threadMsg = action === 'approve'
           ? `Spec #${id} **approved** by Gorn.${feedback ? ` ${feedback}` : ''} Implementation unblocked.`
           : `Spec #${id} **rejected** by Gorn: ${feedback}`;
-        sqlite.prepare(
-          'INSERT INTO messages (thread_id, content, role, author, created_at) VALUES (?, ?, ?, ?, ?)'
-        ).run(updated.thread_id, threadMsg, 'system', 'gorn', now);
+        addMessage(threadId, 'claude', threadMsg, { author: 'system' });
       } catch { /* thread post failure is non-critical */ }
     }
 

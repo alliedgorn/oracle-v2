@@ -5813,11 +5813,12 @@ app.delete('/api/routine/logs/:id', (c) => {
 app.post('/api/routine/photo/upload', async (c) => {
   if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   try {
-    const formData = await c.req.formData();
+    let formData: FormData;
+    try { formData = await c.req.formData(); } catch { return c.json({ error: 'No file provided. Send multipart/form-data with a file field.' }, 400); }
     const file = formData.get('file') as File;
     const tag = formData.get('tag') as string || '';
     const notes = formData.get('notes') as string || '';
-    if (!file) return c.json({ error: 'No file provided' }, 400);
+    if (!file || !(file instanceof File) || file.size === 0) return c.json({ error: 'No file provided' }, 400);
     if (file.size > 10 * 1024 * 1024) return c.json({ error: 'File too large. Max 10MB' }, 400);
 
     const buffer = Buffer.from(await file.arrayBuffer());

@@ -155,7 +155,10 @@ export function Header({ onRemoteToggle }: HeaderProps) {
       const specsData = await specsRes.json();
       const prowlData = await prowlRes.json();
       const dmData = await dmRes.json();
-      const dmUnread = (dmData.conversations || []).reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
+      const gornConvos = (dmData.conversations || []).filter((c: any) =>
+        (c.participants || []).some((p: string) => p.toLowerCase() === 'gorn')
+      );
+      const dmUnread = gornConvos.reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
       setBadges({
         specs: specsData.specs?.length || 0,
         prowl: prowlData.counts?.pending || 0,

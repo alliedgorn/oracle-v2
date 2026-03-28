@@ -5709,13 +5709,15 @@ app.get('/api/routine/workout-trends', (c) => {
 
     for (const ex of exercises) {
       const rawName = typeof ex === 'string' ? ex : (ex.name || '');
-      const { name } = parseExerciseName(rawName);
+      const { name, equipment } = parseExerciseName(rawName);
       if (!name) continue;
+      // Include equipment in the key to split Machine vs Dumbbell etc.
+      const displayName = equipment ? `${name} · ${equipment}` : name;
 
       // Filter by exercise if specified
-      if (exercise && name.toLowerCase() !== exercise.toLowerCase()) continue;
+      if (exercise && displayName.toLowerCase() !== exercise.toLowerCase()) continue;
 
-      exerciseFrequency.set(name, (exerciseFrequency.get(name) || 0) + 1);
+      exerciseFrequency.set(displayName, (exerciseFrequency.get(displayName) || 0) + 1);
 
       const sets: any[] = ex.sets || [];
       if (sets.length === 0) continue;
@@ -5734,8 +5736,8 @@ app.get('/api/routine/workout-trends', (c) => {
         totalReps += r;
       }
 
-      if (!exerciseData.has(name)) exerciseData.set(name, []);
-      exerciseData.get(name)!.push({
+      if (!exerciseData.has(displayName)) exerciseData.set(displayName, []);
+      exerciseData.get(displayName)!.push({
         date: row.logged_at,
         maxWeight,
         totalVolume,

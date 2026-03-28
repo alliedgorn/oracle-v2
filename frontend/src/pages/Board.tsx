@@ -513,7 +513,7 @@ export function Board() {
                   <td>
                     {task.reviewer && (
                       <span className={styles.assignee}>
-                        <span style={{ fontSize: '0.7em', marginRight: 2 }}>👁</span>
+                        <span style={{ fontSize: '0.7em', marginRight: 2, opacity: 0.6 }}>R:</span>
                         {task.reviewer}
                       </span>
                     )}
@@ -655,7 +655,7 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
         )}
         {task.reviewer && (
           <span className={styles.assignee} title="Reviewer">
-            <span style={{ fontSize: '0.7em', marginRight: 2 }}>👁</span>
+            <span style={{ fontSize: '0.7em', marginRight: 2, opacity: 0.6 }}>R:</span>
             {task.reviewer}
           </span>
         )}

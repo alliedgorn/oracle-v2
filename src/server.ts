@@ -5742,16 +5742,16 @@ app.get('/api/routine/workout-trends', (c) => {
     }
   }
 
-  // Get top 5 exercises by frequency (or all if exercise filter is set)
+  // Top 5 by frequency (default selection), but include ALL trend data
+  const sortedExercises = [...exerciseFrequency.entries()]
+    .sort((a, b) => b[1] - a[1]);
   const topExercises = exercise
     ? [...exerciseData.keys()]
-    : [...exerciseFrequency.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([name]) => name);
+    : sortedExercises.slice(0, 5).map(([name]) => name);
 
+  // Include trend data for ALL exercises so frontend can display any selection
   const trends: Record<string, any[]> = {};
-  for (const name of topExercises) {
+  for (const [name] of exerciseData) {
     trends[name] = exerciseData.get(name) || [];
   }
 
@@ -5759,9 +5759,7 @@ app.get('/api/routine/workout-trends', (c) => {
     exercises: topExercises,
     trends,
     totalWorkouts: rows.length,
-    allExercises: [...exerciseFrequency.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count })),
+    allExercises: sortedExercises.map(([name, count]) => ({ name, count })),
   });
 });
 

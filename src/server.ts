@@ -3271,6 +3271,8 @@ try {
   // v3: SDD enforcement columns (T#317)
   try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN approval_required INTEGER NOT NULL DEFAULT 0`).run(); } catch { /* exists */ }
   try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN spec_id INTEGER`).run(); } catch { /* exists */ }
+  // v4: reviewer field for in_review workflow (T#418)
+  try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN reviewer TEXT`).run(); } catch { /* exists */ }
 } catch { /* already exists */ }
 
 const VALID_TASK_TYPES = ['bug', 'feature', 'improvement', 'chore', 'task'];
@@ -3493,7 +3495,7 @@ app.patch('/api/tasks/:id', async (c) => {
 
   const updates: string[] = [];
   const params: any[] = [];
-  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type', 'approval_required', 'spec_id']) {
+  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type', 'approval_required', 'spec_id', 'reviewer']) {
     if (data[field] !== undefined) { updates.push(`${field} = ?`); params.push(data[field]); }
   }
   if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
@@ -5529,14 +5531,21 @@ sqlite.exec(`
     user_id TEXT,
     access_token_enc TEXT NOT NULL,
     refresh_token_enc TEXT NOT NULL,
-    token_iv TEXT NOT NULL,
-    token_tag TEXT NOT NULL,
+    access_iv TEXT NOT NULL,
+    access_tag TEXT NOT NULL,
+    refresh_iv TEXT NOT NULL,
+    refresh_tag TEXT NOT NULL,
     expires_at INTEGER NOT NULL,
     scopes TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )
 `);
+// Migration: rename columns if old schema exists
+try { sqlite.prepare('ALTER TABLE oauth_tokens ADD COLUMN access_iv TEXT').run(); } catch { /* exists */ }
+try { sqlite.prepare('ALTER TABLE oauth_tokens ADD COLUMN access_tag TEXT').run(); } catch { /* exists */ }
+try { sqlite.prepare('ALTER TABLE oauth_tokens ADD COLUMN refresh_iv TEXT').run(); } catch { /* exists */ }
+try { sqlite.prepare('ALTER TABLE oauth_tokens ADD COLUMN refresh_tag TEXT').run(); } catch { /* exists */ }
 
 // AES-256-GCM encryption for OAuth tokens
 const OAUTH_KEY = process.env.OAUTH_ENCRYPTION_KEY; // 32-byte hex string
@@ -5593,12 +5602,12 @@ async function ensureFreshWithingsToken(): Promise<{ accessToken: string; userId
   const now = Math.floor(Date.now() / 1000);
   if (token.expires_at > now + 600) {
     // Token still fresh (>10 min remaining)
-    return { accessToken: decryptToken(token.access_token_enc, token.token_iv, token.token_tag), userId: token.user_id };
+    return { accessToken: decryptToken(token.access_token_enc, token.access_iv || token.token_iv, token.access_tag || token.token_tag), userId: token.user_id };
   }
 
   // Refresh token
   try {
-    const refreshToken = decryptToken(token.refresh_token_enc, token.token_iv, token.token_tag);
+    const refreshToken = decryptToken(token.refresh_token_enc, token.refresh_iv || token.token_iv, token.refresh_tag || token.token_tag);
     const nonce = await getWithingsNonce();
     const signature = withingsSign(`requesttoken,${WITHINGS_CLIENT_ID},${nonce}`);
     const res = await fetch('https://wbsapi.withings.net/v2/oauth2', {
@@ -5617,9 +5626,9 @@ async function ensureFreshWithingsToken(): Promise<{ accessToken: string; userId
     const enc = encryptToken(access_token);
     const refreshEnc = encryptToken(refresh_token);
     sqlite.prepare(
-      `UPDATE oauth_tokens SET access_token_enc = ?, refresh_token_enc = ?, token_iv = ?, token_tag = ?,
+      `UPDATE oauth_tokens SET access_token_enc = ?, refresh_token_enc = ?, access_iv = ?, access_tag = ?, refresh_iv = ?, refresh_tag = ?,
        expires_at = ?, user_id = ?, updated_at = ? WHERE id = ?`
-    ).run(enc.encrypted, refreshEnc.encrypted, enc.iv, enc.tag, now + expires_in, userid, now, token.id);
+    ).run(enc.encrypted, refreshEnc.encrypted, enc.iv, enc.tag, refreshEnc.iv, refreshEnc.tag, now + expires_in, userid, now, token.id);
 
     return { accessToken: access_token, userId: userid };
   } catch (err) {
@@ -5688,9 +5697,9 @@ app.get('/api/oauth/withings/callback', async (c) => {
     // Store (upsert — replace existing Withings connection)
     sqlite.prepare("DELETE FROM oauth_tokens WHERE provider = 'withings'").run();
     sqlite.prepare(
-      `INSERT INTO oauth_tokens (provider, user_id, access_token_enc, refresh_token_enc, token_iv, token_tag, expires_at, scopes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run('withings', String(userid), accessEnc.encrypted, refreshEnc.encrypted, accessEnc.iv, accessEnc.tag, now + expires_in, scope || 'user.info,user.metrics', now, now);
+      `INSERT INTO oauth_tokens (provider, user_id, access_token_enc, refresh_token_enc, access_iv, access_tag, refresh_iv, refresh_tag, expires_at, scopes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run('withings', String(userid), accessEnc.encrypted, refreshEnc.encrypted, accessEnc.iv, accessEnc.tag, refreshEnc.iv, refreshEnc.tag, now + expires_in, scope || 'user.info,user.metrics', now, now);
 
     // Subscribe to webhook for weight/body composition (appli=1)
     try {

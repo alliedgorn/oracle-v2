@@ -90,10 +90,21 @@ function WorkoutCard({ data }: { data: any }) {
 // Line chart colors for workout trends (5-color palette for dark bg)
 const TREND_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#a78bfa'];
 
+const KG_TO_LB = 2.20462;
+const LB_TO_KG = 1 / KG_TO_LB;
+
+function convertWeight(value: number, fromUnit: string, toUnit: 'kg' | 'lbs'): number {
+  const from = (fromUnit || 'kg').toLowerCase();
+  if (from === toUnit) return value;
+  if (toUnit === 'lbs') return value * KG_TO_LB;
+  return value * LB_TO_KG;
+}
+
 function WorkoutTrendsChart({ range }: { range: string }) {
   const [trends, setTrends] = useState<any>(null);
   const [metric, setMetric] = useState<'maxWeight' | 'totalVolume' | 'totalReps'>('maxWeight');
   const [selectedExercises, setSelectedExercises] = useState<string[]>([]);
+  const [displayUnit, setDisplayUnit] = useState<'kg' | 'lbs'>('kg');
 
   useEffect(() => {
     fetch(`${API_BASE}/routine/workout-trends?range=${range}`)
@@ -112,10 +123,15 @@ function WorkoutTrendsChart({ range }: { range: string }) {
   const exercises = selectedExercises.filter(e => trends.trends[e]?.length > 0);
   const noSelection = exercises.length === 0;
 
+  // Weight metrics need unit conversion
+  const isWeightMetric = metric === 'maxWeight' || metric === 'totalVolume';
+
   const allPoints: { date: number; value: number }[] = [];
   for (const ex of exercises) {
     for (const pt of trends.trends[ex] || []) {
-      allPoints.push({ date: new Date(pt.date).getTime(), value: pt[metric] });
+      let val = pt[metric];
+      if (isWeightMetric) val = convertWeight(val, pt.unit || 'kg', displayUnit);
+      allPoints.push({ date: new Date(pt.date).getTime(), value: val });
     }
   }
   const hasData = !noSelection && allPoints.length > 0;
@@ -127,12 +143,24 @@ function WorkoutTrendsChart({ range }: { range: string }) {
   const valRange = maxVal - minVal || 1;
   const dateRange = maxDate - minDate || 1;
 
-  const W = 600, H = 180, PAD = 30;
+  const W = 600, H = 200, PAD_L = 45, PAD_R = 15, PAD_T = 15, PAD_B = 30;
 
-  function toX(date: number) { return PAD + ((date - minDate) / dateRange) * (W - PAD * 2); }
-  function toY(val: number) { return H - PAD - ((val - minVal + valRange * 0.1) / (valRange * 1.2)) * (H - PAD * 2); }
+  function toX(date: number) { return PAD_L + ((date - minDate) / dateRange) * (W - PAD_L - PAD_R); }
+  function toY(val: number) { return H - PAD_B - ((val - minVal + valRange * 0.1) / (valRange * 1.2)) * (H - PAD_T - PAD_B); }
+
+  // Generate x-axis date labels (4-6 evenly spaced)
+  const xLabelCount = 5;
+  const xLabels: { date: number; label: string }[] = [];
+  if (hasData) {
+    for (let i = 0; i < xLabelCount; i++) {
+      const t = minDate + (dateRange * i) / (xLabelCount - 1);
+      const d = new Date(t);
+      xLabels.push({ date: t, label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
+    }
+  }
 
   const metricLabels: Record<string, string> = { maxWeight: 'Max Weight', totalVolume: 'Volume', totalReps: 'Total Reps' };
+  const yAxisLabel = metric === 'totalReps' ? 'reps' : displayUnit;
 
   return (
     <div className={styles.weightSection}>
@@ -143,6 +171,13 @@ function WorkoutTrendsChart({ range }: { range: string }) {
             <button key={m} className={`${styles.filterBtn} ${metric === m ? styles.filterActive : ''}`}
               onClick={() => setMetric(m)}>{metricLabels[m]}</button>
           ))}
+          {isWeightMetric && (
+            <button
+              className={`${styles.filterBtn} ${styles.filterActive}`}
+              onClick={() => setDisplayUnit(displayUnit === 'kg' ? 'lbs' : 'kg')}
+              style={{ marginLeft: 8 }}
+            >{displayUnit.toUpperCase()}</button>
+          )}
         </div>
       </div>
       <div className={styles.trendChart}>
@@ -153,22 +188,39 @@ function WorkoutTrendsChart({ range }: { range: string }) {
             </text>
           ) : (
           <>
+          {/* Y-axis label */}
+          <text x={12} y={H / 2} fill="var(--text-muted)" fontSize={10} textAnchor="middle"
+            transform={`rotate(-90, 12, ${H / 2})`}>{yAxisLabel}</text>
+          {/* Y-axis grid + labels (values already in display unit since allPoints are converted) */}
           {[0, 0.25, 0.5, 0.75, 1].map(frac => {
-            const y = toY(minVal + valRange * frac);
-            const label = Math.round(minVal + valRange * frac);
+            const val = minVal + valRange * frac;
+            const y = toY(val);
             return (
               <g key={frac}>
-                <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke="var(--border)" strokeWidth={0.5} />
-                <text x={PAD - 4} y={y + 3} fill="var(--text-muted)" fontSize={9} textAnchor="end">{label}</text>
+                <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="var(--border)" strokeWidth={0.5} />
+                <text x={PAD_L - 4} y={y + 3} fill="var(--text-muted)" fontSize={9} textAnchor="end">{Math.round(val)}</text>
               </g>
             );
           })}
+          {/* X-axis date labels */}
+          {xLabels.map((xl, i) => (
+            <text key={i} x={toX(xl.date)} y={H - 6} fill="var(--text-muted)" fontSize={9} textAnchor="middle">
+              {xl.label}
+            </text>
+          ))}
+          {/* X-axis line */}
+          <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="var(--border)" strokeWidth={0.5} />
           {exercises.map((exName, ei) => {
-            const pts = (trends.trends[exName] || []).map((pt: any) => ({
-              x: toX(new Date(pt.date).getTime()),
-              y: toY(pt[metric]),
-              raw: pt,
-            }));
+            const pts = (trends.trends[exName] || []).map((pt: any) => {
+              let val = pt[metric];
+              if (isWeightMetric) val = convertWeight(val, pt.unit || 'kg', displayUnit);
+              return {
+                x: toX(new Date(pt.date).getTime()),
+                y: toY(val),
+                raw: pt,
+                convertedVal: val,
+              };
+            });
             if (pts.length === 0) return null;
             const pathD = pts.map((p: any, i: number) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
             return (
@@ -178,7 +230,7 @@ function WorkoutTrendsChart({ range }: { range: string }) {
                   <circle key={i} cx={p.x} cy={p.y} r={3}
                     fill={TREND_COLORS[ei % TREND_COLORS.length]}
                     style={{ cursor: 'pointer' }}>
-                    <title>{`${exName} · ${new Date(p.raw.date).toLocaleDateString()} · ${metric === 'maxWeight' ? p.raw.maxWeight + ' ' + p.raw.unit : metric === 'totalVolume' ? Math.round(p.raw.totalVolume) : p.raw.totalReps}`}</title>
+                    <title>{`${exName} · ${new Date(p.raw.date).toLocaleDateString()} · ${metric === 'maxWeight' ? Math.round(p.convertedVal) + ' ' + displayUnit : metric === 'totalVolume' ? Math.round(p.convertedVal) + ' ' + displayUnit : p.raw.totalReps + ' reps'}`}</title>
                   </circle>
                 ))}
               </g>

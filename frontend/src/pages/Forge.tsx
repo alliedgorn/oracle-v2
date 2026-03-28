@@ -493,6 +493,76 @@ function formatDateNav(date: Date): string {
   return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+function WithingsStatus() {
+  const [status, setStatus] = useState<any>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch(`${API_BASE}/oauth/withings/status`)
+      .then(r => r.json())
+      .then(setStatus)
+      .catch(() => setStatus({ connected: false }));
+  }, []);
+
+  async function handleSync() {
+    setSyncing(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/oauth/withings/sync`, { method: 'POST' });
+      const data = await res.json();
+      if (data.error) setError(data.error);
+      else {
+        // Refresh status after sync
+        const s = await fetch(`${API_BASE}/oauth/withings/status`).then(r => r.json());
+        setStatus(s);
+      }
+    } catch { setError('Sync failed'); }
+    setSyncing(false);
+  }
+
+  async function handleDisconnect() {
+    if (!confirm('Disconnect Withings? Synced data will be kept.')) return;
+    try {
+      await fetch(`${API_BASE}/oauth/withings/disconnect`, { method: 'DELETE' });
+      setStatus({ connected: false });
+    } catch { setError('Disconnect failed'); }
+  }
+
+  if (!status) return null;
+
+  if (!status.connected) {
+    return (
+      <div className={styles.withingsBar}>
+        <a href={`${API_BASE}/oauth/withings/authorize`} className={styles.withingsConnectBtn}>
+          Connect Withings
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.withingsBar}>
+      <span className={styles.withingsStatus}>
+        <span className={styles.withingsDot} />
+        Withings Connected
+      </span>
+      {status.lastSync && (
+        <span className={styles.withingsMeta}>
+          Last sync: {new Date(status.lastSync).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        </span>
+      )}
+      <button className={styles.withingsSyncBtn} onClick={handleSync} disabled={syncing}>
+        {syncing ? 'Syncing...' : 'Sync Now'}
+      </button>
+      <button className={styles.withingsDisconnectBtn} onClick={handleDisconnect}>
+        Disconnect
+      </button>
+      {error && <span style={{ color: '#ef4444', fontSize: 12 }}>{error}</span>}
+    </div>
+  );
+}
+
 export function Forge() {
   // Tab state from URL hash
   const initialTab = (window.location.hash.replace('#', '') || 'log') as ForgeTab;
@@ -697,6 +767,7 @@ export function Forge() {
             {stats.latest_weight && <span className={styles.stat}>Last: {stats.latest_weight.value} kg</span>}
           </div>
         )}
+        <WithingsStatus />
       </div>
 
       {/* Tab navigation */}

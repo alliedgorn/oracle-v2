@@ -683,6 +683,93 @@
   text-decoration: underline;
 }
 
+/* ===== Withings Connection ===== */
+.withingsBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.withingsConnectBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.withingsConnectBtn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.withingsStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #3fb950;
+}
+
+.withingsDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3fb950;
+}
+
+.withingsMeta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.withingsSyncBtn {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.withingsSyncBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.withingsSyncBtn:disabled {
+  opacity: 0.5;
+}
+
+.withingsDisconnectBtn {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.withingsDisconnectBtn:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
 /* ===== Structured Workout Form ===== */
 .workoutForm {
   background: var(--bg-card);

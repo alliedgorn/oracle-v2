@@ -6873,7 +6873,7 @@ if (ruleCount === 0) {
   }
 }
 
-// Helper: decorate rule with effective status
+// Helper: decorate rule with effective status + enforcement keywords (T#426)
 function decorateRule(rule: any) {
   if (!rule) return rule;
   // Override status to reflect approval state for decrees
@@ -6882,6 +6882,12 @@ function decorateRule(rule: any) {
   }
   if (rule.type === 'decree' && rule.approval_status === 'rejected') {
     return { ...rule, status: 'rejected' };
+  }
+  // Active approved decrees get enforcement language
+  if (rule.type === 'decree' && rule.status === 'active' && (rule.approval_status === 'approved' || rule.approval_status === null)) {
+    const enforcementLevel = (rule.enforcement || 'must').toLowerCase();
+    const keyword = enforcementLevel === 'should' ? 'IMPORTANT: SHOULD' : 'IMPORTANT: MUST';
+    return { ...rule, enforcement_text: `${keyword} — ${rule.title}` };
   }
   return rule;
 }

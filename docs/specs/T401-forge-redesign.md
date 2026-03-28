@@ -111,8 +111,9 @@ Instead of free-text, structured entry inspired by Alpha Progression:
 ### Section B: Weight Trend (existing chart, relocated)
 
 - Keep current time-range grouping (1W to All)
-- Add **goal line** — horizontal dashed line at target weight
+- Add **goal line** — horizontal dashed line at target weight (120kg)
 - Add **trend line** — thin moving average overlay
+- Y-axis: never start at zero, auto-scale to data range with 10% padding
 
 ### Section C: Workout Trends (existing chart, relocated)
 
@@ -158,9 +159,27 @@ Instead of free-text, structured entry inspired by Alpha Progression:
 **Design tokens** (keep existing palette):
 - `--accent`: `#d4943a` amber
 - `--pr-gold`: `#f59e0b` (new, for PR highlights)
-- Type colors: workout blue `#58a6ff`, meal green `#3fb950`, weight amber `#d29922`
+- `--set-done`: `#3fb950` at 20% opacity (completed set background)
+- Type colors: workout blue `#58a6ff`, meal green `#3fb950`, weight amber `#d29922`, photo purple `#bc8cff`
+
+**Typography detail**:
+- Tab labels: 14px, semi-bold
+- Section headers: 18px, bold
+- Card titles: 16px, medium
+- Stat numbers: 28px, bold, `font-variant-numeric: tabular-nums`
+- Set data: 14px monospace for column alignment
 
 **Not included**: Dark-only override, 3D illustrations, gamification/badges/streaks.
+
+### Responsive Behavior
+
+| Breakpoint | Layout |
+|-----------|--------|
+| Mobile (<480px) | 2x2 quick-add grid, single-column cards, tabs fill width |
+| Tablet (480-900px) | 4-column quick-add, cards with side metadata |
+| Desktop (900px+) | Same as tablet, charts extend to full container width |
+
+Container max-width stays at 700px for content. Charts can bleed wider on desktop.
 
 ---
 

@@ -5099,6 +5099,15 @@ app.post('/api/specs/:id/review', async (c) => {
   }
 });
 
+// GET /api/specs/:id/links — list all links for a spec (T#425)
+app.get('/api/specs/:id/links', (c) => {
+  const specId = parseInt(c.req.param('id'), 10);
+  const spec = sqlite.prepare('SELECT id FROM spec_reviews WHERE id = ?').get(specId);
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+  const links = sqlite.prepare('SELECT * FROM spec_links WHERE spec_id = ? ORDER BY link_type, link_id').all(specId) as any[];
+  return c.json({ links, linked_tasks: links.filter(l => l.link_type === 'task').map(l => l.link_id), linked_threads: links.filter(l => l.link_type === 'thread').map(l => l.link_id) });
+});
+
 // POST /api/specs/:id/link — add a task or thread link (T#425)
 app.post('/api/specs/:id/link', async (c) => {
   const specId = parseInt(c.req.param('id'), 10);

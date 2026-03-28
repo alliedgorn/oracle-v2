@@ -4815,6 +4815,9 @@ try { sqlite.prepare(`
   )
 `).run(); } catch { /* exists */ }
 
+// Migration: add thread_id to spec_reviews (T#413)
+try { sqlite.prepare('ALTER TABLE spec_reviews ADD COLUMN thread_id INTEGER').run(); } catch { /* exists */ }
+
 const ALLOWED_SPEC_REPOS = ['oracle-v2', 'supply-chain-tool', 'karo', 'zaghnal', 'gnarl', 'bertus', 'flint', 'pip', 'dex', 'talon', 'quill', 'sable', 'nyx', 'vigil', 'rax', 'leonard', 'mara', 'snap'];
 
 function resolveSpecPath(repo: string, filePath: string): string | null {
@@ -4920,9 +4923,12 @@ app.get('/api/specs/:id/diff', (c) => {
 app.post('/api/specs', async (c) => {
   try {
     const data = await c.req.json();
-    const { repo, file_path, task_id, title, author } = data;
+    const { repo, file_path, task_id, thread_id, title, author } = data;
     if (!repo || !file_path || !title || !author) {
       return c.json({ error: 'repo, file_path, title, author required' }, 400);
+    }
+    if (!task_id && !thread_id) {
+      return c.json({ error: 'At least one of task_id or thread_id is required. Link your spec to a task or forum thread.' }, 400);
     }
     if (!ALLOWED_SPEC_REPOS.includes(repo)) {
       return c.json({ error: `Invalid repo. Allowed: ${ALLOWED_SPEC_REPOS.join(', ')}` }, 400);
@@ -4933,8 +4939,8 @@ app.post('/api/specs', async (c) => {
     }
     const now = new Date().toISOString();
     const result = sqlite.prepare(
-      'INSERT INTO spec_reviews (repo, file_path, task_id, title, author, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(repo, file_path, task_id || null, title, author, 'pending', now, now);
+      'INSERT INTO spec_reviews (repo, file_path, task_id, thread_id, title, author, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(repo, file_path, task_id || null, thread_id || null, title, author, 'pending', now, now);
     const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get((result as any).lastInsertRowid) as any;
     // Auto-link spec to task if task_id provided
     if (task_id) {
@@ -5024,6 +5030,19 @@ app.post('/api/specs/:id/review', async (c) => {
         }
       }
     }
+
+    // Auto-post to linked forum thread (T#413)
+    if (updated.thread_id) {
+      try {
+        const threadMsg = action === 'approve'
+          ? `Spec #${id} **approved** by Gorn.${feedback ? ` ${feedback}` : ''} Implementation unblocked.`
+          : `Spec #${id} **rejected** by Gorn: ${feedback}`;
+        sqlite.prepare(
+          'INSERT INTO messages (thread_id, content, role, author, created_at) VALUES (?, ?, ?, ?, ?)'
+        ).run(updated.thread_id, threadMsg, 'system', 'gorn', now);
+      } catch { /* thread post failure is non-critical */ }
+    }
+
     return c.json(updated);
   } catch {
     return c.json({ error: 'Invalid JSON' }, 400);

@@ -80,6 +80,7 @@ const navGroups = [
 interface NavBadges {
   specs: number;
   prowl: number;
+  dms: number;
 }
 
 interface SessionStats {
@@ -98,7 +99,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   const { isAuthenticated, authEnabled, logout } = useAuth();
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
-  const [badges, setBadges] = useState<NavBadges>({ specs: 0, prowl: 0 });
+  const [badges, setBadges] = useState<NavBadges>({ specs: 0, prowl: 0, dms: 0 });
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -146,15 +147,19 @@ export function Header({ onRemoteToggle }: HeaderProps) {
 
   const loadBadges = useCallback(async () => {
     try {
-      const [specsRes, prowlRes] = await Promise.all([
+      const [specsRes, prowlRes, dmRes] = await Promise.all([
         fetch('/api/specs?status=pending'),
         fetch('/api/prowl?status=pending'),
+        fetch('/api/dm/dashboard'),
       ]);
       const specsData = await specsRes.json();
       const prowlData = await prowlRes.json();
+      const dmData = await dmRes.json();
+      const dmUnread = (dmData.conversations || []).reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
       setBadges({
         specs: specsData.specs?.length || 0,
         prowl: prowlData.counts?.pending || 0,
+        dms: dmUnread,
       });
     } catch {}
   }, []);
@@ -172,6 +177,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   useWebSocket('spec_reviewed', loadBadges);
   useWebSocket('spec_resubmitted', loadBadges);
   useWebSocket('prowl_update', loadBadges);
+  useWebSocket('new_dm', loadBadges);
 
   function formatDuration(ms: number): string {
     const minutes = Math.floor(ms / 60000);
@@ -313,6 +319,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
               }}
             >
               {group.label} ▾
+              {badges.dms > 0 && <span className={styles.navBadge}>{badges.dms}</span>}
             </button>
             {openGroup === group.label && dropdownPos && createPortal(
               <>
@@ -337,6 +344,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
                           onClick={() => setOpenGroup(null)}
                         >
                           {item.label}
+                          {item.path === '/dms' && badges.dms > 0 && <span className={styles.navBadge}>{badges.dms}</span>}
                         </Link>
                       ))}
                     </div>

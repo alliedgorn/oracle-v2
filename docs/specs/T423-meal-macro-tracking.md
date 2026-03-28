@@ -20,14 +20,16 @@ Replace the current meal form with structured fields:
 | Field | Type | Required | Placeholder |
 |-------|------|----------|-------------|
 | Description | text | Yes | "What did you eat?" |
+| Photo | image | No | Camera button |
 | Calories | number | Yes | "kcal" |
 | Protein | number | Yes | "g" |
 | Carbs | number | Yes | "g" |
 | Fat | number | Yes | "g" |
 
-- All fields required — "Log it" button disabled until all are filled
+- All macro fields + description required — "Log it" disabled until filled
+- Photo optional — camera button next to description, reuses existing photo upload
 - Number inputs with unit suffix labels (kcal, g)
-- Layout: description full-width, macros in a 2x2 grid below
+- Layout: description full-width, photo button inline, macros in a 2x2 grid below
 - Keep "Log it" and "Cancel" buttons
 - **Backend validation**: reject meal logs missing any macro field (return 400)
 
@@ -38,10 +40,12 @@ Current: `🍽️ S&P breakfast — grilled chicken + rice — 1100 cal / 55g pr
 Proposed:
 ```
 🍽️ S&P breakfast — grilled chicken + rice
+   [meal photo thumbnail]
    1100 cal · 55g protein · 80g carbs · 35g fat
 ```
 
-Macro line below description. Only show fields with values. Use `·` separator. Muted text color.
+- Macro line below description. Only show fields with values. Use `·` separator. Muted text color.
+- If photo attached, show thumbnail (80x80px, rounded corners) between description and macros. Tap to open lightbox.
 
 ### 3. Daily Macro Summary (Log Tab)
 

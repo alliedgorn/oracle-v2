@@ -597,6 +597,7 @@ export function Forge() {
 
   // Detail view state
   const [detailLog, setDetailLog] = useState<RoutineLog | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
   // Close detail overlay on ESC
   useEffect(() => {
@@ -741,8 +742,8 @@ export function Forge() {
   }
 
   async function deleteLog(id: number) {
-    if (!confirm('Delete this entry? This cannot be undone.')) return;
     await fetch(`${API_BASE}/routine/logs/${id}`, { method: 'DELETE' });
+    setDeleteConfirmId(null);
     if (tab === 'log') loadLogTab();
     else loadHistory();
   }
@@ -1175,8 +1176,8 @@ export function Forge() {
                   <div className={styles.logText}>{formatLogContent(log)}</div>
                   <div className={styles.logMeta}>{formatTimeShort(log.logged_at)}{log.source !== 'manual' ? ` · ${log.source}` : ''}</div>
                 </div>
-                <button className={styles.viewBtn} onClick={() => setDetailLog(log)} title="View">👁</button>
-                <button className={styles.deleteBtn} onClick={() => deleteLog(log.id)} title="Delete">×</button>
+                <button className={styles.viewBtn} onMouseDown={(e) => { e.preventDefault(); setDetailLog(log); }} title="View">▸</button>
+                <button className={styles.deleteBtn} onMouseDown={(e) => { e.preventDefault(); setDeleteConfirmId(log.id); }} title="Delete">×</button>
               </div>
             ))}
           </div>
@@ -1211,8 +1212,8 @@ export function Forge() {
                         <div className={styles.logText}>{formatLogContent(log)}</div>
                         <div className={styles.logMeta}>{formatTime(log.logged_at)}{log.source !== 'manual' ? ` · ${log.source}` : ''}</div>
                       </div>
-                      <button className={styles.viewBtn} onClick={() => setDetailLog(log)} title="View">👁</button>
-                      <button className={styles.deleteBtn} onClick={() => deleteLog(log.id)} title="Delete">×</button>
+                      <button className={styles.viewBtn} onMouseDown={(e) => { e.preventDefault(); setDetailLog(log); }} title="View">▸</button>
+                      <button className={styles.deleteBtn} onMouseDown={(e) => { e.preventDefault(); setDeleteConfirmId(log.id); }} title="Delete">×</button>
                     </div>
                   ))}
                 </div>
@@ -1475,6 +1476,19 @@ export function Forge() {
       )}
 
       {/* Log detail overlay */}
+      {deleteConfirmId !== null && (
+        <div className={styles.detailOverlay} onClick={() => setDeleteConfirmId(null)}>
+          <div className={styles.detailPanel} onClick={e => e.stopPropagation()} style={{ textAlign: 'center', padding: '32px 24px' }}>
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Delete this entry?</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 20 }}>This cannot be undone.</div>
+            <div className={styles.formActions} style={{ justifyContent: 'center' }}>
+              <button className={styles.cancelBtn} style={{ background: '#ef4444', color: '#fff', border: 'none' }} onClick={() => { deleteLog(deleteConfirmId); setDetailLog(null); }}>Delete</button>
+              <button className={styles.cancelBtn} onClick={() => setDeleteConfirmId(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {detailLog && (() => {
         const d = parseData(detailLog);
         return (
@@ -1532,7 +1546,7 @@ export function Forge() {
                 )}
               </div>
               <div className={styles.detailActions}>
-                <button className={styles.cancelBtn} onClick={() => { deleteLog(detailLog.id); setDetailLog(null); }}>Delete</button>
+                <button className={styles.cancelBtn} onClick={() => { setDeleteConfirmId(detailLog.id); }}>Delete</button>
               </div>
             </div>
           </div>

@@ -606,6 +606,22 @@
   margin-top: 2px;
 }
 
+.viewBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  padding: 2px 4px;
+}
+
+.viewBtn:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+
 .deleteBtn {
   background: none;
   border: none;

@@ -1169,13 +1169,14 @@ export function Forge() {
               </div>
             )}
             {logs.map(log => (
-              <div key={log.id} className={styles.logCard} data-type={log.type} onClick={() => setDetailLog(log)} style={{ cursor: 'pointer' }}>
+              <div key={log.id} className={styles.logCard} data-type={log.type}>
                 <span className={styles.logIcon}>{TYPE_ICONS[log.type] || '📄'}</span>
                 <div className={styles.logContent}>
                   <div className={styles.logText}>{formatLogContent(log)}</div>
                   <div className={styles.logMeta}>{formatTimeShort(log.logged_at)}{log.source !== 'manual' ? ` · ${log.source}` : ''}</div>
                 </div>
-                <button className={styles.deleteBtn} onClick={(e) => { e.stopPropagation(); deleteLog(log.id); }} title="Delete">×</button>
+                <button className={styles.viewBtn} onClick={() => setDetailLog(log)} title="View">👁</button>
+                <button className={styles.deleteBtn} onClick={() => deleteLog(log.id)} title="Delete">×</button>
               </div>
             ))}
           </div>
@@ -1204,13 +1205,14 @@ export function Forge() {
                 <div key={dateKey}>
                   <div className={styles.dateGroup}>{formatDateHeader(dateKey)}</div>
                   {dayLogs.map(log => (
-                    <div key={log.id} className={styles.logCard} data-type={log.type} onClick={() => setDetailLog(log)} style={{ cursor: 'pointer' }}>
+                    <div key={log.id} className={styles.logCard} data-type={log.type}>
                       <span className={styles.logIcon}>{TYPE_ICONS[log.type] || '📄'}</span>
                       <div className={styles.logContent}>
                         <div className={styles.logText}>{formatLogContent(log)}</div>
                         <div className={styles.logMeta}>{formatTime(log.logged_at)}{log.source !== 'manual' ? ` · ${log.source}` : ''}</div>
                       </div>
-                      <button className={styles.deleteBtn} onClick={(e) => { e.stopPropagation(); deleteLog(log.id); }} title="Delete">×</button>
+                      <button className={styles.viewBtn} onClick={() => setDetailLog(log)} title="View">👁</button>
+                      <button className={styles.deleteBtn} onClick={() => deleteLog(log.id)} title="Delete">×</button>
                     </div>
                   ))}
                 </div>

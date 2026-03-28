@@ -513,7 +513,7 @@ export function Board() {
                   <td>
                     {task.reviewer && (
                       <span className={styles.assignee}>
-                        <span style={{ fontSize: '0.7em', marginRight: 2, opacity: 0.6 }}>R:</span>
+                        <span className={styles.assigneeDot} style={{ background: BEAST_COLORS[task.reviewer] || '#666' }} />
                         {task.reviewer}
                       </span>
                     )}
@@ -653,9 +653,12 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
             {task.assigned_to}
           </span>
         )}
+        {task.assigned_to && task.reviewer && (
+          <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>·</span>
+        )}
         {task.reviewer && (
           <span className={styles.assignee} title="Reviewer">
-            <span style={{ fontSize: '0.7em', marginRight: 2, opacity: 0.6 }}>R:</span>
+            <span className={styles.assigneeDot} style={{ background: BEAST_COLORS[task.reviewer] || '#666' }} />
             {task.reviewer}
           </span>
         )}

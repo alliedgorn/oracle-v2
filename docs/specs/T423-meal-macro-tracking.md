@@ -20,15 +20,16 @@ Replace the current meal form with structured fields:
 | Field | Type | Required | Placeholder |
 |-------|------|----------|-------------|
 | Description | text | Yes | "What did you eat?" |
-| Calories | number | No | "kcal" |
-| Protein | number | No | "g" |
-| Carbs | number | No | "g" |
-| Fat | number | No | "g" |
+| Calories | number | Yes | "kcal" |
+| Protein | number | Yes | "g" |
+| Carbs | number | Yes | "g" |
+| Fat | number | Yes | "g" |
 
-- Description stays required — all macro fields optional
+- All fields required — "Log it" button disabled until all are filled
 - Number inputs with unit suffix labels (kcal, g)
 - Layout: description full-width, macros in a 2x2 grid below
 - Keep "Log it" and "Cancel" buttons
+- **Backend validation**: reject meal logs missing any macro field (return 400)
 
 ### 2. Meal Card Display
 
@@ -79,9 +80,9 @@ Backward compatible — existing meals without carbs/fat continue to display nor
 
 ## Implementation
 
-- **Frontend**: Add carbs + fat inputs to meal form, update meal card renderer, add daily totals
-- **Backend**: No changes needed — JSON data field accepts any structure
-- **Migration**: None — existing data keeps working
+- **Frontend**: Add carbs + fat inputs to meal form (all required), disable submit until all filled, update meal card renderer, add daily totals
+- **Backend**: Validate meal logs — reject if description, calories, protein, carbs, or fat are missing. Return 400 with clear error message.
+- **Migration**: None — existing meals without carbs/fat still display but new meals require all fields
 
 ## Responsive
 

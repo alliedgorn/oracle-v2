@@ -47,7 +47,21 @@ Proposed:
 - Macro line below description. Only show fields with values. Use `·` separator. Muted text color.
 - If photo attached, show thumbnail (80x80px, rounded corners) between description and macros. Tap to open lightbox.
 
-### 3. Daily Macro Summary (Log Tab)
+### 3. Log Detail View
+
+Tap any log entry (meal, workout, weight, note) to open a detail overlay:
+
+- **Full content** — all fields displayed, no truncation
+- **Photo** — full-size image if attached (lightbox)
+- **Macros** — all values with labels (for meals)
+- **Timestamp** — exact date and time
+- **Source** — manual or import origin
+- **Actions** — Edit button, Delete button (with confirm)
+- **Close** — X button or tap outside
+
+Implementation: modal overlay or slide-up panel. Reuse existing card styles.
+
+### 4. Daily Macro Summary (Log Tab)
 
 Below the date navigator, show today's macro totals:
 

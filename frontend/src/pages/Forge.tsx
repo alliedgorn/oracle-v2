@@ -595,6 +595,14 @@ export function Forge() {
   // Detail view state
   const [detailLog, setDetailLog] = useState<RoutineLog | null>(null);
 
+  // Close detail overlay on ESC
+  useEffect(() => {
+    if (!detailLog) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDetailLog(null); };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [detailLog]);
+
   // Stats tab state
   const [weights, setWeights] = useState<any[]>([]);
   const [weightGrouping, setWeightGrouping] = useState<string>('daily');

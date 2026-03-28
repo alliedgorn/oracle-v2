@@ -5518,6 +5518,230 @@ app.post('/api/risks/:id/comments', async (c) => {
 });
 
 // ============================================================================
+// Withings OAuth Integration (T#414, Spec #23)
+// ============================================================================
+
+// OAuth tokens table — encrypted at rest
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS oauth_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    user_id TEXT,
+    access_token_enc TEXT NOT NULL,
+    refresh_token_enc TEXT NOT NULL,
+    token_iv TEXT NOT NULL,
+    token_tag TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    scopes TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )
+`);
+
+// AES-256-GCM encryption for OAuth tokens
+const OAUTH_KEY = process.env.OAUTH_ENCRYPTION_KEY; // 32-byte hex string
+const WITHINGS_CLIENT_ID = process.env.WITHINGS_CLIENT_ID || '';
+const WITHINGS_CLIENT_SECRET = process.env.WITHINGS_CLIENT_SECRET || '';
+const WITHINGS_REDIRECT_URI = process.env.WITHINGS_REDIRECT_URI || 'https://denbook.online/api/oauth/withings/callback';
+
+function encryptToken(token: string): { encrypted: string; iv: string; tag: string } {
+  if (!OAUTH_KEY) throw new Error('OAUTH_ENCRYPTION_KEY not set');
+  const key = Buffer.from(OAUTH_KEY, 'hex');
+  const iv = require('crypto').randomBytes(12);
+  const cipher = require('crypto').createCipheriv('aes-256-gcm', key, iv);
+  let encrypted = cipher.update(token, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const tag = cipher.getAuthTag().toString('hex');
+  return { encrypted, iv: iv.toString('hex'), tag };
+}
+
+function decryptToken(encrypted: string, ivHex: string, tagHex: string): string {
+  if (!OAUTH_KEY) throw new Error('OAUTH_ENCRYPTION_KEY not set');
+  const key = Buffer.from(OAUTH_KEY, 'hex');
+  const iv = Buffer.from(ivHex, 'hex');
+  const decipher = require('crypto').createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+// Generate HMAC-SHA256 signature for Withings API
+function withingsSign(data: string): string {
+  return createHmac('sha256', WITHINGS_CLIENT_SECRET).update(data).digest('hex');
+}
+
+// Get Withings nonce (required for signed requests)
+async function getWithingsNonce(): Promise<string> {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = withingsSign(`getnonce,${WITHINGS_CLIENT_ID},${timestamp}`);
+  const res = await fetch('https://wbsapi.withings.net/v2/signature', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ action: 'getnonce', client_id: WITHINGS_CLIENT_ID, timestamp: String(timestamp), signature }),
+  });
+  const data = await res.json() as any;
+  if (data.status !== 0) throw new Error(`Nonce failed: ${data.error}`);
+  return data.body.nonce;
+}
+
+// Refresh Withings tokens if needed
+async function ensureFreshWithingsToken(): Promise<{ accessToken: string; userId: string } | null> {
+  const token = sqlite.prepare("SELECT * FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
+  if (!token) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (token.expires_at > now + 600) {
+    // Token still fresh (>10 min remaining)
+    return { accessToken: decryptToken(token.access_token_enc, token.token_iv, token.token_tag), userId: token.user_id };
+  }
+
+  // Refresh token
+  try {
+    const refreshToken = decryptToken(token.refresh_token_enc, token.token_iv, token.token_tag);
+    const nonce = await getWithingsNonce();
+    const signature = withingsSign(`requesttoken,${WITHINGS_CLIENT_ID},${nonce}`);
+    const res = await fetch('https://wbsapi.withings.net/v2/oauth2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        action: 'requesttoken', grant_type: 'refresh_token',
+        client_id: WITHINGS_CLIENT_ID, client_secret: WITHINGS_CLIENT_SECRET,
+        refresh_token: refreshToken, nonce, signature,
+      }),
+    });
+    const data = await res.json() as any;
+    if (data.status !== 0) throw new Error(`Refresh failed: ${data.error}`);
+
+    const { access_token, refresh_token, expires_in, userid } = data.body;
+    const enc = encryptToken(access_token);
+    const refreshEnc = encryptToken(refresh_token);
+    sqlite.prepare(
+      `UPDATE oauth_tokens SET access_token_enc = ?, refresh_token_enc = ?, token_iv = ?, token_tag = ?,
+       expires_at = ?, user_id = ?, updated_at = ? WHERE id = ?`
+    ).run(enc.encrypted, refreshEnc.encrypted, enc.iv, enc.tag, now + expires_in, userid, now, token.id);
+
+    return { accessToken: access_token, userId: userid };
+  } catch (err) {
+    console.error('[Withings] Token refresh failed:', err);
+    return null;
+  }
+}
+
+// CSRF state storage (in-memory, short-lived)
+const oauthStates = new Map<string, number>();
+
+// GET /api/oauth/withings/authorize — start OAuth flow
+app.get('/api/oauth/withings/authorize', (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn authentication required' }, 403);
+  if (!WITHINGS_CLIENT_ID) return c.json({ error: 'Withings not configured (missing WITHINGS_CLIENT_ID)' }, 500);
+
+  const state = require('crypto').randomBytes(16).toString('hex');
+  oauthStates.set(state, Date.now());
+  // Clean old states (>10 min)
+  for (const [k, v] of oauthStates) { if (Date.now() - v > 600000) oauthStates.delete(k); }
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: WITHINGS_CLIENT_ID,
+    scope: 'user.info,user.metrics',
+    redirect_uri: WITHINGS_REDIRECT_URI,
+    state,
+  });
+  return c.redirect(`https://account.withings.com/oauth2_user/authorize2?${params}`);
+});
+
+// GET /api/oauth/withings/callback — handle OAuth callback
+app.get('/api/oauth/withings/callback', async (c) => {
+  const code = c.req.query('code');
+  const state = c.req.query('state');
+  const error = c.req.query('error');
+
+  if (error) return c.redirect('/forge?oauth_error=' + encodeURIComponent(error));
+  if (!code || !state) return c.json({ error: 'Missing code or state' }, 400);
+  if (!oauthStates.has(state)) return c.json({ error: 'Invalid or expired state (CSRF check failed)' }, 403);
+  oauthStates.delete(state);
+
+  try {
+    // Exchange code for tokens
+    const nonce = await getWithingsNonce();
+    const signature = withingsSign(`requesttoken,${WITHINGS_CLIENT_ID},${nonce}`);
+    const res = await fetch('https://wbsapi.withings.net/v2/oauth2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        action: 'requesttoken', grant_type: 'authorization_code',
+        client_id: WITHINGS_CLIENT_ID, client_secret: WITHINGS_CLIENT_SECRET,
+        code, redirect_uri: WITHINGS_REDIRECT_URI, nonce, signature,
+      }),
+    });
+    const data = await res.json() as any;
+    if (data.status !== 0) return c.redirect('/forge?oauth_error=' + encodeURIComponent(data.error || 'Token exchange failed'));
+
+    const { access_token, refresh_token, expires_in, userid, scope } = data.body;
+    const now = Math.floor(Date.now() / 1000);
+
+    // Encrypt tokens
+    const accessEnc = encryptToken(access_token);
+    const refreshEnc = encryptToken(refresh_token);
+
+    // Store (upsert — replace existing Withings connection)
+    sqlite.prepare("DELETE FROM oauth_tokens WHERE provider = 'withings'").run();
+    sqlite.prepare(
+      `INSERT INTO oauth_tokens (provider, user_id, access_token_enc, refresh_token_enc, token_iv, token_tag, expires_at, scopes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run('withings', String(userid), accessEnc.encrypted, refreshEnc.encrypted, accessEnc.iv, accessEnc.tag, now + expires_in, scope || 'user.info,user.metrics', now, now);
+
+    // Subscribe to webhook for weight/body composition (appli=1)
+    try {
+      await fetch('https://wbsapi.withings.net/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Bearer ${access_token}` },
+        body: new URLSearchParams({ action: 'subscribe', callbackurl: WITHINGS_REDIRECT_URI.replace('/callback', '').replace('/api/oauth/withings', '/api/webhooks/withings'), appli: '1' }),
+      });
+    } catch { /* webhook subscription failure is non-critical */ }
+
+    return c.redirect('/forge?withings=connected');
+  } catch (err) {
+    console.error('[Withings] OAuth callback error:', err);
+    return c.redirect('/forge?oauth_error=callback_failed');
+  }
+});
+
+// GET /api/oauth/withings/status — connection status
+app.get('/api/oauth/withings/status', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access required' }, 403);
+  const token = sqlite.prepare("SELECT provider, user_id, expires_at, scopes, updated_at FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
+  if (!token) return c.json({ connected: false });
+  const now = Math.floor(Date.now() / 1000);
+  return c.json({
+    connected: true,
+    userId: token.user_id,
+    tokenExpired: token.expires_at < now,
+    lastUpdated: new Date(token.updated_at * 1000).toISOString(),
+    scopes: token.scopes,
+  });
+});
+
+// DELETE /api/oauth/withings/disconnect — revoke connection
+app.delete('/api/oauth/withings/disconnect', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn authentication required' }, 403);
+  // Revoke webhook if possible
+  try {
+    const tokenData = await ensureFreshWithingsToken();
+    if (tokenData) {
+      await fetch('https://wbsapi.withings.net/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Bearer ${tokenData.accessToken}` },
+        body: new URLSearchParams({ action: 'revoke', callbackurl: WITHINGS_REDIRECT_URI.replace('/callback', '').replace('/api/oauth/withings', '/api/webhooks/withings'), appli: '1' }),
+      });
+    }
+  } catch { /* best effort */ }
+  sqlite.prepare("DELETE FROM oauth_tokens WHERE provider = 'withings'").run();
+  return c.json({ disconnected: true });
+});
+
+// ============================================================================
 // Forge — Personal Routine Tracker for Gorn (T#372)
 // ============================================================================
 

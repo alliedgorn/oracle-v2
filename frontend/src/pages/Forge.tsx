@@ -679,7 +679,13 @@ export function Forge() {
       let data: any;
       switch (type) {
         case 'meal':
-          data = { description: formData.description || '', calories: parseInt(formData.calories || '0') || undefined, protein: parseInt(formData.protein || '0') || undefined };
+          data = {
+            description: formData.description || '',
+            calories: parseInt(formData.calories || '0') || 0,
+            protein: parseInt(formData.protein || '0') || 0,
+            carbs: parseInt(formData.carbs || '0') || 0,
+            fat: parseInt(formData.fat || '0') || 0,
+          };
           break;
         case 'workout':
           data = { type: formData.workoutType || '', duration_min: parseInt(formData.duration || '0') || undefined, exercises: (formData.exercises || '').split('\n').filter(Boolean) };
@@ -727,7 +733,15 @@ export function Forge() {
   function formatLogContent(log: RoutineLog): React.ReactNode {
     const d = parseData(log);
     switch (log.type) {
-      case 'meal': return `${d.description || 'Meal'}${d.calories ? ` — ${d.calories} cal` : ''}${d.protein ? ` / ${d.protein}g protein` : ''}`;
+      case 'meal': {
+        const macros = [
+          d.calories ? `${d.calories} cal` : '',
+          d.protein ? `${d.protein}g protein` : '',
+          d.carbs ? `${d.carbs}g carbs` : '',
+          d.fat ? `${d.fat}g fat` : '',
+        ].filter(Boolean).join(' · ');
+        return `${d.description || 'Meal'}${macros ? ` — ${macros}` : ''}`;
+      }
       case 'workout': return <WorkoutCard data={d} />;
       case 'weight': return `${d.value} ${d.unit || 'kg'}`;
       case 'bodyfat': return `${d.value}% body fat`;
@@ -996,10 +1010,12 @@ export function Forge() {
             <div className={styles.form}>
               {activeForm === 'meal' && (
                 <>
-                  <input placeholder="What did you eat?" value={formData.description || ''} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} className={styles.formInput} autoFocus />
-                  <div className={styles.formRow}>
-                    <input placeholder="Calories" type="number" value={formData.calories || ''} onChange={e => setFormData(p => ({ ...p, calories: e.target.value }))} className={styles.formInput} />
-                    <input placeholder="Protein (g)" type="number" value={formData.protein || ''} onChange={e => setFormData(p => ({ ...p, protein: e.target.value }))} className={styles.formInput} />
+                  <input placeholder="What did you eat? *" value={formData.description || ''} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} className={styles.formInput} autoFocus />
+                  <div className={styles.macroGrid}>
+                    <input placeholder="Calories *" type="number" value={formData.calories || ''} onChange={e => setFormData(p => ({ ...p, calories: e.target.value }))} className={styles.formInput} />
+                    <input placeholder="Protein (g) *" type="number" value={formData.protein || ''} onChange={e => setFormData(p => ({ ...p, protein: e.target.value }))} className={styles.formInput} />
+                    <input placeholder="Carbs (g) *" type="number" value={formData.carbs || ''} onChange={e => setFormData(p => ({ ...p, carbs: e.target.value }))} className={styles.formInput} />
+                    <input placeholder="Fat (g) *" type="number" value={formData.fat || ''} onChange={e => setFormData(p => ({ ...p, fat: e.target.value }))} className={styles.formInput} />
                   </div>
                 </>
               )}
@@ -1013,7 +1029,7 @@ export function Forge() {
                 <textarea placeholder="What's on your mind?" value={formData.noteText || ''} onChange={e => setFormData(p => ({ ...p, noteText: e.target.value }))} className={styles.formTextarea} rows={3} autoFocus />
               )}
               <div className={styles.formActions}>
-                <button className={styles.submitBtn} onClick={() => createLog(activeForm)} disabled={loading}>
+                <button className={styles.submitBtn} onClick={() => createLog(activeForm)} disabled={loading || (activeForm === 'meal' && (!formData.description || !formData.calories || !formData.protein || !formData.carbs || !formData.fat))}>
                   {loading ? 'Saving...' : 'Log it'}
                 </button>
                 <button className={styles.cancelBtn} onClick={() => { setActiveForm(null); setFormData({}); }}>Cancel</button>

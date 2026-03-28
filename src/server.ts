@@ -6529,9 +6529,26 @@ app.patch('/api/routine/logs/:id', async (c) => {
   if (!existing) return c.json({ error: 'Log not found' }, 404);
   try {
     const body = await c.req.json();
+    const existingData = (existing as any).type;
     const updates: string[] = [];
     const values: any[] = [];
-    if (body.data) { updates.push('data = ?'); values.push(typeof body.data === 'string' ? body.data : JSON.stringify(body.data)); }
+    if (body.data) {
+      // Auto-sum meal items on edit (T#430)
+      if (existingData === 'meal') {
+        const mealData = typeof body.data === 'string' ? JSON.parse(body.data) : body.data;
+        if (mealData.items && Array.isArray(mealData.items) && mealData.items.length > 0) {
+          const macroFields = ['calories', 'protein', 'carbs', 'fat'] as const;
+          for (const f of macroFields) {
+            mealData[f] = mealData.items.reduce((sum: number, item: any) => sum + (Number(item[f]) || 0), 0);
+          }
+          if (!mealData.description) {
+            mealData.description = mealData.items.map((item: any) => item.name).slice(0, 3).join(', ') + (mealData.items.length > 3 ? '...' : '');
+          }
+          body.data = mealData;
+        }
+      }
+      updates.push('data = ?'); values.push(typeof body.data === 'string' ? body.data : JSON.stringify(body.data));
+    }
     if (body.logged_at) { updates.push('logged_at = ?'); values.push(body.logged_at); }
     if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
     values.push(id);

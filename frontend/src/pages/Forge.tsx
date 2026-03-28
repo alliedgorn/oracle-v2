@@ -1035,7 +1035,7 @@ export function Forge() {
                 <span className={styles.summaryValue}>
                   {summary.totalVolume ? (summary.totalVolume >= 1000000 ? `${(summary.totalVolume / 1000000).toFixed(1)}M` : summary.totalVolume >= 1000 ? `${(summary.totalVolume / 1000).toFixed(0)}K` : summary.totalVolume) : '0'}
                 </span>
-                <span className={styles.summaryLabel}>Total Volume</span>
+                <span className={styles.summaryLabel}>Volume This Week (kg)</span>
               </div>
               <div className={styles.summaryCard}>
                 <span className={styles.summaryValue}>
@@ -1050,7 +1050,7 @@ export function Forge() {
                   {summary.bestLift ? `${summary.bestLift.weight}` : '—'}
                 </span>
                 <span className={styles.summaryLabel}>
-                  {summary.bestLift ? `Best: ${summary.bestLift.exercise}` : 'Best Lift'}
+                  {summary.bestLift ? `Best This Week: ${summary.bestLift.exercise} (${summary.bestLift.reps || '?'} reps)` : 'Best Lift This Week'}
                 </span>
               </div>
             </div>

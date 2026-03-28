@@ -80,7 +80,8 @@ import {
   listThreads,
   getFullThread,
   getMessages,
-  updateThreadStatus
+  updateThreadStatus,
+  addMessage,
 } from './forum/handler.ts';
 
 
@@ -6677,6 +6678,16 @@ app.post('/api/rules/:id/approve', async (c) => {
   const now = new Date().toISOString();
   sqlite.prepare('UPDATE rules SET approval_status = ?, approved_by = ?, approved_at = ?, updated_at = ? WHERE id = ?')
     .run('approved', 'gorn', now, now, id);
+  // Notify author (T#420)
+  const author = rule.author?.toLowerCase();
+  if (author && author !== 'gorn') {
+    const msg = `Decree #${id} "${rule.title}" has been **approved** by Gorn.`;
+    if (rule.source_thread_id) {
+      try { addMessage(rule.source_thread_id, 'claude', msg, { author: 'system' }); } catch { /* non-critical */ }
+    }
+    try { await withRetry(() => sendDm('system', author, msg)); } catch { /* non-critical */ }
+    wsBroadcast('decree_approved', { id, title: rule.title, author });
+  }
   return c.json(decorateRule(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id)));
 });
 
@@ -6694,6 +6705,16 @@ app.post('/api/rules/:id/reject', async (c) => {
     const now = new Date().toISOString();
     sqlite.prepare('UPDATE rules SET approval_status = ?, rejection_reason = ?, updated_at = ? WHERE id = ?')
       .run('rejected', reason, now, id);
+    // Notify author (T#420)
+    const author = rule.author?.toLowerCase();
+    if (author && author !== 'gorn') {
+      const msg = `Decree #${id} "${rule.title}" has been **rejected** by Gorn.${reason ? ` Reason: ${reason}` : ''}`;
+      if (rule.source_thread_id) {
+        try { addMessage(rule.source_thread_id, 'claude', msg, { author: 'system' }); } catch { /* non-critical */ }
+      }
+      try { await withRetry(() => sendDm('system', author, msg)); } catch { /* non-critical */ }
+      wsBroadcast('decree_rejected', { id, title: rule.title, author, reason });
+    }
     return c.json(decorateRule(sqlite.prepare('SELECT * FROM rules WHERE id = ?').get(id)));
   } catch { return c.json({ error: 'Invalid request' }, 400); }
 });

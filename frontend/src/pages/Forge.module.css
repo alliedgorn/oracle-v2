@@ -642,6 +642,17 @@
   color: #ef4444;
 }
 
+/* Mobile — always show buttons (no hover on touch) */
+@media (max-width: 768px) {
+  .deleteBtn {
+    opacity: 0.5;
+  }
+
+  .viewBtn {
+    opacity: 0.7;
+  }
+}
+
 /* Responsive */
 @media (max-width: 480px) {
   .container {

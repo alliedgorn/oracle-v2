@@ -356,7 +356,24 @@ app.get('/api/auth/status', (c) => {
 });
 
 // Login
+// Login rate limiting: max 5 attempts per IP per 15 minutes
+const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
+const LOGIN_RATE_LIMIT = 5;
+const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
+
 app.post('/api/auth/login', async (c) => {
+  const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+  const now = Date.now();
+  const attempts = loginAttempts.get(ip);
+  if (attempts) {
+    if (now - attempts.firstAttempt > LOGIN_RATE_WINDOW_MS) {
+      loginAttempts.delete(ip);
+    } else if (attempts.count >= LOGIN_RATE_LIMIT) {
+      const retryAfter = Math.ceil((attempts.firstAttempt + LOGIN_RATE_WINDOW_MS - now) / 1000);
+      return c.json({ success: false, error: `Too many login attempts. Try again in ${Math.ceil(retryAfter / 60)} minutes.` }, 429);
+    }
+  }
+
   const body = await c.req.json();
   const { password } = body;
 
@@ -372,8 +389,14 @@ app.post('/api/auth/login', async (c) => {
   // Verify password using Bun's built-in password functions
   const valid = await Bun.password.verify(password, storedHash);
   if (!valid) {
+    const entry = loginAttempts.get(ip) || { count: 0, firstAttempt: now };
+    entry.count++;
+    loginAttempts.set(ip, entry);
     return c.json({ success: false, error: 'Invalid password' }, 401);
   }
+
+  // Successful login clears rate limit
+  loginAttempts.delete(ip);
 
   // Set session cookie
   const token = generateSessionToken();

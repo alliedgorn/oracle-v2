@@ -72,6 +72,8 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  // Expand when switching to a different beast
+  useEffect(() => { setCollapsed(false); }, [beastName]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);

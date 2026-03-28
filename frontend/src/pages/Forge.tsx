@@ -502,6 +502,10 @@ export function Forge() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showWorkoutForm, setShowWorkoutForm] = useState(false);
 
+  // Photo upload state
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
+  const [photoTag, setPhotoTag] = useState<string>('');
+
   // History tab state
   const [historyLogs, setHistoryLogs] = useState<RoutineLog[]>([]);
   const [typeFilter, setTypeFilter] = useState('');
@@ -739,17 +743,11 @@ export function Forge() {
                 type="file"
                 accept="image/*"
                 style={{ display: 'none' }}
-                onChange={async (e) => {
+                onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  setLoading(true);
-                  try {
-                    const fd = new FormData();
-                    fd.append('file', file);
-                    await fetch(`${API_BASE}/routine/photo/upload`, { method: 'POST', body: fd });
-                    loadLogTab();
-                  } catch { /* ignore */ }
-                  setLoading(false);
+                  setPendingPhoto(file);
+                  setPhotoTag('');
                   e.target.value = '';
                 }}
                 disabled={loading}
@@ -823,6 +821,38 @@ export function Forge() {
               )}
             </div>
           </div>
+
+          {/* Photo tag picker */}
+          {pendingPhoto && (
+            <div className={styles.form}>
+              <p style={{ margin: 0, fontSize: 14 }}>Tag this photo:</p>
+              <div className={styles.muscleGroupRow}>
+                {['Front', 'Side', 'Back'].map(tag => (
+                  <button
+                    key={tag}
+                    className={`${styles.muscleChip} ${photoTag === tag.toLowerCase() ? styles.muscleChipActive : ''}`}
+                    onClick={() => setPhotoTag(photoTag === tag.toLowerCase() ? '' : tag.toLowerCase())}
+                  >{tag}</button>
+                ))}
+              </div>
+              <div className={styles.formActions}>
+                <button className={styles.submitBtn} disabled={loading} onClick={async () => {
+                  setLoading(true);
+                  try {
+                    const fd = new FormData();
+                    fd.append('file', pendingPhoto);
+                    if (photoTag) fd.append('tag', photoTag);
+                    await fetch(`${API_BASE}/routine/photo/upload`, { method: 'POST', body: fd });
+                    setPendingPhoto(null);
+                    setPhotoTag('');
+                    loadLogTab();
+                  } catch { /* ignore */ }
+                  setLoading(false);
+                }}>{loading ? 'Uploading...' : 'Upload'}</button>
+                <button className={styles.cancelBtn} onClick={() => { setPendingPhoto(null); setPhotoTag(''); }}>Cancel</button>
+              </div>
+            </div>
+          )}
 
           {/* Import preview */}
           {importPreview && !importResult && (

@@ -592,6 +592,9 @@ export function Forge() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // Detail view state
+  const [detailLog, setDetailLog] = useState<RoutineLog | null>(null);
+
   // Stats tab state
   const [weights, setWeights] = useState<any[]>([]);
   const [weightGrouping, setWeightGrouping] = useState<string>('daily');
@@ -685,6 +688,7 @@ export function Forge() {
             protein: parseInt(formData.protein || '0') || 0,
             carbs: parseInt(formData.carbs || '0') || 0,
             fat: parseInt(formData.fat || '0') || 0,
+            ...(formData.photo_url ? { photo_url: formData.photo_url } : {}),
           };
           break;
         case 'workout':
@@ -740,7 +744,15 @@ export function Forge() {
           d.carbs ? `${d.carbs}g carbs` : '',
           d.fat ? `${d.fat}g fat` : '',
         ].filter(Boolean).join(' · ');
-        return `${d.description || 'Meal'}${macros ? ` — ${macros}` : ''}`;
+        return (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            {d.photo_url && <img src={d.photo_url} alt="Meal" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 'var(--radius-sm)', flexShrink: 0 }} />}
+            <div>
+              <div>{d.description || 'Meal'}</div>
+              {macros && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{macros}</div>}
+            </div>
+          </div>
+        );
       }
       case 'workout': return <WorkoutCard data={d} />;
       case 'weight': return `${d.value} ${d.unit || 'kg'}`;
@@ -1017,6 +1029,29 @@ export function Forge() {
                     <input placeholder="Carbs (g) *" type="number" value={formData.carbs || ''} onChange={e => setFormData(p => ({ ...p, carbs: e.target.value }))} className={styles.formInput} />
                     <input placeholder="Fat (g) *" type="number" value={formData.fat || ''} onChange={e => setFormData(p => ({ ...p, fat: e.target.value }))} className={styles.formInput} />
                   </div>
+                  <div className={styles.formRow}>
+                    <label className={styles.photoAttachBtn} style={{ cursor: 'pointer' }}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const fd = new FormData();
+                          fd.append('file', file);
+                          const res = await fetch(`${API_BASE}/routine/photo/upload`, { method: 'POST', body: fd });
+                          const data = await res.json();
+                          if (data.url) setFormData(p => ({ ...p, photo_url: data.url }));
+                          e.target.value = '';
+                        }}
+                      />
+                      📷 {formData.photo_url ? 'Photo attached ✓' : 'Add photo'}
+                    </label>
+                    {formData.photo_url && (
+                      <img src={formData.photo_url} alt="Meal" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} />
+                    )}
+                  </div>
                 </>
               )}
               {activeForm === 'weight' && (
@@ -1058,13 +1093,13 @@ export function Forge() {
               </div>
             )}
             {logs.map(log => (
-              <div key={log.id} className={styles.logCard} data-type={log.type}>
+              <div key={log.id} className={styles.logCard} data-type={log.type} onClick={() => setDetailLog(log)} style={{ cursor: 'pointer' }}>
                 <span className={styles.logIcon}>{TYPE_ICONS[log.type] || '📄'}</span>
                 <div className={styles.logContent}>
                   <div className={styles.logText}>{formatLogContent(log)}</div>
                   <div className={styles.logMeta}>{formatTimeShort(log.logged_at)}{log.source !== 'manual' ? ` · ${log.source}` : ''}</div>
                 </div>
-                <button className={styles.deleteBtn} onClick={() => deleteLog(log.id)} title="Delete">×</button>
+                <button className={styles.deleteBtn} onClick={(e) => { e.stopPropagation(); deleteLog(log.id); }} title="Delete">×</button>
               </div>
             ))}
           </div>
@@ -1093,13 +1128,13 @@ export function Forge() {
                 <div key={dateKey}>
                   <div className={styles.dateGroup}>{formatDateHeader(dateKey)}</div>
                   {dayLogs.map(log => (
-                    <div key={log.id} className={styles.logCard} data-type={log.type}>
+                    <div key={log.id} className={styles.logCard} data-type={log.type} onClick={() => setDetailLog(log)} style={{ cursor: 'pointer' }}>
                       <span className={styles.logIcon}>{TYPE_ICONS[log.type] || '📄'}</span>
                       <div className={styles.logContent}>
                         <div className={styles.logText}>{formatLogContent(log)}</div>
                         <div className={styles.logMeta}>{formatTime(log.logged_at)}{log.source !== 'manual' ? ` · ${log.source}` : ''}</div>
                       </div>
-                      <button className={styles.deleteBtn} onClick={() => deleteLog(log.id)} title="Delete">×</button>
+                      <button className={styles.deleteBtn} onClick={(e) => { e.stopPropagation(); deleteLog(log.id); }} title="Delete">×</button>
                     </div>
                   ))}
                 </div>
@@ -1360,6 +1395,54 @@ export function Forge() {
           <PhotosTab />
         </div>
       )}
+
+      {/* Log detail overlay */}
+      {detailLog && (() => {
+        const d = parseData(detailLog);
+        return (
+          <div className={styles.detailOverlay} onClick={() => setDetailLog(null)}>
+            <div className={styles.detailPanel} onClick={e => e.stopPropagation()}>
+              <div className={styles.detailHeader}>
+                <span className={styles.logIcon} style={{ fontSize: 24 }}>{TYPE_ICONS[detailLog.type] || '📄'}</span>
+                <span className={styles.detailType}>{detailLog.type.charAt(0).toUpperCase() + detailLog.type.slice(1)}</span>
+                <button className={styles.detailClose} onClick={() => setDetailLog(null)}>×</button>
+              </div>
+              <div className={styles.detailTime}>{formatTime(detailLog.logged_at)}{detailLog.source !== 'manual' ? ` · ${detailLog.source}` : ''}</div>
+              <div className={styles.detailBody}>
+                {detailLog.type === 'meal' && (
+                  <>
+                    {d.photo_url && <img src={d.photo_url} alt="Meal" className={styles.detailPhoto} />}
+                    <div className={styles.detailField}><span className={styles.detailLabel}>Description</span><span>{d.description || '—'}</span></div>
+                    <div className={styles.detailMacros}>
+                      <div className={styles.detailMacro}><span className={styles.detailMacroVal}>{d.calories || 0}</span><span className={styles.detailMacroLabel}>cal</span></div>
+                      <div className={styles.detailMacro}><span className={styles.detailMacroVal}>{d.protein || 0}g</span><span className={styles.detailMacroLabel}>protein</span></div>
+                      <div className={styles.detailMacro}><span className={styles.detailMacroVal}>{d.carbs || 0}g</span><span className={styles.detailMacroLabel}>carbs</span></div>
+                      <div className={styles.detailMacro}><span className={styles.detailMacroVal}>{d.fat || 0}g</span><span className={styles.detailMacroLabel}>fat</span></div>
+                    </div>
+                  </>
+                )}
+                {detailLog.type === 'workout' && <WorkoutCard data={d} />}
+                {detailLog.type === 'weight' && (
+                  <div className={styles.detailField}><span className={styles.detailLabel}>Weight</span><span style={{ fontSize: 28, fontWeight: 700 }}>{d.value} {d.unit || 'kg'}</span></div>
+                )}
+                {detailLog.type === 'note' && (
+                  <div className={styles.detailField}><span className={styles.detailLabel}>Note</span><span>{d.text || '—'}</span></div>
+                )}
+                {detailLog.type === 'photo' && (
+                  <>
+                    {d.url && <img src={d.url} alt="Photo" className={styles.detailPhoto} />}
+                    {d.tag && <div className={styles.detailField}><span className={styles.detailLabel}>Tag</span><span>{d.tag}</span></div>}
+                    {d.notes && <div className={styles.detailField}><span className={styles.detailLabel}>Notes</span><span>{d.notes}</span></div>}
+                  </>
+                )}
+              </div>
+              <div className={styles.detailActions}>
+                <button className={styles.cancelBtn} onClick={() => { deleteLog(detailLog.id); setDetailLog(null); }}>Delete</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

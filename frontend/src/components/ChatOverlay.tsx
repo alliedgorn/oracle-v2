@@ -72,8 +72,14 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('chat-overlay-collapsed') === 'true');
-  // Expand when switching to a different beast
-  useEffect(() => { setCollapsed(false); }, [beastName]);
+  // Expand when switching to a different beast (skip initial mount)
+  const prevBeastRef = useRef(beastName);
+  useEffect(() => {
+    if (prevBeastRef.current !== beastName) {
+      setCollapsed(false);
+      prevBeastRef.current = beastName;
+    }
+  }, [beastName]);
   // Persist collapse state
   useEffect(() => { localStorage.setItem('chat-overlay-collapsed', String(collapsed)); }, [collapsed]);
   const [loadingMore, setLoadingMore] = useState(false);

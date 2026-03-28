@@ -1,12 +1,34 @@
 import { useState, useRef, useEffect } from 'react';
 import styles from './EmojiButton.module.css';
 
-const EMOJI_GROUPS = [
+const FALLBACK_GROUPS = [
   { label: 'Faces', emojis: ['😀','😂','🥹','😍','🤔','😎','🫡','😤','🤯','🥳','😴','🤓'] },
   { label: 'Hands', emojis: ['👍','👎','👏','🙌','🤝','✌️','🤞','💪','🫶','👋'] },
   { label: 'Objects', emojis: ['🔥','✅','❌','⚠️','💡','🎯','🚀','🏆','📌','🔧','📋','🐛'] },
   { label: 'Animals', emojis: ['🐾','🦛','🐊','🐻','🦝','🦘','🐺','🦉','🦅','🐍','🦔','🦨'] },
 ];
+
+// Categorize emojis from the whitelist into display groups
+function categorizeEmojis(emojis: string[]): { label: string; emojis: string[] }[] {
+  const faces = new Set(['😀','😂','🥹','😍','🤔','😎','🫡','😤','🤯','🥳','😴','🤓','😏','🥲','😡','🤮','🫠','🤡','💀','👻']);
+  const hands = new Set(['👍','👎','👏','🙌','🤝','✌️','🤞','💪','🫶','👋','🦾','👊','🫡']);
+  const heavy = new Set(['🏋️','🦬','🐂','🏔️','🪨','🦣','🫎','🔨','🍖','🥩','🐻','💎','🦏','🐘','🦍','🐋','🦈','🗿','⚓','🛡️','🏰','🌋','💣','🧱','⛰️','🐃','💥','☄️','🏗️','⛓️','🪐','⚒️','🚂','🐗']);
+  const animals = new Set(['🐾','🦛','🐊','🐻','🦝','🦘','🐺','🦉','🦅','🐍','🦔','🦨','🫏']);
+
+  const grouped: Record<string, string[]> = { 'Heavy': [], 'Faces': [], 'Hands': [], 'Animals': [], 'Other': [] };
+  for (const e of emojis) {
+    if (heavy.has(e)) grouped['Heavy'].push(e);
+    else if (faces.has(e)) grouped['Faces'].push(e);
+    else if (hands.has(e)) grouped['Hands'].push(e);
+    else if (animals.has(e)) grouped['Animals'].push(e);
+    else grouped['Other'].push(e);
+  }
+  return Object.entries(grouped)
+    .filter(([, v]) => v.length > 0)
+    .map(([label, emojis]) => ({ label, emojis }));
+}
+
+let cachedGroups: { label: string; emojis: string[] }[] | null = null;
 
 interface EmojiButtonProps {
   onSelect: (emoji: string) => void;
@@ -14,9 +36,25 @@ interface EmojiButtonProps {
 
 export function EmojiButton({ onSelect }: EmojiButtonProps) {
   const [open, setOpen] = useState(false);
+  const [groups, setGroups] = useState(cachedGroups || FALLBACK_GROUPS);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [pickerStyle, setPickerStyle] = useState<React.CSSProperties>({});
+
+  useEffect(() => {
+    if (cachedGroups) return;
+    fetch('/api/forum/emojis')
+      .then(r => r.json())
+      .then((data: any) => {
+        const emojis = (data.emojis || []).map((e: any) => e.emoji || e);
+        if (emojis.length > 0) {
+          const g = categorizeEmojis(emojis);
+          cachedGroups = g;
+          setGroups(g);
+        }
+      })
+      .catch(() => { /* use fallback */ });
+  }, []);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -34,14 +72,12 @@ export function EmojiButton({ onSelect }: EmojiButtonProps) {
       const pickerHeight = 320;
 
       if (spaceAbove > pickerHeight || spaceAbove > spaceBelow) {
-        // Open above
         setPickerStyle({
           position: 'fixed',
           bottom: window.innerHeight - rect.top + 4,
           left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)),
         });
       } else {
-        // Open below
         setPickerStyle({
           position: 'fixed',
           top: rect.bottom + 4,
@@ -62,7 +98,7 @@ export function EmojiButton({ onSelect }: EmojiButtonProps) {
       >😊</button>
       {open && (
         <div className={styles.picker} style={pickerStyle}>
-          {EMOJI_GROUPS.map(g => (
+          {groups.map(g => (
             <div key={g.label} className={styles.group}>
               <div className={styles.groupLabel}>{g.label}</div>
               <div className={styles.grid}>

@@ -61,10 +61,10 @@ const ChatMessage = memo(function ChatMessage({ msg, onImgClick }: {
 }, (prev, next) => prev.msg.id === next.msg.id && prev.msg.read_at === next.msg.read_at && prev.msg.content === next.msg.content);
 
 const EMOJI_GROUPS = [
-  { label: 'Smileys', emojis: ['😊', '😂', '🤣', '😍', '🥰', '😘', '😎', '🤔', '😅', '😢', '😤', '🙄', '😴', '🤗', '😇', '🫡'] },
-  { label: 'Gestures', emojis: ['👍', '👎', '👏', '🙏', '💪', '🤝', '✌️', '🤙', '👀', '🫶'] },
-  { label: 'Animals', emojis: ['🐺', '🐻', '🦁', '🐊', '🐴', '🦘', '🦝', '🦦', '🐦‍⬛', '🐙', '🦔', '🐍', '🦅', '🦉'] },
-  { label: 'Objects', emojis: ['🔥', '❤️', '⭐', '💯', '🎉', '🏆', '🚀', '💡', '⚡', '🎯', '🛡️', '⚠️', '✅', '❌'] },
+  { label: 'Smileys', emojis: ['😊', '😂', '🤣', '😍', '🥰', '😘', '😎', '🤔', '😅', '😢', '😤', '🙄', '😴', '🤗', '😇', '🫡', '🫠'] },
+  { label: 'Gestures', emojis: ['👍', '👎', '👏', '🙏', '💪', '🤝', '✌️', '🤙', '👀', '🫶', '🦾'] },
+  { label: 'Animals', emojis: ['🐺', '🐻', '🦁', '🐊', '🐴', '🦘', '🦝', '🦦', '🐦‍⬛', '🐙', '🦔', '🐍', '🦅', '🦉', '🦍', '🐘', '🦏', '🐋', '🦬', '🐂', '🦣', '🫎', '🦈'] },
+  { label: 'Objects', emojis: ['🔥', '❤️', '⭐', '💯', '🎉', '🏆', '🚀', '💡', '⚡', '🎯', '🛡️', '⚠️', '✅', '❌', '🏋️', '🔨', '⚓', '🪨', '🗿', '🌋', '💣', '☄️', '🪐', '🥩', '🍖'] },
 ];
 
 export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProps) {
@@ -244,7 +244,13 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
 
   return (
     <div className={`${styles.overlay} ${collapsed ? styles.overlayCollapsed : ''}`}>
-      <div className={styles.header} onClick={() => setCollapsed(!collapsed)} style={{ cursor: 'pointer' }}>
+      <div className={styles.header} onClick={() => {
+        const wasCollapsed = collapsed;
+        setCollapsed(!collapsed);
+        if (wasCollapsed) {
+          setTimeout(() => messagesEndRef.current?.scrollIntoView(), 50);
+        }
+      }} style={{ cursor: 'pointer' }}>
         <span className={styles.title}>Chat with {displayName}</span>
         <button className={styles.closeBtn} onClick={(e) => { e.stopPropagation(); onClose(); }}>✕</button>
       </div>

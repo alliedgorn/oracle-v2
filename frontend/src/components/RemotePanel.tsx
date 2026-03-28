@@ -85,6 +85,13 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
   // WebSocket: refresh unread counts on new DM (slight delay so ChatOverlay's markAsRead completes first)
   useWebSocket('new_dm', useCallback(() => { setTimeout(() => loadUnread(), 500); }, [loadUnread]));
 
+  // Close this overlay when another chat overlay opens (e.g. Sable from nav bar)
+  useEffect(() => {
+    const handler = () => { setChatBeast(null); };
+    window.addEventListener('chatOverlayClosed', handler);
+    return () => window.removeEventListener('chatOverlayClosed', handler);
+  }, []);
+
   async function handleClick(beast: Beast) {
     if (beast.status === 'offline') return;
     setLoading(true);

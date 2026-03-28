@@ -407,7 +407,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
             </svg>
           </button>
         )}
-<button onClick={() => setSableChatOpen(v => !v)} className={styles.settingsLink} title="Chat with Sable">
+<button onClick={() => { setSableChatOpen(v => !v); localStorage.removeItem('chatBeast'); window.dispatchEvent(new Event('chatOverlayClosed')); }} className={styles.settingsLink} title="Chat with Sable">
           <img src="/api/forum/file/e8ba613f-e2cd-47b7-a385-a05b6b2ee0ae.jpg" alt="Sable" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }} />
         </button>
         {sableChatOpen && (

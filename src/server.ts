@@ -5510,6 +5510,33 @@ sqlite.exec(`
   )
 `);
 
+// Exercise library table (T#410 — Forge redesign backend)
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS exercises (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    muscle_group TEXT,
+    equipment TEXT,
+    created_by TEXT DEFAULT 'import',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(name, equipment)
+  )
+`);
+
+// Personal records table — materialized on write (T#410)
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS personal_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    exercise_name TEXT NOT NULL,
+    weight REAL NOT NULL,
+    reps INTEGER NOT NULL,
+    unit TEXT DEFAULT 'kg',
+    achieved_at DATETIME NOT NULL,
+    log_id INTEGER REFERENCES routine_logs(id),
+    UNIQUE(exercise_name, weight, reps, unit)
+  )
+`);
+
 // Remove CHECK constraint on existing table (allows 'bodyfat' type)
 try {
   sqlite.exec(`
@@ -5748,6 +5775,148 @@ app.get('/api/routine/stats', (c) => {
   return c.json({ total_logs: totalLogs, by_type: byType, workouts_this_week: thisWeek, latest_weight: latestWeight });
 });
 
+// GET /api/routine/summary — enhanced summary for Stats tab (T#410)
+app.get('/api/routine/summary', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const range = c.req.query('range') || 'week';
+  const rangeMap: Record<string, number> = { week: 7, month: 30, '3m': 90, year: 365 };
+  const days = rangeMap[range] || 7;
+  const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const workoutsThisRange = (sqlite.prepare(
+    "SELECT COUNT(*) as c FROM routine_logs WHERE deleted_at IS NULL AND type = 'workout' AND logged_at >= ?"
+  ).get(from) as any).c;
+
+  // Total volume this range (sum of weight * reps across all sets)
+  const workoutRows = sqlite.prepare(
+    "SELECT data FROM routine_logs WHERE deleted_at IS NULL AND type = 'workout' AND logged_at >= ?"
+  ).all(from) as any[];
+
+  let totalVolume = 0;
+  let bestLift = { exercise: '', weight: 0, reps: 0, unit: 'kg' };
+  for (const row of workoutRows) {
+    try {
+      const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+      for (const ex of (data.exercises || [])) {
+        const { name } = parseExerciseName(typeof ex === 'string' ? ex : (ex.name || ''));
+        for (const s of (ex.sets || [])) {
+          const w = parseFloat(s.weight) || 0;
+          const r = parseInt(s.reps) || 0;
+          totalVolume += w * r;
+          if (w > bestLift.weight) {
+            bestLift = { exercise: name, weight: w, reps: r, unit: s.unit || 'kg' };
+          }
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  const latestWeight = sqlite.prepare(
+    "SELECT json_extract(data, '$.value') as value, logged_at FROM routine_logs WHERE type = 'weight' AND deleted_at IS NULL ORDER BY logged_at DESC LIMIT 1"
+  ).get() as any;
+
+  const prevWeight = sqlite.prepare(
+    "SELECT json_extract(data, '$.value') as value FROM routine_logs WHERE type = 'weight' AND deleted_at IS NULL ORDER BY logged_at DESC LIMIT 1 OFFSET 1"
+  ).get() as any;
+
+  const weightTrend = latestWeight && prevWeight ? (latestWeight.value > prevWeight.value ? 'up' : latestWeight.value < prevWeight.value ? 'down' : 'stable') : null;
+
+  return c.json({
+    workouts: workoutsThisRange,
+    totalVolume: Math.round(totalVolume),
+    bestLift: bestLift.weight > 0 ? bestLift : null,
+    latestWeight: latestWeight ? { ...latestWeight, trend: weightTrend } : null,
+    range,
+  });
+});
+
+// GET /api/routine/exercises — exercise library (T#410)
+app.get('/api/routine/exercises', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const q = c.req.query('q');
+  const muscleGroup = c.req.query('muscle_group');
+
+  let query = 'SELECT * FROM exercises WHERE 1=1';
+  const params: any[] = [];
+  if (q) { query += ' AND name LIKE ?'; params.push(`%${q}%`); }
+  if (muscleGroup) { query += ' AND muscle_group = ?'; params.push(muscleGroup); }
+  query += ' ORDER BY name ASC';
+
+  const exercises = sqlite.prepare(query).all(...params);
+  return c.json({ exercises });
+});
+
+// POST /api/routine/exercises — add custom exercise (T#410)
+app.post('/api/routine/exercises', async (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  try {
+    const body = await c.req.json();
+    const { name, muscle_group, equipment } = body;
+    if (!name) return c.json({ error: 'Exercise name is required' }, 400);
+    try {
+      sqlite.prepare(
+        'INSERT INTO exercises (name, muscle_group, equipment, created_by) VALUES (?, ?, ?, ?)'
+      ).run(name, muscle_group || null, equipment || null, 'manual');
+    } catch (e: any) {
+      if (e.message?.includes('UNIQUE')) return c.json({ error: 'Exercise already exists' }, 409);
+      throw e;
+    }
+    const exercise = sqlite.prepare('SELECT * FROM exercises WHERE name = ? AND equipment IS ?').get(name, equipment || null);
+    return c.json(exercise, 201);
+  } catch { return c.json({ error: 'Invalid request' }, 400); }
+});
+
+// POST /api/routine/exercises/seed — seed exercise library from existing workout data (T#410)
+app.post('/api/routine/exercises/seed', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+
+  const rows = sqlite.prepare(
+    "SELECT data FROM routine_logs WHERE type = 'workout' AND deleted_at IS NULL"
+  ).all() as any[];
+
+  const seen = new Set<string>();
+  let seeded = 0;
+
+  const insert = sqlite.prepare(
+    'INSERT OR IGNORE INTO exercises (name, muscle_group, equipment, created_by) VALUES (?, ?, ?, ?)'
+  );
+
+  for (const row of rows) {
+    try {
+      const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+      for (const ex of (data.exercises || [])) {
+        const rawName = typeof ex === 'string' ? ex : (ex.name || '');
+        const { name, equipment } = parseExerciseName(rawName);
+        const key = `${name}|${equipment}`;
+        if (!name || seen.has(key)) continue;
+        seen.add(key);
+        const result = insert.run(name, data.muscle_group || null, equipment || null, 'import');
+        if (result.changes > 0) seeded++;
+      }
+    } catch { /* skip */ }
+  }
+
+  return c.json({ seeded, total: seen.size });
+});
+
+// GET /api/routine/personal-records — personal records list (T#410)
+app.get('/api/routine/personal-records', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const exercise = c.req.query('exercise');
+  const range = c.req.query('range');
+
+  let query = 'SELECT * FROM personal_records WHERE 1=1';
+  const params: any[] = [];
+  if (exercise) { query += ' AND exercise_name = ?'; params.push(exercise); }
+  if (range === 'month') {
+    query += " AND achieved_at >= datetime('now', '-30 days')";
+  }
+  query += ' ORDER BY weight DESC, reps DESC';
+
+  const records = sqlite.prepare(query).all(...params);
+  return c.json({ records });
+});
+
 // GET /api/routine/photos — photo gallery
 app.get('/api/routine/photos', (c) => {
   if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
@@ -5775,7 +5944,30 @@ app.post('/api/routine/logs', async (c) => {
     const result = sqlite.prepare(
       'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
     ).run(type, logged_at || now, jsonData, data.source || 'manual', now);
-    const log = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ?').get((result as any).lastInsertRowid);
+    const logId = (result as any).lastInsertRowid;
+    const log = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ?').get(logId);
+
+    // Update personal records for workout logs (T#410)
+    if (type === 'workout') {
+      try {
+        const workoutData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+        const prInsert = sqlite.prepare(
+          'INSERT OR IGNORE INTO personal_records (exercise_name, weight, reps, unit, achieved_at, log_id) VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        for (const ex of (workoutData.exercises || [])) {
+          const { name } = parseExerciseName(typeof ex === 'string' ? ex : (ex.name || ''));
+          if (!name) continue;
+          for (const s of (ex.sets || [])) {
+            const w = parseFloat(s.weight) || 0;
+            const r = parseInt(s.reps) || 0;
+            if (w > 0 && r > 0) {
+              prInsert.run(name, w, r, (s.unit || 'kg').toLowerCase(), logged_at || now, logId);
+            }
+          }
+        }
+      } catch { /* PR update failure is non-critical */ }
+    }
+
     return c.json(log, 201);
   } catch { return c.json({ error: 'Invalid request' }, 400); }
 });

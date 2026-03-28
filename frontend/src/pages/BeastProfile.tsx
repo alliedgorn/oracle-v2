@@ -13,6 +13,7 @@ interface Beast {
   themeColor: string | null;
   role: string | null;
   sex: string | null;
+  birthdate: string | null;
   online: boolean;
   sessionName: string;
 }
@@ -153,6 +154,7 @@ export function BeastProfile() {
             <span className={styles.animal}>{emoji} {beast.animal}</span>
             {beast.sex && !editing && <span className={styles.role}>{beast.sex === 'male' ? '♂' : '♀'} {beast.sex}</span>}
             {beast.role && !editing && <span className={styles.role}>{beast.role}</span>}
+            {beast.birthdate && !editing && <span className={styles.role}>Born {new Date(beast.birthdate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>}
           </div>
           {!editing && beast.bio && <p className={styles.bio}>{beast.bio}</p>}
           {!editing && interests.length > 0 && (

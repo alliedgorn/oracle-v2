@@ -73,6 +73,9 @@ export function Board() {
   const [projectFilter, setProjectFilter] = useState<string>('__active__');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
+  const [doneExpanded, setDoneExpanded] = useState(false);
+  const [doneShowAll, setDoneShowAll] = useState(false);
+  const DONE_PREVIEW_COUNT = 5;
   const [showNewTask, setShowNewTask] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -456,20 +459,36 @@ export function Board() {
         })()}`}>
           {STATUSES.map(status => {
             const tasks = board.columns[status] || [];
+            const isDone = status === 'done';
+            const visibleTasks = isDone
+              ? (doneExpanded ? (doneShowAll ? tasks : tasks.slice(0, DONE_PREVIEW_COUNT)) : [])
+              : tasks;
             return (
               <div key={status} className={styles.column}>
-                <div className={styles.columnHeader}>
+                <div
+                  className={styles.columnHeader}
+                  onClick={isDone ? () => { setDoneExpanded(prev => !prev); setDoneShowAll(false); } : undefined}
+                  style={isDone ? { cursor: 'pointer' } : undefined}
+                >
                   <span className={styles.columnTitle}>{STATUS_LABELS[status]}</span>
                   <span className={styles.columnCount}>{tasks.length}</span>
+                  {isDone && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>{doneExpanded ? '▾' : '▸'}</span>}
                 </div>
-                <div className={styles.columnBody}>
-                  {tasks.length === 0 && (
-                    <div className={styles.emptyColumn}>No tasks</div>
-                  )}
-                  {tasks.map(task => (
-                    <TaskCard key={task.id} task={task} onClick={() => openTaskDetail(task)} />
-                  ))}
-                </div>
+                {(isDone ? doneExpanded : true) && (
+                  <div className={styles.columnBody}>
+                    {visibleTasks.length === 0 && !isDone && (
+                      <div className={styles.emptyColumn}>No tasks</div>
+                    )}
+                    {visibleTasks.map(task => (
+                      <TaskCard key={task.id} task={task} onClick={() => openTaskDetail(task)} />
+                    ))}
+                    {isDone && doneExpanded && !doneShowAll && tasks.length > DONE_PREVIEW_COUNT && (
+                      <button className={styles.cancelBtn} style={{ width: '100%', fontSize: 12, padding: '6px' }} onClick={() => setDoneShowAll(true)}>
+                        Load More ({tasks.length - DONE_PREVIEW_COUNT} remaining)
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

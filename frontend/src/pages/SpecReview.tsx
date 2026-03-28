@@ -64,6 +64,7 @@ export function SpecReview() {
   const [commentTotal, setCommentTotal] = useState(0);
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [specLinks, setSpecLinks] = useState<any[]>([]);
 
   const specParam = searchParams.get('spec');
 
@@ -91,6 +92,15 @@ export function SpecReview() {
       })
       .catch(() => setSelectedSpec(null));
   }, [specParam]);
+
+  // Fetch spec links
+  useEffect(() => {
+    if (!selectedSpec) { setSpecLinks([]); return; }
+    fetch(`${API_BASE}/specs/${selectedSpec.id}/links`)
+      .then(r => r.ok ? r.json() : { links: [] })
+      .then(d => setSpecLinks(d.links || []))
+      .catch(() => setSpecLinks([]));
+  }, [selectedSpec]);
 
   const loadComments = useCallback(async (specId: number) => {
     const res = await fetch(`${API_BASE}/specs/${specId}/comments?limit=30&offset=0`);
@@ -243,6 +253,24 @@ export function SpecReview() {
             {selectedSpec.task_id && <a href={`/board?task=${selectedSpec.task_id.replace(/\D/g, '')}`} className={styles.taskLink}>{selectedSpec.task_id}</a>}
             <span className={styles.metaItem}>{formatDate(selectedSpec.created_at)}</span>
           </div>
+          {specLinks.length > 0 && (
+            <div className={styles.specLinks}>
+              {specLinks.filter((l: any) => l.link_type === 'task').length > 0 && (
+                <span className={styles.linkGroup}>
+                  Tasks: {specLinks.filter((l: any) => l.link_type === 'task').map((l: any) => (
+                    <a key={l.id} href={`/board?task=${l.link_id}`} className={styles.linkChip}>T#{l.link_id}</a>
+                  ))}
+                </span>
+              )}
+              {specLinks.filter((l: any) => l.link_type === 'thread').length > 0 && (
+                <span className={styles.linkGroup}>
+                  Threads: {specLinks.filter((l: any) => l.link_type === 'thread').map((l: any) => (
+                    <a key={l.id} href={`/forum?thread=${l.link_id}`} className={styles.linkChip}>#{l.link_id}</a>
+                  ))}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className={styles.detailContent}>

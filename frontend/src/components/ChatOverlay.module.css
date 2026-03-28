@@ -209,6 +209,10 @@
 }
 
 /* Emoji picker */
+.overlayCollapsed {
+  height: auto !important;
+}
+
 .emojiToggle {
   background: none;
   border: none;

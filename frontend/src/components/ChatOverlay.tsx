@@ -71,6 +71,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
@@ -242,71 +243,75 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   }
 
   return (
-    <div className={styles.overlay}>
-      <div className={styles.header}>
+    <div className={`${styles.overlay} ${collapsed ? styles.overlayCollapsed : ''}`}>
+      <div className={styles.header} onClick={() => setCollapsed(!collapsed)} style={{ cursor: 'pointer' }}>
         <span className={styles.title}>Chat with {displayName}</span>
-        <button className={styles.closeBtn} onClick={onClose}>✕</button>
+        <button className={styles.closeBtn} onClick={(e) => { e.stopPropagation(); onClose(); }}>✕</button>
       </div>
-      <div className={styles.messages} ref={messagesContainerRef}>
-        {loadingMore && <div className={styles.loadingMore}>Loading older messages...</div>}
-        {!hasMore && messages.length > 0 && <div className={styles.loadingMore}>Beginning of conversation</div>}
-        {messages.length === 0 && !initialLoad && (
-          <div className={styles.empty}>No messages yet. Say hello!</div>
-        )}
-        {messages.map(msg => (
-          <ChatMessage key={msg.id} msg={msg} onImgClick={handleImgClick} />
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-      {showScrollDown && (
-        <button
-          className={styles.scrollDownBtn}
-          onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
-          title="Scroll to newest"
-        >↓</button>
-      )}
-      <form onSubmit={handleSend} className={styles.inputArea}>
-        {showEmoji && (
-          <div className={styles.emojiPicker}>
-            {EMOJI_GROUPS.map(group => (
-              <div key={group.label} className={styles.emojiGroup}>
-                <div className={styles.emojiGroupLabel}>{group.label}</div>
-                <div className={styles.emojiGrid}>
-                  {group.emojis.map(emoji => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      className={styles.emojiBtn}
-                      onClick={() => {
-                        setNewMessage(prev => prev + emoji);
-                        inputRef.current?.focus();
-                      }}
-                    >{emoji}</button>
-                  ))}
-                </div>
-              </div>
+      {!collapsed && (
+        <>
+          <div className={styles.messages} ref={messagesContainerRef}>
+            {loadingMore && <div className={styles.loadingMore}>Loading older messages...</div>}
+            {!hasMore && messages.length > 0 && <div className={styles.loadingMore}>Beginning of conversation</div>}
+            {messages.length === 0 && !initialLoad && (
+              <div className={styles.empty}>No messages yet. Say hello!</div>
+            )}
+            {messages.map(msg => (
+              <ChatMessage key={msg.id} msg={msg} onImgClick={handleImgClick} />
             ))}
+            <div ref={messagesEndRef} />
           </div>
-        )}
-        <div className={styles.inputRow}>
-          <FileUpload onUploadComplete={(md) => setNewMessage(prev => prev ? `${prev}\n${md}` : md)} />
-          <button type="button" className={styles.emojiToggle} onClick={() => setShowEmoji(!showEmoji)} title="Emoji">
-            😊
-          </button>
-          <textarea
-            ref={inputRef}
-            value={newMessage}
-            onChange={e => setNewMessage(e.target.value)}
-            onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
-            placeholder={`Message ${displayName}...`}
-            className={styles.input}
-            rows={2}
-          />
-          <button type="submit" className={styles.sendBtn} disabled={loading || !newMessage.trim()}>
-            {loading ? '...' : 'Send'}
-          </button>
-        </div>
-      </form>
+          {showScrollDown && (
+            <button
+              className={styles.scrollDownBtn}
+              onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+              title="Scroll to newest"
+            >↓</button>
+          )}
+          <form onSubmit={handleSend} className={styles.inputArea}>
+            {showEmoji && (
+              <div className={styles.emojiPicker}>
+                {EMOJI_GROUPS.map(group => (
+                  <div key={group.label} className={styles.emojiGroup}>
+                    <div className={styles.emojiGroupLabel}>{group.label}</div>
+                    <div className={styles.emojiGrid}>
+                      {group.emojis.map(emoji => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          className={styles.emojiBtn}
+                          onClick={() => {
+                            setNewMessage(prev => prev + emoji);
+                            inputRef.current?.focus();
+                          }}
+                        >{emoji}</button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className={styles.inputRow}>
+              <FileUpload onUploadComplete={(md) => setNewMessage(prev => prev ? `${prev}\n${md}` : md)} />
+              <button type="button" className={styles.emojiToggle} onClick={() => setShowEmoji(!showEmoji)} title="Emoji">
+                😊
+              </button>
+              <textarea
+                ref={inputRef}
+                value={newMessage}
+                onChange={e => setNewMessage(e.target.value)}
+                onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
+                placeholder={`Message ${displayName}...`}
+                className={styles.input}
+                rows={2}
+              />
+              <button type="submit" className={styles.sendBtn} disabled={loading || !newMessage.trim()}>
+                {loading ? '...' : 'Send'}
+              </button>
+            </div>
+          </form>
+        </>
+      )}
 
       {lightboxSrc && (
         <div className={styles.lightbox} onClick={() => setLightboxSrc(null)}>

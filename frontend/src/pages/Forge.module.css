@@ -607,18 +607,21 @@
 }
 
 .viewBtn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  opacity: 0.5;
-  transition: opacity 0.2s;
-  padding: 2px 4px;
+  padding: 2px 10px;
+  transition: all 0.15s;
+  flex-shrink: 0;
 }
 
 .viewBtn:hover {
-  opacity: 1;
+  background: var(--bg-card);
+  border-color: var(--accent);
   color: var(--accent);
 }
 
@@ -646,10 +649,6 @@
 @media (max-width: 768px) {
   .deleteBtn {
     opacity: 0.5;
-  }
-
-  .viewBtn {
-    opacity: 0.7;
   }
 }
 

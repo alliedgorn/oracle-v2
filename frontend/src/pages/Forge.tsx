@@ -1176,7 +1176,7 @@ export function Forge() {
                   <div className={styles.logText}>{formatLogContent(log)}</div>
                   <div className={styles.logMeta}>{formatTimeShort(log.logged_at)}{log.source !== 'manual' ? ` · ${log.source}` : ''}</div>
                 </div>
-                <button className={styles.viewBtn} onMouseDown={(e) => { e.preventDefault(); setDetailLog(log); }} title="View">▸</button>
+                <button className={styles.viewBtn} onMouseDown={(e) => { e.preventDefault(); setDetailLog(log); }} title="View">View</button>
                 <button className={styles.deleteBtn} onMouseDown={(e) => { e.preventDefault(); setDeleteConfirmId(log.id); }} title="Delete">×</button>
               </div>
             ))}
@@ -1212,7 +1212,7 @@ export function Forge() {
                         <div className={styles.logText}>{formatLogContent(log)}</div>
                         <div className={styles.logMeta}>{formatTime(log.logged_at)}{log.source !== 'manual' ? ` · ${log.source}` : ''}</div>
                       </div>
-                      <button className={styles.viewBtn} onMouseDown={(e) => { e.preventDefault(); setDetailLog(log); }} title="View">▸</button>
+                      <button className={styles.viewBtn} onMouseDown={(e) => { e.preventDefault(); setDetailLog(log); }} title="View">View</button>
                       <button className={styles.deleteBtn} onMouseDown={(e) => { e.preventDefault(); setDeleteConfirmId(log.id); }} title="Delete">×</button>
                     </div>
                   ))}

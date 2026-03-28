@@ -147,7 +147,7 @@ function WorkoutTrendsChart({ range }: { range: string }) {
       </div>
       <div className={styles.trendChart}>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
-          {showEmptyChart ? (
+          {!hasData ? (
             <text x={W / 2} y={H / 2} fill="var(--text-muted)" fontSize={14} textAnchor="middle">
               Select exercises below to see trends
             </text>

@@ -6260,6 +6260,16 @@ app.delete('/api/routine/logs/:id', (c) => {
   return c.json({ success: true, id });
 });
 
+// PATCH /api/routine/logs/:id/restore — undelete a soft-deleted log
+app.patch('/api/routine/logs/:id/restore', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  const existing = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ? AND deleted_at IS NOT NULL').get(id);
+  if (!existing) return c.json({ error: 'Deleted log not found' }, 404);
+  sqlite.prepare('UPDATE routine_logs SET deleted_at = NULL WHERE id = ?').run(id);
+  return c.json({ success: true, id, restored: true });
+});
+
 // POST /api/routine/photo/upload — upload progress photo
 app.post('/api/routine/photo/upload', async (c) => {
   if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);

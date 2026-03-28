@@ -261,7 +261,7 @@ function WorkoutTrendsChart({ range }: { range: string }) {
                   setSelectedExercises(prev =>
                     prev.includes(ex.name)
                       ? prev.filter(e => e !== ex.name)
-                      : prev.length >= 5 ? prev : [...prev, ex.name]
+                      : [...prev, ex.name]
                   );
                 }}
                 style={{ fontSize: 11 }}>

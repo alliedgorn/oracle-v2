@@ -4357,7 +4357,7 @@ function runSchedulerCycle() {
 
       // Send notification — Bun.spawnSync bypasses shell, no sanitization needed
       const notification = `[Scheduler] Due now: ${schedule.task} (schedule ${schedule.id})${schedule.command ? ` | Command: ${schedule.command}` : ''}`;
-      const reminder = `Remember: mark done with curl -s -X PATCH http://localhost:47778/api/schedules/${schedule.id}/run?as=${schedule.beast}`;
+      const reminder = `Remember: mark done with /scheduler run ${schedule.id}`;
 
       try {
         Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);

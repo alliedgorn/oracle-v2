@@ -6447,12 +6447,39 @@ app.post('/api/routine/logs', async (c) => {
     if (!['meal', 'workout', 'weight', 'note', 'photo'].includes(type)) {
       return c.json({ error: 'type must be meal, workout, weight, note, or photo' }, 400);
     }
-    // Meal macro validation — calories, protein, carbs, fat required (T#423)
+    // Meal macro validation — calories, protein, carbs, fat required (T#423, T#430)
     if (type === 'meal') {
       const mealData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
-      if (!mealData.description) return c.json({ error: 'Meal description required' }, 400);
-      const missing = ['calories', 'protein', 'carbs', 'fat'].filter(f => mealData[f] == null || mealData[f] === '');
-      if (missing.length > 0) return c.json({ error: `Meal macros required: ${missing.join(', ')}` }, 400);
+      if (mealData.items && Array.isArray(mealData.items)) {
+        // T#430: itemized meal — validate each item, auto-sum totals
+        if (mealData.items.length === 0) return c.json({ error: 'At least 1 meal item required' }, 400);
+        const macroFields = ['calories', 'protein', 'carbs', 'fat'] as const;
+        for (let i = 0; i < mealData.items.length; i++) {
+          const item = mealData.items[i];
+          if (!item.name?.trim()) return c.json({ error: `Item ${i + 1}: name required` }, 400);
+          const missing = macroFields.filter(f => item[f] == null || item[f] === '');
+          if (missing.length > 0) return c.json({ error: `Item ${i + 1} (${item.name}): macros required: ${missing.join(', ')}` }, 400);
+          for (const f of macroFields) {
+            const v = Number(item[f]);
+            if (isNaN(v) || v < 0) return c.json({ error: `Item ${i + 1} (${item.name}): ${f} must be a non-negative number` }, 400);
+            item[f] = v;
+          }
+        }
+        // Auto-compute top-level totals from items
+        for (const f of macroFields) {
+          mealData[f] = mealData.items.reduce((sum: number, item: any) => sum + (Number(item[f]) || 0), 0);
+        }
+        // Auto-generate description from items if not provided
+        if (!mealData.description) {
+          mealData.description = mealData.items.map((item: any) => item.name).slice(0, 3).join(', ') + (mealData.items.length > 3 ? '...' : '');
+        }
+        data.data = mealData;
+      } else {
+        // T#423: flat macro meal (backward compatible)
+        if (!mealData.description) return c.json({ error: 'Meal description required' }, 400);
+        const missing = ['calories', 'protein', 'carbs', 'fat'].filter(f => mealData[f] == null || mealData[f] === '');
+        if (missing.length > 0) return c.json({ error: `Meal macros required: ${missing.join(', ')}` }, 400);
+      }
     }
     const jsonData = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
     const now = new Date().toISOString();

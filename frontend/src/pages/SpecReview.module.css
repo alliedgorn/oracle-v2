@@ -91,7 +91,8 @@
 .cardHeader {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: var(--space-sm);
   margin-bottom: var(--space-sm);
 }
 
@@ -101,6 +102,7 @@
   gap: var(--space-sm);
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .cardSpecId {
@@ -121,9 +123,15 @@
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
+}
+
+@media (min-width: 600px) {
+  .cardTitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .cardMeta {

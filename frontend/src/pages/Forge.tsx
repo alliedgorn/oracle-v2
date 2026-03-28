@@ -93,8 +93,14 @@ const TREND_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#a78bfa'];
 const KG_TO_LB = 2.20462;
 const LB_TO_KG = 1 / KG_TO_LB;
 
+function normalizeUnit(unit: string): 'kg' | 'lbs' {
+  const u = (unit || 'kg').toLowerCase();
+  if (u === 'lb' || u === 'lbs' || u === 'pound' || u === 'pounds') return 'lbs';
+  return 'kg';
+}
+
 function convertWeight(value: number, fromUnit: string, toUnit: 'kg' | 'lbs'): number {
-  const from = (fromUnit || 'kg').toLowerCase();
+  const from = normalizeUnit(fromUnit);
   if (from === toUnit) return value;
   if (toUnit === 'lbs') return value * KG_TO_LB;
   return value * LB_TO_KG;

@@ -578,6 +578,9 @@ export function Forge() {
   const [showImportMenu, setShowImportMenu] = useState(false);
   const [activeForm, setActiveForm] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const [mealItems, setMealItems] = useState<{ name: string; quantity: string; calories: string; protein: string; carbs: string; fat: string }[]>([]);
+  const [addingItem, setAddingItem] = useState(false);
+  const [itemDraft, setItemDraft] = useState({ name: '', quantity: '', calories: '', protein: '', carbs: '', fat: '' });
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showWorkoutForm, setShowWorkoutForm] = useState(false);
@@ -689,16 +692,29 @@ export function Forge() {
     try {
       let data: any;
       switch (type) {
-        case 'meal':
+        case 'meal': {
+          const items = mealItems.map(it => ({
+            name: it.name,
+            quantity: it.quantity || undefined,
+            calories: parseInt(it.calories || '0') || 0,
+            protein: parseInt(it.protein || '0') || 0,
+            carbs: parseInt(it.carbs || '0') || 0,
+            fat: parseInt(it.fat || '0') || 0,
+          }));
+          const totals = items.reduce((acc, it) => ({
+            calories: acc.calories + it.calories,
+            protein: acc.protein + it.protein,
+            carbs: acc.carbs + it.carbs,
+            fat: acc.fat + it.fat,
+          }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
           data = {
-            description: formData.description || '',
-            calories: parseInt(formData.calories || '0') || 0,
-            protein: parseInt(formData.protein || '0') || 0,
-            carbs: parseInt(formData.carbs || '0') || 0,
-            fat: parseInt(formData.fat || '0') || 0,
+            description: formData.description || items.map(it => it.name).slice(0, 2).join(', ') + (items.length > 2 ? '...' : ''),
+            items,
+            ...totals,
             ...(formData.photo_url ? { photo_url: formData.photo_url } : {}),
           };
           break;
+        }
         case 'workout':
           data = { type: formData.workoutType || '', duration_min: parseInt(formData.duration || '0') || undefined, exercises: (formData.exercises || '').split('\n').filter(Boolean) };
           break;
@@ -716,6 +732,9 @@ export function Forge() {
         body: JSON.stringify({ type, data }),
       });
       setFormData({});
+      setMealItems([]);
+      setAddingItem(false);
+      setItemDraft({ name: '', quantity: '', calories: '', protein: '', carbs: '', fat: '' });
       setActiveForm(null);
       loadLogTab();
     } finally { setLoading(false); }
@@ -752,11 +771,14 @@ export function Forge() {
           d.carbs ? `${d.carbs}g carbs` : '',
           d.fat ? `${d.fat}g fat` : '',
         ].filter(Boolean).join(' · ');
+        const items = d.items as { name: string; quantity?: string; calories: number; protein: number; carbs: number; fat: number }[] | undefined;
+        const itemCount = items?.length || 0;
+        const label = d.description || (items ? items.slice(0, 2).map((it: any) => it.name).join(', ') + (itemCount > 2 ? '...' : '') : 'Meal');
         return (
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             {d.photo_url && <img src={d.photo_url} alt="Meal" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 'var(--radius-sm)', flexShrink: 0 }} />}
             <div>
-              <div>{d.description || 'Meal'}</div>
+              <div>{label}{itemCount > 0 ? ` — ${itemCount} item${itemCount > 1 ? 's' : ''}` : ''}</div>
               {macros && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{macros}</div>}
             </div>
           </div>
@@ -1030,13 +1052,59 @@ export function Forge() {
             <div className={styles.form}>
               {activeForm === 'meal' && (
                 <>
-                  <input placeholder="What did you eat? *" value={formData.description || ''} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} className={styles.formInput} autoFocus />
-                  <div className={styles.macroGrid}>
-                    <input placeholder="Calories *" type="number" value={formData.calories || ''} onChange={e => setFormData(p => ({ ...p, calories: e.target.value }))} className={styles.formInput} />
-                    <input placeholder="Protein (g) *" type="number" value={formData.protein || ''} onChange={e => setFormData(p => ({ ...p, protein: e.target.value }))} className={styles.formInput} />
-                    <input placeholder="Carbs (g) *" type="number" value={formData.carbs || ''} onChange={e => setFormData(p => ({ ...p, carbs: e.target.value }))} className={styles.formInput} />
-                    <input placeholder="Fat (g) *" type="number" value={formData.fat || ''} onChange={e => setFormData(p => ({ ...p, fat: e.target.value }))} className={styles.formInput} />
-                  </div>
+                  <input placeholder="Meal name (optional)" value={formData.description || ''} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} className={styles.formInput} autoFocus />
+
+                  {/* Item list */}
+                  {mealItems.map((item, i) => (
+                    <div key={i} className={styles.mealItemCard}>
+                      <div className={styles.mealItemHeader}>
+                        <span className={styles.mealItemName}>{item.name}{item.quantity ? ` ${item.quantity}` : ''}</span>
+                        <button className={styles.mealItemRemove} onClick={() => setMealItems(prev => prev.filter((_, j) => j !== i))}>✕</button>
+                      </div>
+                      <div className={styles.mealItemMacros}>
+                        {item.calories} cal · {item.protein}g P · {item.carbs}g C · {item.fat}g F
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Add item form */}
+                  {addingItem ? (
+                    <div className={styles.mealItemForm}>
+                      <input placeholder="Food name *" value={itemDraft.name} onChange={e => setItemDraft(p => ({ ...p, name: e.target.value }))} className={styles.formInput} autoFocus />
+                      <input placeholder="Quantity (e.g. 200g)" value={itemDraft.quantity} onChange={e => setItemDraft(p => ({ ...p, quantity: e.target.value }))} className={styles.formInput} />
+                      <div className={styles.macroGrid}>
+                        <input placeholder="Calories *" type="number" value={itemDraft.calories} onChange={e => setItemDraft(p => ({ ...p, calories: e.target.value }))} className={styles.formInput} />
+                        <input placeholder="Protein (g) *" type="number" value={itemDraft.protein} onChange={e => setItemDraft(p => ({ ...p, protein: e.target.value }))} className={styles.formInput} />
+                        <input placeholder="Carbs (g) *" type="number" value={itemDraft.carbs} onChange={e => setItemDraft(p => ({ ...p, carbs: e.target.value }))} className={styles.formInput} />
+                        <input placeholder="Fat (g) *" type="number" value={itemDraft.fat} onChange={e => setItemDraft(p => ({ ...p, fat: e.target.value }))} className={styles.formInput} />
+                      </div>
+                      <div className={styles.formActions}>
+                        <button
+                          className={styles.submitBtn}
+                          disabled={!itemDraft.name || !itemDraft.calories || !itemDraft.protein || !itemDraft.carbs || !itemDraft.fat}
+                          onClick={() => {
+                            setMealItems(prev => [...prev, { ...itemDraft }]);
+                            setItemDraft({ name: '', quantity: '', calories: '', protein: '', carbs: '', fat: '' });
+                            setAddingItem(false);
+                          }}
+                        >Add</button>
+                        <button className={styles.cancelBtn} onClick={() => { setAddingItem(false); setItemDraft({ name: '', quantity: '', calories: '', protein: '', carbs: '', fat: '' }); }}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button className={styles.addItemBtn} onClick={() => setAddingItem(true)}>+ Add item</button>
+                  )}
+
+                  {/* Auto-sum totals */}
+                  {mealItems.length > 0 && (
+                    <div className={styles.mealTotals}>
+                      Total: {mealItems.reduce((s, it) => s + (parseInt(it.calories) || 0), 0)} cal
+                      {' · '}{mealItems.reduce((s, it) => s + (parseInt(it.protein) || 0), 0)}g P
+                      {' · '}{mealItems.reduce((s, it) => s + (parseInt(it.carbs) || 0), 0)}g C
+                      {' · '}{mealItems.reduce((s, it) => s + (parseInt(it.fat) || 0), 0)}g F
+                    </div>
+                  )}
+
                   <div className={styles.formRow}>
                     <label className={styles.photoAttachBtn} style={{ cursor: 'pointer' }}>
                       <input
@@ -1072,10 +1140,10 @@ export function Forge() {
                 <textarea placeholder="What's on your mind?" value={formData.noteText || ''} onChange={e => setFormData(p => ({ ...p, noteText: e.target.value }))} className={styles.formTextarea} rows={3} autoFocus />
               )}
               <div className={styles.formActions}>
-                <button className={styles.submitBtn} onClick={() => createLog(activeForm)} disabled={loading || (activeForm === 'meal' && (!formData.description || !formData.calories || !formData.protein || !formData.carbs || !formData.fat))}>
+                <button className={styles.submitBtn} onClick={() => createLog(activeForm)} disabled={loading || (activeForm === 'meal' && mealItems.length === 0)}>
                   {loading ? 'Saving...' : 'Log it'}
                 </button>
-                <button className={styles.cancelBtn} onClick={() => { setActiveForm(null); setFormData({}); }}>Cancel</button>
+                <button className={styles.cancelBtn} onClick={() => { setActiveForm(null); setFormData({}); setMealItems([]); setAddingItem(false); }}>Cancel</button>
               </div>
             </div>
           )}
@@ -1421,6 +1489,23 @@ export function Forge() {
                   <>
                     {d.photo_url && <img src={d.photo_url} alt="Meal" className={styles.detailPhoto} />}
                     <div className={styles.detailField}><span className={styles.detailLabel}>Description</span><span>{d.description || '—'}</span></div>
+                    {d.items && (
+                      <div className={styles.detailField}>
+                        <span className={styles.detailLabel}>Items</span>
+                        <div>
+                          {(d.items as any[]).map((item: any, i: number) => (
+                            <div key={i} className={styles.mealItemCard} style={{ marginBottom: 6 }}>
+                              <div className={styles.mealItemHeader}>
+                                <span className={styles.mealItemName}>{item.name}{item.quantity ? ` ${item.quantity}` : ''}</span>
+                              </div>
+                              <div className={styles.mealItemMacros}>
+                                {item.calories} cal · {item.protein}g P · {item.carbs}g C · {item.fat}g F
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className={styles.detailMacros}>
                       <div className={styles.detailMacro}><span className={styles.detailMacroVal}>{d.calories || 0}</span><span className={styles.detailMacroLabel}>cal</span></div>
                       <div className={styles.detailMacro}><span className={styles.detailMacroVal}>{d.protein || 0}g</span><span className={styles.detailMacroLabel}>protein</span></div>

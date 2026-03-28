@@ -683,6 +683,266 @@
   text-decoration: underline;
 }
 
+/* ===== Structured Workout Form ===== */
+.workoutForm {
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.muscleGroupRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.muscleChip {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.muscleChip:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.muscleChipActive {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.exerciseSearch {
+  position: relative;
+}
+
+.searchDropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.searchItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.1s;
+}
+
+.searchItem:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.searchEquip {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.exerciseBlock {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+}
+
+.exerciseBlockHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.exerciseBlockName {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.exerciseBlockEquip {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.exerciseRemoveBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.exerciseRemoveBtn:hover {
+  color: #ef4444;
+}
+
+.setsHeader {
+  display: grid;
+  grid-template-columns: 36px 1fr 1fr 36px;
+  gap: 6px;
+  padding: 0 0 4px 0;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.setCol {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.setColSmall {
+  width: 36px;
+}
+
+.setRow {
+  display: grid;
+  grid-template-columns: 36px 1fr 1fr 36px;
+  gap: 6px;
+  padding: 4px 0;
+  align-items: center;
+  transition: opacity 0.2s;
+}
+
+.setDone {
+  opacity: 0.5;
+  background: rgba(63, 185, 80, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+}
+
+.setNum {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.setInput {
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.setInput:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* Hide number input spinners */
+.setInput::-webkit-inner-spin-button,
+.setInput::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.setInput[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.setCheck {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.setCheck:hover {
+  border-color: #3fb950;
+  color: #3fb950;
+}
+
+.setCheckDone {
+  background: #3fb950;
+  border-color: #3fb950;
+  color: white;
+}
+
+.addSetBtn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 0;
+  font-family: inherit;
+}
+
+.addSetBtn:hover {
+  text-decoration: underline;
+}
+
+/* Workout summary */
+.workoutSummary {
+  text-align: center;
+}
+
+.workoutSummary h3 {
+  font-size: 18px;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+}
+
+.summaryStats {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.summaryStat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
 /* ===== STATS TAB — Summary Cards ===== */
 .summaryCards {
   display: flex;

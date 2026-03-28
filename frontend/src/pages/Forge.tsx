@@ -440,6 +440,7 @@ export function Forge() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showWorkoutForm, setShowWorkoutForm] = useState(false);
 
   // History tab state
   const [historyLogs, setHistoryLogs] = useState<RoutineLog[]>([]);
@@ -647,8 +648,18 @@ export function Forge() {
             {['meal', 'workout', 'weight', 'note'].map(type => (
               <button
                 key={type}
-                className={`${styles.quickAddBtn} ${activeForm === type ? styles.quickAddActive : ''}`}
-                onClick={() => { setActiveForm(activeForm === type ? null : type); setFormData({}); }}
+                className={`${styles.quickAddBtn} ${type === 'workout' ? (showWorkoutForm ? styles.quickAddActive : '') : (activeForm === type ? styles.quickAddActive : '')}`}
+                onClick={() => {
+                  if (type === 'workout') {
+                    setShowWorkoutForm(!showWorkoutForm);
+                    setActiveForm(null);
+                    setFormData({});
+                  } else {
+                    setShowWorkoutForm(false);
+                    setActiveForm(activeForm === type ? null : type);
+                    setFormData({});
+                  }
+                }}
               >
                 <span className={styles.quickAddIcon}>{TYPE_ICONS[type]}</span>
                 <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
@@ -814,13 +825,6 @@ export function Forge() {
                   </div>
                 </>
               )}
-              {activeForm === 'workout' && (
-                <>
-                  <input placeholder="Workout type (e.g. chest + triceps)" value={formData.workoutType || ''} onChange={e => setFormData(p => ({ ...p, workoutType: e.target.value }))} className={styles.formInput} autoFocus />
-                  <input placeholder="Duration (min)" type="number" value={formData.duration || ''} onChange={e => setFormData(p => ({ ...p, duration: e.target.value }))} className={styles.formInput} />
-                  <textarea placeholder="Exercises (one per line: bench 100kg x5)" value={formData.exercises || ''} onChange={e => setFormData(p => ({ ...p, exercises: e.target.value }))} className={styles.formTextarea} rows={3} />
-                </>
-              )}
               {activeForm === 'weight' && (
                 <div className={styles.formRow}>
                   <input placeholder="Weight (kg)" type="number" step="0.1" value={formData.weightValue || ''} onChange={e => setFormData(p => ({ ...p, weightValue: e.target.value }))} className={styles.formInput} autoFocus />
@@ -837,6 +841,14 @@ export function Forge() {
                 <button className={styles.cancelBtn} onClick={() => { setActiveForm(null); setFormData({}); }}>Cancel</button>
               </div>
             </div>
+          )}
+
+          {/* Structured workout form */}
+          {showWorkoutForm && (
+            <StructuredWorkoutForm
+              onFinish={() => { setShowWorkoutForm(false); loadLogTab(); }}
+              onCancel={() => setShowWorkoutForm(false)}
+            />
           )}
 
           {/* Today's feed */}

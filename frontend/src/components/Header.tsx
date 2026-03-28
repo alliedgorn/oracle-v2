@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { ChatOverlay } from './ChatOverlay';
 import styles from './Header.module.css';
 
 interface QuickResult {
@@ -20,7 +21,6 @@ const TYPE_ICONS: Record<string, string> = {
 // Top-level nav items (always visible, not grouped)
 const topNavItems = [
   { path: '/forum', label: 'Forum' },
-  { path: '/dms', label: 'DMs' },
   { path: '/board', label: 'Board' },
   { path: '/specs', label: 'Specs' },
   { path: '/prowl', label: 'Prowl' },
@@ -38,6 +38,7 @@ const navGroups = [
         items: [
           { path: '/', label: 'Pack' },
           { path: '/teams', label: 'Teams' },
+          { path: '/dms', label: 'DMs' },
           { path: '/risk', label: 'Risk' },
           { path: '/rules', label: 'Rules' },
         ],
@@ -106,6 +107,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   const [searchSelected, setSearchSelected] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [sableChatOpen, setSableChatOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouchDevice = 'ontouchstart' in window;
   const [sessionStartTime] = useState(() => {
@@ -405,9 +407,12 @@ export function Header({ onRemoteToggle }: HeaderProps) {
             </svg>
           </button>
         )}
-<Link to="/dms?conv=gorn-sable" className={styles.settingsLink} title="Chat with Sable">
-          🐾
-        </Link>
+<button onClick={() => setSableChatOpen(v => !v)} className={styles.settingsLink} title="Chat with Sable">
+          <img src="/api/forum/file/e8ba613f-e2cd-47b7-a385-a05b6b2ee0ae.jpg" alt="Sable" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }} />
+        </button>
+        {sableChatOpen && (
+          <ChatOverlay beastName="sable" displayName="Sable" onClose={() => setSableChatOpen(false)} />
+        )}
         <Link to="/settings" className={styles.settingsLink} title="Settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />

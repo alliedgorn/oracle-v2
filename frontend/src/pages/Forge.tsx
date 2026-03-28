@@ -704,6 +704,7 @@ export function Forge() {
   }
 
   async function deleteLog(id: number) {
+    if (!confirm('Delete this entry? This cannot be undone.')) return;
     await fetch(`${API_BASE}/routine/logs/${id}`, { method: 'DELETE' });
     if (tab === 'log') loadLogTab();
     else loadHistory();

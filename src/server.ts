@@ -2711,8 +2711,15 @@ app.patch('/api/thread/:id/title', async (c) => {
   try {
     const data = await c.req.json();
     if (!data.title?.trim()) return c.json({ error: 'title required' }, 400);
-    sqlite.prepare('UPDATE forum_threads SET title = ? WHERE id = ?').run(data.title.trim(), threadId);
-    return c.json({ success: true, thread_id: threadId, title: data.title.trim() });
+    // Validate thread exists
+    const existing = sqlite.prepare('SELECT id FROM forum_threads WHERE id = ?').get(threadId);
+    if (!existing) return c.json({ error: 'Thread not found' }, 404);
+    // Sanitize: strip HTML tags, cap length
+    let title = data.title.trim().replace(/<[^>]*>/g, '');
+    if (title.length > 200) title = title.slice(0, 200);
+    if (!title) return c.json({ error: 'title required (after sanitization)' }, 400);
+    sqlite.prepare('UPDATE forum_threads SET title = ? WHERE id = ?').run(title, threadId);
+    return c.json({ success: true, thread_id: threadId, title });
   } catch { return c.json({ error: 'Invalid JSON' }, 400); }
 });
 

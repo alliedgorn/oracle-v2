@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import styles from './PhotosTab.module.css';
 
 const API_BASE = '/api';

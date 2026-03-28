@@ -16,6 +16,8 @@ export function autolinkIds(content: string): string {
     .replace(/\b[Tt]ask\s?#(\d+)\b/g, '[Task #$1](/board?task=$1)')
     // schedule #14, Schedule #14 → link to scheduler
     .replace(/\b[Ss]chedule\s?#(\d+)\b/g, '[Schedule #$1](/scheduler)')
+    // Spec #22, spec #22, spec#22 → link to spec review
+    .replace(/\b[Ss]pec\s?#(\d+)\b/g, '[Spec #$1](/specs?spec=$1)')
     // @beast → link to beast profile (lowercase word after @, not @all/@team patterns)
     .replace(/@(karo|gnarl|zaghnal|bertus|leonard|mara|rax|pip|nyx|dex|flint|quill|snap|vigil|talon|sable|gorn)\b/gi,
       (_, name) => `[@${name.toLowerCase()}](/beast/${name.toLowerCase()})`);

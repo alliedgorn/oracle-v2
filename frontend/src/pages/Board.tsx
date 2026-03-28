@@ -29,6 +29,7 @@ interface Task {
   thread_id: number | null;
   due_date: string | null;
   type: string;
+  reviewer: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +84,7 @@ export function Board() {
   const [newDesc, setNewDesc] = useState('');
   const [newPriority, setNewPriority] = useState('medium');
   const [newAssignee, setNewAssignee] = useState('');
+  const [newReviewer, setNewReviewer] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
   const [newStatus, setNewStatus] = useState('todo');
 
@@ -178,13 +180,14 @@ export function Board() {
         description: newDesc,
         priority: newPriority,
         assigned_to: newAssignee || null,
+        reviewer: newReviewer || null,
         project_id: newProjectId ? parseInt(newProjectId, 10) : null,
         status: newStatus,
         created_by: 'gorn',
       }),
     });
     setNewTitle(''); setNewDesc(''); setNewPriority('medium');
-    setNewAssignee(''); setNewProjectId(''); setNewStatus('todo');
+    setNewAssignee(''); setNewReviewer(''); setNewProjectId(''); setNewStatus('todo');
     setShowNewTask(false);
     loadBoard();
   }
@@ -393,11 +396,16 @@ export function Board() {
               {beasts.map(b => <option key={b.name} value={b.name}>{b.displayName}</option>)}
               <option value="gorn">Gorn</option>
             </select>
+            <select value={newReviewer} onChange={e => setNewReviewer(e.target.value)} className={styles.projectSelect} required>
+              <option value="" disabled>Reviewer</option>
+              {beasts.map(b => <option key={b.name} value={b.name}>{b.displayName}</option>)}
+              <option value="gorn">Gorn</option>
+            </select>
             <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)} className={styles.projectSelect} required>
               <option value="" disabled>Select Project</option>
               {board.projects.filter(p => p.status === 'active').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-            <button type="submit" className={styles.newTaskBtn} disabled={!newTitle.trim() || !newProjectId}>Create</button>
+            <button type="submit" className={styles.newTaskBtn} disabled={!newTitle.trim() || !newProjectId || !newReviewer}>Create</button>
             <button type="button" className={styles.cancelBtn} onClick={() => setShowNewTask(false)}>Cancel</button>
           </div>
         </form>
@@ -471,6 +479,7 @@ export function Board() {
                 <th>Title</th>
                 <th>Status</th>
                 <th>Assignee</th>
+                <th>Reviewer</th>
                 <th>Project</th>
                 <th>Updated</th>
               </tr>
@@ -486,6 +495,14 @@ export function Board() {
                       <span className={styles.assignee}>
                         <span className={styles.assigneeDot} style={{ background: BEAST_COLORS[task.assigned_to] || '#666' }} />
                         {task.assigned_to}
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    {task.reviewer && (
+                      <span className={styles.assignee}>
+                        <span style={{ fontSize: '0.7em', marginRight: 2 }}>👁</span>
+                        {task.reviewer}
                       </span>
                     )}
                   </td>
@@ -527,6 +544,10 @@ export function Board() {
                 <div className={styles.metaRow}>
                   <label>Assigned to</label>
                   <span>{selectedTask.assigned_to || 'Unassigned'}</span>
+                </div>
+                <div className={styles.metaRow}>
+                  <label>Reviewer</label>
+                  <span>{selectedTask.reviewer || 'None'}</span>
                 </div>
                 {selectedTask.project_name && (
                   <div className={styles.metaRow}>
@@ -618,6 +639,12 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
           <span className={styles.assignee}>
             <span className={styles.assigneeDot} style={{ background: BEAST_COLORS[task.assigned_to] || '#666' }} />
             {task.assigned_to}
+          </span>
+        )}
+        {task.reviewer && (
+          <span className={styles.assignee} title="Reviewer">
+            <span style={{ fontSize: '0.7em', marginRight: 2 }}>👁</span>
+            {task.reviewer}
           </span>
         )}
         {task.project_name && (

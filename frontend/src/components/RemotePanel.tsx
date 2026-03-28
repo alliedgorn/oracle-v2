@@ -25,8 +25,6 @@ interface RemotePanelProps {
   onToggleCollapse?: () => void;
 }
 
-type PanelView = 'tmux' | 'chat';
-
 export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollapse }: RemotePanelProps) {
   const navigate = useNavigate();
   const [beasts, setBeasts] = useState<Beast[]>([]);
@@ -34,7 +32,6 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
   const [loading, setLoading] = useState(false);
   const { chatTarget, openChat } = useChat();
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
-  const [view, setView] = useState<PanelView>('tmux');
 
   const loadStatus = useCallback(async () => {
     try {
@@ -113,77 +110,42 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
               {collapsed ? '◂' : '▸'}
             </button>
           )}
-          <div
-            className={styles.panelHeader}
-            onClick={() => onToggleCollapse?.()}
-            style={{ cursor: onToggleCollapse ? 'pointer' : undefined }}
-          >
+          <div className={styles.panelHeader}>
             <h3>Remote</h3>
-            <div className={styles.viewToggle}>
-              <button
-                className={`${styles.viewTab} ${view === 'tmux' ? styles.viewTabActive : ''}`}
-                onClick={(e) => { e.stopPropagation(); setView('tmux'); }}
-                title="Tmux / Attach"
-              >🖥️</button>
-              <button
-                className={`${styles.viewTab} ${view === 'chat' ? styles.viewTabActive : ''}`}
-                onClick={(e) => { e.stopPropagation(); setView('chat'); }}
-                title="Chat / DMs"
-              >💬</button>
-            </div>
-            <button className={styles.closeBtn} onClick={(e) => { e.stopPropagation(); onClose(); }}>✕</button>
+            <button className={styles.closeBtn} onClick={onClose}>✕</button>
           </div>
 
-        {view === 'tmux' ? (
-          <>
-            {attachedInfo ? (
-              <div className={styles.attachedBar} style={attachedInfo.themeColor ? { borderLeftColor: attachedInfo.themeColor } : undefined}>
-                <span
-                  className={styles.attachedDot}
-                  style={attachedInfo.themeColor ? { background: attachedInfo.themeColor } : undefined}
-                />
-                <span className={styles.attachedName}>{attachedInfo.displayName}</span>
-                <code className={styles.tmuxHint}>tmux attach -t Remote</code>
-              </div>
-            ) : (
-              <div className={styles.noAttached}>No beast attached</div>
-            )}
-
-            <div className={styles.beastList}>
-              {beasts.map(beast => {
-                const isAttached = attachedBeast === beast.name;
-
-                return (
-                  <BeastCard
-                    key={beast.name}
-                    {...beast}
-                    selected={isAttached}
-                    badge={isAttached ? 'ATTACHED' : undefined}
-                    onClick={() => !loading && handleClick(beast)}
-                    onProfileClick={(e) => { e.stopPropagation(); onClose(); navigate(`/?beast=${beast.name}`); }}
-                    unreadCount={chatTarget?.beastName === beast.name ? 0 : (unreadCounts[beast.name] || 0)}
-                    onDmClick={(e) => { e.stopPropagation(); openChat(beast.name, beast.displayName); }}
-                  />
-                );
-              })}
-            </div>
-          </>
+        {attachedInfo ? (
+          <div className={styles.attachedBar} style={attachedInfo.themeColor ? { borderLeftColor: attachedInfo.themeColor } : undefined}>
+            <span
+              className={styles.attachedDot}
+              style={attachedInfo.themeColor ? { background: attachedInfo.themeColor } : undefined}
+            />
+            <span className={styles.attachedName}>{attachedInfo.displayName}</span>
+            <code className={styles.tmuxHint}>tmux attach -t Remote</code>
+          </div>
         ) : (
-          <div className={styles.beastList}>
-            {beasts.map(beast => (
+          <div className={styles.noAttached}>No beast attached</div>
+        )}
+
+        <div className={styles.beastList}>
+          {beasts.map(beast => {
+            const isAttached = attachedBeast === beast.name;
+
+            return (
               <BeastCard
                 key={beast.name}
                 {...beast}
-                selected={chatTarget?.beastName === beast.name}
-                badge={unreadCounts[beast.name] ? `${unreadCounts[beast.name]}` : undefined}
-                onClick={() => openChat(beast.name, beast.displayName)}
+                selected={isAttached}
+                badge={isAttached ? 'ATTACHED' : undefined}
+                onClick={() => !loading && handleClick(beast)}
                 onProfileClick={(e) => { e.stopPropagation(); onClose(); navigate(`/?beast=${beast.name}`); }}
                 unreadCount={chatTarget?.beastName === beast.name ? 0 : (unreadCounts[beast.name] || 0)}
                 onDmClick={(e) => { e.stopPropagation(); openChat(beast.name, beast.displayName); }}
               />
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
         </div>
       </div>
 

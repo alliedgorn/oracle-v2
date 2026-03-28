@@ -60,6 +60,13 @@ const ChatMessage = memo(function ChatMessage({ msg, onImgClick }: {
   );
 }, (prev, next) => prev.msg.id === next.msg.id && prev.msg.read_at === next.msg.read_at && prev.msg.content === next.msg.content);
 
+const EMOJI_GROUPS = [
+  { label: 'Smileys', emojis: ['😊', '😂', '🤣', '😍', '🥰', '😘', '😎', '🤔', '😅', '😢', '😤', '🙄', '😴', '🤗', '😇', '🫡'] },
+  { label: 'Gestures', emojis: ['👍', '👎', '👏', '🙏', '💪', '🤝', '✌️', '🤙', '👀', '🫶'] },
+  { label: 'Animals', emojis: ['🐺', '🐻', '🦁', '🐊', '🐴', '🦘', '🦝', '🦦', '🐦‍⬛', '🐙', '🦔', '🐍', '🦅', '🦉'] },
+  { label: 'Objects', emojis: ['🔥', '❤️', '⭐', '💯', '🎉', '🏆', '🚀', '💡', '⚡', '🎯', '🛡️', '⚠️', '✅', '❌'] },
+];
+
 export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -69,6 +76,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const [initialLoad, setInitialLoad] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [showEmoji, setShowEmoji] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -258,8 +266,33 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
         >↓</button>
       )}
       <form onSubmit={handleSend} className={styles.inputArea}>
+        {showEmoji && (
+          <div className={styles.emojiPicker}>
+            {EMOJI_GROUPS.map(group => (
+              <div key={group.label} className={styles.emojiGroup}>
+                <div className={styles.emojiGroupLabel}>{group.label}</div>
+                <div className={styles.emojiGrid}>
+                  {group.emojis.map(emoji => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className={styles.emojiBtn}
+                      onClick={() => {
+                        setNewMessage(prev => prev + emoji);
+                        inputRef.current?.focus();
+                      }}
+                    >{emoji}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <div className={styles.inputRow}>
           <FileUpload onUploadComplete={(md) => setNewMessage(prev => prev ? `${prev}\n${md}` : md)} />
+          <button type="button" className={styles.emojiToggle} onClick={() => setShowEmoji(!showEmoji)} title="Emoji">
+            😊
+          </button>
           <textarea
             ref={inputRef}
             value={newMessage}

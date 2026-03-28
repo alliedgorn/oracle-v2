@@ -6260,6 +6260,14 @@ app.delete('/api/routine/logs/:id', (c) => {
   return c.json({ success: true, id });
 });
 
+// GET /api/routine/logs/deleted — list soft-deleted entries for recovery
+app.get('/api/routine/logs/deleted', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const limit = parseInt(c.req.query('limit') || '50');
+  const rows = sqlite.prepare('SELECT * FROM routine_logs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ?').all(limit);
+  return c.json({ logs: rows, total: (rows as any[]).length });
+});
+
 // PATCH /api/routine/logs/:id/restore — undelete a soft-deleted log
 app.patch('/api/routine/logs/:id/restore', (c) => {
   if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);

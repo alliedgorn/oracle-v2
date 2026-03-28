@@ -6961,12 +6961,12 @@ app.get('/api/rules/markdown', (c) => {
   const norms = rules.filter(r => r.type === 'norm');
   let md = '';
   if (decrees.length) {
-    md += '**Decrees:**\n';
-    for (const d of decrees) md += `- ${d.enforcement_text || d.title}\n`;
+    md += '## Decrees\n\n';
+    for (const d of decrees) md += `### ${d.enforcement_text || d.title}\n${d.content}\n\n`;
   }
   if (norms.length) {
-    md += '\n**Norms:**\n';
-    for (const n of norms) md += `- ${n.title}\n`;
+    md += '## Norms\n\n';
+    for (const n of norms) md += `### ${n.title}\n${n.content}\n\n`;
   }
   if (!rules.length) md = 'No active rules';
   return c.text(md.trim());

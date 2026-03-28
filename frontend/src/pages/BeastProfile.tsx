@@ -12,6 +12,7 @@ interface Beast {
   interests: string | null;
   themeColor: string | null;
   role: string | null;
+  sex: string | null;
   online: boolean;
   sessionName: string;
 }
@@ -32,6 +33,7 @@ export function BeastProfile() {
   const [editBio, setEditBio] = useState('');
   const [editInterests, setEditInterests] = useState('');
   const [editRole, setEditRole] = useState('');
+  const [editSex, setEditSex] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -106,6 +108,7 @@ export function BeastProfile() {
           bio: editBio,
           interests: JSON.stringify(interestsArr),
           role: editRole,
+          sex: editSex || null,
         }),
       });
       // Refresh
@@ -148,6 +151,7 @@ export function BeastProfile() {
           <h1 className={styles.name}>{beast.displayName}</h1>
           <div className={styles.meta}>
             <span className={styles.animal}>{emoji} {beast.animal}</span>
+            {beast.sex && !editing && <span className={styles.role}>{beast.sex === 'male' ? '♂' : '♀'} {beast.sex}</span>}
             {beast.role && !editing && <span className={styles.role}>{beast.role}</span>}
           </div>
           {!editing && beast.bio && <p className={styles.bio}>{beast.bio}</p>}
@@ -182,6 +186,18 @@ export function BeastProfile() {
               placeholder="Tell the pack about yourself..."
               rows={3}
             />
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.formLabel}>Sex</label>
+            <select
+              className={styles.formInput}
+              value={editSex}
+              onChange={e => setEditSex(e.target.value)}
+            >
+              <option value="">Not set</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
           </div>
           <div className={styles.formGroup}>
             <label className={styles.formLabel}>Interests</label>
@@ -225,6 +241,7 @@ export function BeastProfile() {
               setEditBio(beast.bio || '');
               setEditInterests(interests.join(', '));
               setEditRole(beast.role || '');
+              setEditSex(beast.sex || '');
               setEditing(true);
             }}>
               Edit Profile

@@ -1541,6 +1541,9 @@ app.get('/api/beasts', (c) => {
   return c.json({ beasts: profiles });
 });
 
+// Migration: add sex column to beast_profiles (T#411)
+try { sqlite.prepare('ALTER TABLE beast_profiles ADD COLUMN sex TEXT DEFAULT NULL').run(); } catch { /* exists */ }
+
 // Get beast profile by name
 app.get('/api/beast/:name', (c) => {
   const name = c.req.param('name');
@@ -1598,6 +1601,7 @@ app.patch('/api/beast/:name', async (c) => {
     if (body.themeColor !== undefined) updates.themeColor = body.themeColor;
     if (body.avatarUrl !== undefined) updates.avatarUrl = body.avatarUrl;
     if (body.birthdate !== undefined) updates.birthdate = body.birthdate;
+    if (body.sex !== undefined) updates.sex = body.sex;
 
     db.update(beastProfiles)
       .set(updates)

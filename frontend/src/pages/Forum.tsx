@@ -14,7 +14,6 @@ import { FileUpload } from '../components/FileUpload';
 import { EmojiButton } from '../components/EmojiButton';
 import { VoiceInput } from '../components/VoiceInput';
 import { SearchInput } from '../components/SearchInput';
-import { StatusBadge } from '../components/StatusBadge';
 import { FilterTabs } from '../components/FilterTabs';
 
 interface BeastProfile {
@@ -138,14 +137,6 @@ async function sendMessage(message: string, threadId?: number, title?: string, r
   return res.json();
 }
 
-async function updateThreadStatus(threadId: number, status: string): Promise<any> {
-  const res = await fetch(`${API_BASE}/thread/${threadId}/status`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status })
-  });
-  return res.json();
-}
 
 export function Forum() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -505,23 +496,6 @@ export function Forum() {
     }
   }
 
-  // Status color logic moved to shared StatusBadge component
-
-  async function handleToggleThread() {
-    if (!selectedThread) return;
-    const newStatus = selectedThread.thread.status === 'closed' ? 'active' : 'closed';
-    try {
-      const result = await updateThreadStatus(selectedThread.thread.id, newStatus);
-      console.log('Status update:', result);
-      const data = await fetchThread(selectedThread.thread.id);
-      data.messages.reverse();
-      setSelectedThread(data);
-      await loadThreads();
-    } catch (err) {
-      console.error('Failed to update thread:', err);
-    }
-  }
-
   function formatTime(iso: string) {
     const date = new Date(iso);
     return date.toLocaleString();
@@ -679,7 +653,6 @@ export function Forum() {
               </div>
               <div className={styles.threadMeta}>
                 <span className={styles.categoryBadge}>{thread.category || 'discussion'}</span>
-                <StatusBadge status={thread.status} />
                 <span className={styles.count}>{thread.message_count} msgs</span>
               </div>
             </div>
@@ -750,13 +723,6 @@ export function Forum() {
               <button className={styles.mobileBack} onClick={() => { setSelectedThread(null); setSearchParams({}); }}>←</button>
               <h2><span className={styles.threadIdHeader}>#{selectedThread.thread.id}</span> {selectedThread.thread.title}</h2>
               <div className={styles.threadActions}>
-                <StatusBadge status={selectedThread.thread.status} />
-                <button
-                  onClick={handleToggleThread}
-                  className={styles.closeButton}
-                >
-                  {selectedThread.thread.status === 'closed' ? 'Reopen' : 'Close'}
-                </button>
               </div>
             </div>
 

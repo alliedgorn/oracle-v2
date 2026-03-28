@@ -23,6 +23,14 @@
   background: var(--bg-secondary);
 }
 
+.headerAvatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .title {
   font-weight: 600;
   font-size: 14px;

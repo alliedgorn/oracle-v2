@@ -80,6 +80,17 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  // Fetch beast avatar
+  useEffect(() => {
+    fetch(`${API_BASE}/pack`).then(r => r.json()).then(data => {
+      const beasts = Array.isArray(data) ? data : (data.beasts || data.pack || []);
+      const beast = beasts.find((b: any) => b.name === beastName);
+      if (beast?.avatarUrl) setAvatarUrl(beast.avatarUrl);
+    }).catch(() => {});
+  }, [beastName]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -253,6 +264,7 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
           setTimeout(() => messagesEndRef.current?.scrollIntoView(), 50);
         }
       }} style={{ cursor: 'pointer' }}>
+        {avatarUrl && <img src={avatarUrl} alt={displayName} className={styles.headerAvatar} />}
         <span className={styles.title}>Chat with {displayName}</span>
         <button className={styles.closeBtn} onClick={(e) => { e.stopPropagation(); onClose(); }}>✕</button>
       </div>

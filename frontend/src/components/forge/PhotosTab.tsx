@@ -54,6 +54,8 @@ export function PhotosTab() {
   const [lightbox, setLightbox] = useState<Photo | null>(null);
   const [compare, setCompare] = useState<{ left: Photo | null; right: Photo | null; picking: 'left' | 'right' | null }>({ left: null, right: null, picking: null });
   const [tagFilter, setTagFilter] = useState('');
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploadTag, setUploadTag] = useState('');
   const PAGE_SIZE = 30;
 
   const loadPhotos = useCallback(async (append = false) => {
@@ -161,7 +163,10 @@ export function PhotosTab() {
               style={{ display: 'none' }}
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) handleUpload(file);
+                if (file) {
+                  setPendingFile(file);
+                  setUploadTag('');
+                }
                 e.target.value = '';
               }}
               disabled={uploading}
@@ -170,6 +175,44 @@ export function PhotosTab() {
           </label>
         </div>
       </div>
+
+      {/* Upload tag selector */}
+      {pendingFile && (
+        <div className={styles.compareHint} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>Tag this photo:</span>
+          <div className={styles.filters}>
+            {['', 'front', 'side', 'back'].map(t => (
+              <button
+                key={t}
+                className={`${styles.filterBtn} ${uploadTag === t ? styles.filterActive : ''}`}
+                onClick={() => setUploadTag(t)}
+              >
+                {t || 'None'}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className={styles.uploadBtn}
+              onClick={async () => {
+                await handleUpload(pendingFile, uploadTag || undefined);
+                setPendingFile(null);
+                setUploadTag('');
+              }}
+              disabled={uploading}
+              style={{ cursor: 'pointer' }}
+            >
+              {uploading ? 'Uploading...' : 'Upload'}
+            </button>
+            <button
+              className={styles.compareBtn}
+              onClick={() => { setPendingFile(null); setUploadTag(''); }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Compare picking hint */}
       {compare.picking && (

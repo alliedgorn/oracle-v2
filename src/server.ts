@@ -1277,6 +1277,7 @@ app.get('/api/pack/spinner-verbs', (c) => {
 
 // Capture live terminal output for a Beast
 app.get('/api/beast/:name/terminal', (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Browser session required' }, 403);
   const name = c.req.param('name');
   const sessionName = name.charAt(0).toUpperCase() + name.slice(1);
   const rows = parseInt(c.req.query('rows') || '50');
@@ -1323,6 +1324,7 @@ app.get('/api/beast/:name/terminal', (c) => {
 
 // Send input to a Beast's terminal
 app.post('/api/beast/:name/terminal/input', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Browser session required' }, 403);
   const name = c.req.param('name');
   const sessionName = name.charAt(0).toUpperCase() + name.slice(1);
 
@@ -1353,6 +1355,7 @@ app.post('/api/beast/:name/terminal/input', async (c) => {
 
 // Send special keys (Enter, Ctrl-C, etc.)
 app.post('/api/beast/:name/terminal/key', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Browser session required' }, 403);
   const name = c.req.param('name');
   const sessionName = name.charAt(0).toUpperCase() + name.slice(1);
 
@@ -1738,6 +1741,7 @@ function detectImageType(buffer: Buffer): { ext: string; mime: string } | null {
 }
 
 app.post('/api/upload', async (c) => {
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
   try {
     const formData = await c.req.formData();
     const file = formData.get('file') as File;
@@ -7106,6 +7110,7 @@ try { sqlite.prepare(`
 
 // GET /api/prowl — list tasks with filters
 app.get('/api/prowl', (c) => {
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
   const status = c.req.query('status') || 'pending';
   const priority = c.req.query('priority');
   const category = c.req.query('category');
@@ -7155,12 +7160,14 @@ app.get('/api/prowl', (c) => {
 
 // GET /api/prowl/categories — unique categories with counts
 app.get('/api/prowl/categories', (c) => {
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
   const rows = sqlite.prepare("SELECT category, COUNT(*) as count FROM prowl_tasks WHERE category IS NOT NULL GROUP BY category ORDER BY count DESC").all();
   return c.json({ categories: rows });
 });
 
 // POST /api/prowl — create task
 app.post('/api/prowl', async (c) => {
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
   try {
     const data = await c.req.json();
     if (!data.title?.trim()) return c.json({ error: 'title required' }, 400);
@@ -7280,6 +7287,7 @@ app.post('/api/prowl/:id/toggle', async (c) => {
 
 // DELETE /api/prowl/:id — delete task (Gorn or Sable)
 app.delete('/api/prowl/:id', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 

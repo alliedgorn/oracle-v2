@@ -1078,49 +1078,84 @@ export function Forge() {
                   ))}
                 </div>
               </div>
-              <div className={styles.weightChart}>
+              <div className={styles.trendChart}>
                 {(() => {
                   const GOAL_WEIGHT = 120;
-                  const allMin = Math.min(...weights.map((x: any) => x.min_value ?? x.value));
-                  const allMax = Math.max(...weights.map((x: any) => x.max_value ?? x.value), GOAL_WEIGHT);
+                  const W = 600, H = 200, PAD_L = 45, PAD_R = 15, PAD_T = 15, PAD_B = 30;
+
+                  const values = weights.map((w: any) => w.value);
+                  const dates = weights.map((w: any) => new Date(w.logged_at).getTime());
+                  const allMin = Math.min(...values);
+                  const allMax = Math.max(...values, GOAL_WEIGHT);
                   const padding = (allMax - allMin) * 0.1 || 1;
                   const chartMin = allMin - padding;
                   const chartMax = allMax + padding;
-                  const chartRange = chartMax - chartMin || 1;
-                  const goalPct = ((GOAL_WEIGHT - chartMin) / chartRange) * 100;
+                  const valRange = chartMax - chartMin || 1;
+                  const minDate = Math.min(...dates);
+                  const maxDate = Math.max(...dates);
+                  const dateRange = maxDate - minDate || 1;
+
+                  function toX(date: number) { return PAD_L + ((date - minDate) / dateRange) * (W - PAD_L - PAD_R); }
+                  function toY(val: number) { return H - PAD_B - ((val - chartMin) / valRange) * (H - PAD_T - PAD_B); }
+
+                  const pts = weights.map((w: any) => ({
+                    x: toX(new Date(w.logged_at).getTime()),
+                    y: toY(w.value),
+                    w,
+                  }));
+                  const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+                  // X-axis labels (5 evenly spaced)
+                  const xLabels: { x: number; label: string }[] = [];
+                  for (let i = 0; i < 5; i++) {
+                    const t = minDate + (dateRange * i) / 4;
+                    const d = new Date(t);
+                    xLabels.push({ x: toX(t), label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
+                  }
 
                   return (
-                    <>
-                      {/* Goal line */}
-                      {goalPct > 0 && goalPct < 100 && (
-                        <div className={styles.goalLine} style={{ bottom: `${goalPct}%` }}>
-                          <span className={styles.goalLabel}>Goal: {GOAL_WEIGHT}kg</span>
-                        </div>
-                      )}
-                      {weights.map((w: any, i: number) => {
-                        const val = w.value;
-                        const barHeight = ((val - chartMin) / chartRange) * 100;
-                        const isGrouped = weightGrouping !== 'daily' && w.min_value != null;
-                        const whiskerMin = isGrouped ? ((w.min_value - chartMin) / chartRange) * 100 : 0;
-                        const whiskerMax = isGrouped ? ((w.max_value - chartMin) / chartRange) * 100 : 0;
-                        const periodLabel = w.period || new Date(w.logged_at).toLocaleDateString();
-                        const tooltip = isGrouped
-                          ? `${periodLabel}: avg ${val} kg (${w.min_value}–${w.max_value}, ${w.count} entries)`
-                          : `${val} kg — ${new Date(w.logged_at).toLocaleDateString()}`;
+                    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
+                      {/* Y-axis label */}
+                      <text x={12} y={H / 2} fill="var(--text-muted)" fontSize={10} textAnchor="middle"
+                        transform={`rotate(-90, 12, ${H / 2})`}>kg</text>
+                      {/* Y-axis grid + labels */}
+                      {[0, 0.25, 0.5, 0.75, 1].map(frac => {
+                        const val = chartMin + valRange * frac;
+                        const y = toY(val);
                         return (
-                          <div key={w.id || w.period || i} className={styles.weightBar} title={tooltip}>
-                            {isGrouped && (
-                              <div className={styles.whisker} style={{
-                                bottom: `${whiskerMin}%`,
-                                height: `${whiskerMax - whiskerMin}%`,
-                              }} />
-                            )}
-                            <div className={styles.weightBarFill} style={{ height: `${barHeight}%` }} />
-                            <span className={styles.weightLabel}>{val}</span>
-                          </div>
+                          <g key={frac}>
+                            <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="var(--border)" strokeWidth={0.5} />
+                            <text x={PAD_L - 4} y={y + 3} fill="var(--text-muted)" fontSize={9} textAnchor="end">{Math.round(val)}</text>
+                          </g>
                         );
                       })}
-                    </>
+                      {/* X-axis date labels */}
+                      {xLabels.map((xl, i) => (
+                        <text key={i} x={xl.x} y={H - 6} fill="var(--text-muted)" fontSize={9} textAnchor="middle">{xl.label}</text>
+                      ))}
+                      {/* X-axis line */}
+                      <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="var(--border)" strokeWidth={0.5} />
+                      {/* Goal line */}
+                      <line x1={PAD_L} y1={toY(GOAL_WEIGHT)} x2={W - PAD_R} y2={toY(GOAL_WEIGHT)}
+                        stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="6 4" opacity={0.6} />
+                      <text x={W - PAD_R + 2} y={toY(GOAL_WEIGHT) + 3} fill="var(--accent)" fontSize={9}>Goal</text>
+                      {/* Weight line */}
+                      <path d={pathD} fill="none" stroke="#d29922" strokeWidth={2} />
+                      {/* Data points */}
+                      {pts.map((p, i) => {
+                        const w = p.w;
+                        const isGrouped = weightGrouping !== 'daily' && w.min_value != null;
+                        const periodLabel = w.period || new Date(w.logged_at).toLocaleDateString();
+                        const tooltip = isGrouped
+                          ? `${periodLabel}: avg ${w.value} kg (${w.min_value}–${w.max_value}, ${w.count} entries)`
+                          : `${w.value} kg — ${new Date(w.logged_at).toLocaleDateString()}`;
+                        return (
+                          <circle key={i} cx={p.x} cy={p.y} r={3} fill="#d29922" style={{ cursor: 'pointer' }}>
+                            <title>{tooltip}</title>
+                          </circle>
+                        );
+                      })}
+                    </svg>
                   );
                 })()}
               </div>

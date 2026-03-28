@@ -259,7 +259,7 @@ function WorkoutTrendsChart({ range }: { range: string }) {
         ))}
       </div>
       {trends.allExercises?.length > 0 && (
-        <details className={styles.exerciseSelector} open={noSelection || undefined}>
+        <details className={styles.exerciseSelector} open>
           <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }}>
             Select exercises ({selectedExercises.length}/{trends.allExercises.length})
           </summary>

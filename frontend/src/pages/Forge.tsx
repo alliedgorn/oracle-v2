@@ -163,7 +163,7 @@ function WorkoutTrendsChart({ range }: { range: string }) {
       const t = minDate + (dateRange * i) / (xLabelCount - 1);
       const d = new Date(t);
       const fmt: Intl.DateTimeFormatOptions = spanYears
-        ? { month: 'short', year: '2-digit' }
+        ? { month: 'short', year: 'numeric' }
         : { month: 'short', day: 'numeric' };
       xLabels.push({ date: t, label: d.toLocaleDateString('en-US', fmt) });
     }
@@ -1124,7 +1124,7 @@ export function Forge() {
                     const t = minDate + (dateRange * i) / 4;
                     const d = new Date(t);
                     const fmt: Intl.DateTimeFormatOptions = showYear
-                      ? { month: 'short', year: '2-digit' }
+                      ? { month: 'short', year: 'numeric' }
                       : { month: 'short', day: 'numeric' };
                     xLabels.push({ x: toX(t), label: d.toLocaleDateString('en-US', fmt) });
                   }

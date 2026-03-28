@@ -447,6 +447,8 @@
   justify-content: center;
   z-index: 1000;
   padding: var(--space-lg);
+  overscroll-behavior: contain;
+  touch-action: none;
 }
 
 .modal {
@@ -459,6 +461,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  touch-action: auto;
 }
 
 .modalHeader {

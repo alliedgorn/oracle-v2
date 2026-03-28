@@ -215,6 +215,189 @@ function WorkoutTrendsChart({ range }: { range: string }) {
   );
 }
 
+// Muscle groups for workout form
+const MUSCLE_GROUPS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Core', 'Cardio', 'Other'];
+
+interface WorkoutSet { weight: string; reps: string; done: boolean; }
+interface WorkoutExercise { name: string; equipment: string; sets: WorkoutSet[]; }
+interface ExerciseOption { id: number; name: string; muscle_group: string | null; equipment: string | null; }
+
+function StructuredWorkoutForm({ onFinish, onCancel }: { onFinish: () => void; onCancel: () => void }) {
+  const [muscleGroup, setMuscleGroup] = useState('');
+  const [exercises, setExercises] = useState<WorkoutExercise[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<ExerciseOption[]>([]);
+  const [showSearch, setShowSearch] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [startTime] = useState(Date.now());
+  const [finished, setFinished] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchQuery) params.set('q', searchQuery);
+    if (muscleGroup) params.set('muscle_group', muscleGroup.toLowerCase());
+    if (!searchQuery && !muscleGroup) { setSearchResults([]); return; }
+    fetch(`${API_BASE}/routine/exercises?${params}`)
+      .then(r => r.json())
+      .then(data => setSearchResults(data.exercises || []))
+      .catch(() => {});
+  }, [searchQuery, muscleGroup]);
+
+  function addExercise(ex: ExerciseOption) {
+    if (exercises.some(e => e.name === ex.name && e.equipment === (ex.equipment || ''))) return;
+    const newIdx = exercises.length;
+    setExercises(prev => [...prev, { name: ex.name, equipment: ex.equipment || '', sets: [{ weight: '', reps: '', done: false }] }]);
+    setSearchQuery(''); setShowSearch(false);
+    fetchSmartDefaults(ex.name, newIdx);
+  }
+
+  function addCustomExercise() {
+    if (!searchQuery.trim()) return;
+    setExercises(prev => [...prev, { name: searchQuery.trim(), equipment: '', sets: [{ weight: '', reps: '', done: false }] }]);
+    setSearchQuery(''); setShowSearch(false);
+  }
+
+  async function fetchSmartDefaults(exerciseName: string, exerciseIndex: number) {
+    try {
+      const res = await fetch(`${API_BASE}/routine/logs?type=workout&limit=20`);
+      const data = await res.json();
+      for (const log of (data.logs || [])) {
+        const logData = typeof log.data === 'string' ? JSON.parse(log.data) : log.data;
+        for (const ex of (logData.exercises || [])) {
+          const name = typeof ex === 'string' ? ex : (ex.name || '');
+          if (parseExerciseName(name).name === exerciseName && ex.sets?.length) {
+            setExercises(prev => prev.map((e, i) => i !== exerciseIndex ? e : {
+              ...e, sets: ex.sets.map((s: any) => ({ weight: String(s.weight || ''), reps: String(s.reps || ''), done: false })),
+            }));
+            return;
+          }
+        }
+      }
+    } catch { /* no defaults */ }
+  }
+
+  function updateSet(exIdx: number, setIdx: number, field: keyof WorkoutSet, value: string | boolean) {
+    setExercises(prev => prev.map((ex, i) => i !== exIdx ? ex : {
+      ...ex, sets: ex.sets.map((s, j) => j === setIdx ? { ...s, [field]: value } : s),
+    }));
+  }
+
+  function addSet(exIdx: number) {
+    setExercises(prev => prev.map((ex, i) => {
+      if (i !== exIdx) return ex;
+      const last = ex.sets[ex.sets.length - 1];
+      return { ...ex, sets: [...ex.sets, { weight: last?.weight || '', reps: last?.reps || '', done: false }] };
+    }));
+  }
+
+  function removeExercise(exIdx: number) {
+    setExercises(prev => prev.filter((_, i) => i !== exIdx));
+  }
+
+  async function finishWorkout() {
+    if (exercises.length === 0) return;
+    setSaving(true);
+    const durationMin = Math.round((Date.now() - startTime) / 60000);
+    const workoutData = {
+      type: muscleGroup || 'Workout',
+      muscle_group: muscleGroup.toLowerCase() || undefined,
+      duration_min: durationMin,
+      exercises: exercises.map(ex => ({
+        name: ex.name, equipment: ex.equipment,
+        sets: ex.sets.filter(s => s.weight || s.reps).map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0, unit: 'kg' })),
+      })),
+    };
+    try {
+      await fetch(`${API_BASE}/routine/logs`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'workout', data: workoutData }),
+      });
+      setFinished(true);
+    } finally { setSaving(false); }
+  }
+
+  if (finished) {
+    const durationMin = Math.round((Date.now() - startTime) / 60000);
+    const totalSets = exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.done).length, 0);
+    const totalVolume = exercises.reduce((sum, ex) =>
+      sum + ex.sets.filter(s => s.done).reduce((v, s) => v + (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0), 0), 0);
+    return (
+      <div className={styles.workoutForm}>
+        <div className={styles.workoutSummary}>
+          <h3>Workout Complete</h3>
+          <div className={styles.summaryStats}>
+            <div className={styles.summaryStat}><span className={styles.summaryValue}>{durationMin}</span><span className={styles.summaryLabel}>min</span></div>
+            <div className={styles.summaryStat}><span className={styles.summaryValue}>{exercises.length}</span><span className={styles.summaryLabel}>exercises</span></div>
+            <div className={styles.summaryStat}><span className={styles.summaryValue}>{totalSets}</span><span className={styles.summaryLabel}>sets</span></div>
+            <div className={styles.summaryStat}><span className={styles.summaryValue}>{Math.round(totalVolume).toLocaleString()}</span><span className={styles.summaryLabel}>kg volume</span></div>
+          </div>
+          <button className={styles.submitBtn} onClick={onFinish}>Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.workoutForm}>
+      <div className={styles.muscleGroupRow}>
+        {MUSCLE_GROUPS.map(mg => (
+          <button key={mg} className={`${styles.muscleChip} ${muscleGroup === mg ? styles.muscleChipActive : ''}`}
+            onClick={() => setMuscleGroup(muscleGroup === mg ? '' : mg)}>{mg}</button>
+        ))}
+      </div>
+      <div className={styles.exerciseSearch}>
+        <input className={styles.formInput} placeholder="Search exercises..." value={searchQuery}
+          onChange={e => { setSearchQuery(e.target.value); setShowSearch(true); }} onFocus={() => setShowSearch(true)} />
+        {showSearch && (searchResults.length > 0 || searchQuery) && (
+          <div className={styles.searchDropdown}>
+            {searchResults.map(ex => (
+              <button key={ex.id} className={styles.searchItem} onClick={() => addExercise(ex)}>
+                <span>{ex.name}</span>
+                {ex.equipment && <span className={styles.searchEquip}>{ex.equipment}</span>}
+              </button>
+            ))}
+            {searchQuery && !searchResults.some(r => r.name.toLowerCase() === searchQuery.toLowerCase()) && (
+              <button className={styles.searchItem} onClick={addCustomExercise}>+ Add "{searchQuery}"</button>
+            )}
+          </div>
+        )}
+      </div>
+      {exercises.map((ex, exIdx) => (
+        <div key={exIdx} className={styles.exerciseBlock}>
+          <div className={styles.exerciseBlockHeader}>
+            <span className={styles.exerciseBlockName}>{ex.name}</span>
+            {ex.equipment && <span className={styles.exerciseBlockEquip}>{ex.equipment}</span>}
+            <button className={styles.exerciseRemoveBtn} onClick={() => removeExercise(exIdx)}>×</button>
+          </div>
+          <div className={styles.setsHeader}>
+            <span className={styles.setCol}>Set</span><span className={styles.setCol}>Weight</span>
+            <span className={styles.setCol}>Reps</span><span className={styles.setColSmall}></span>
+          </div>
+          {ex.sets.map((set, setIdx) => (
+            <div key={setIdx} className={`${styles.setRow} ${set.done ? styles.setDone : ''}`}>
+              <span className={styles.setNum}>{setIdx + 1}</span>
+              <input className={styles.setInput} type="number" placeholder="0" value={set.weight}
+                onChange={e => updateSet(exIdx, setIdx, 'weight', e.target.value)} />
+              <input className={styles.setInput} type="number" placeholder="0" value={set.reps}
+                onChange={e => updateSet(exIdx, setIdx, 'reps', e.target.value)} />
+              <button className={`${styles.setCheck} ${set.done ? styles.setCheckDone : ''}`}
+                onClick={() => updateSet(exIdx, setIdx, 'done', !set.done)}>✓</button>
+            </div>
+          ))}
+          <button className={styles.addSetBtn} onClick={() => addSet(exIdx)}>+ Add set</button>
+        </div>
+      ))}
+      <div className={styles.formActions}>
+        {exercises.length > 0 && (
+          <button className={styles.submitBtn} onClick={finishWorkout} disabled={saving}>
+            {saving ? 'Saving...' : 'Finish Workout'}</button>
+        )}
+        <button className={styles.cancelBtn} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 // Date helpers
 function toDateKey(iso: string): string {
   return new Date(iso).toLocaleDateString('en-CA'); // YYYY-MM-DD
@@ -268,6 +451,9 @@ export function Forge() {
   const [weights, setWeights] = useState<any[]>([]);
   const [weightGrouping, setWeightGrouping] = useState<string>('daily');
   const [weightRange, setWeightRange] = useState('year');
+  const [summary, setSummary] = useState<any>(null);
+  const [personalRecords, setPersonalRecords] = useState<any[]>([]);
+  const [prTimeFilter, setPrTimeFilter] = useState<'all' | 'month'>('all');
 
   const PAGE_SIZE = 30;
 
@@ -303,10 +489,17 @@ export function Forge() {
 
   // Load stats tab data
   const loadStats = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/routine/weight?range=${weightRange}`);
-    const data = await res.json();
-    setWeights(data.weights || []);
-    setWeightGrouping(data.grouping || 'daily');
+    const [weightRes, summaryRes, prRes] = await Promise.all([
+      fetch(`${API_BASE}/routine/weight?range=${weightRange}`),
+      fetch(`${API_BASE}/routine/summary?range=week`),
+      fetch(`${API_BASE}/routine/personal-records`),
+    ]);
+    const weightData = await weightRes.json();
+    setWeights(weightData.weights || []);
+    setWeightGrouping(weightData.grouping || 'daily');
+    setSummary(await summaryRes.json());
+    const prData = await prRes.json();
+    setPersonalRecords(prData.records || []);
   }, [weightRange]);
 
   async function loadMore() {
@@ -709,6 +902,38 @@ export function Forge() {
       {/* ===== STATS TAB ===== */}
       {tab === 'stats' && (
         <div className={styles.tabContent}>
+          {/* Summary Cards */}
+          {summary && (
+            <div className={styles.summaryCards}>
+              <div className={styles.summaryCard}>
+                <span className={styles.summaryValue}>{summary.workouts || 0}</span>
+                <span className={styles.summaryLabel}>Workouts This Week</span>
+              </div>
+              <div className={styles.summaryCard}>
+                <span className={styles.summaryValue}>
+                  {summary.totalVolume ? (summary.totalVolume >= 1000000 ? `${(summary.totalVolume / 1000000).toFixed(1)}M` : summary.totalVolume >= 1000 ? `${(summary.totalVolume / 1000).toFixed(0)}K` : summary.totalVolume) : '0'}
+                </span>
+                <span className={styles.summaryLabel}>Total Volume</span>
+              </div>
+              <div className={styles.summaryCard}>
+                <span className={styles.summaryValue}>
+                  {summary.latestWeight ? summary.latestWeight.value : '—'}
+                  {summary.latestWeight?.trend === 'up' && <span className={styles.trendArrow}> ↑</span>}
+                  {summary.latestWeight?.trend === 'down' && <span className={styles.trendArrowDown}> ↓</span>}
+                </span>
+                <span className={styles.summaryLabel}>Weight (kg)</span>
+              </div>
+              <div className={styles.summaryCard}>
+                <span className={styles.summaryValue}>
+                  {summary.bestLift ? `${summary.bestLift.weight}` : '—'}
+                </span>
+                <span className={styles.summaryLabel}>
+                  {summary.bestLift ? `Best: ${summary.bestLift.exercise}` : 'Best Lift'}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Weight trend */}
           {weights.length > 0 && (
             <div className={styles.weightSection}>
@@ -733,32 +958,48 @@ export function Forge() {
               </div>
               <div className={styles.weightChart}>
                 {(() => {
+                  const GOAL_WEIGHT = 120;
                   const allMin = Math.min(...weights.map((x: any) => x.min_value ?? x.value));
-                  const allMax = Math.max(...weights.map((x: any) => x.max_value ?? x.value));
-                  const range = allMax - allMin || 1;
-                  return weights.map((w: any, i: number) => {
-                    const val = w.value;
-                    const barHeight = ((val - allMin) / range) * 80 + 20;
-                    const isGrouped = weightGrouping !== 'daily' && w.min_value != null;
-                    const whiskerMin = isGrouped ? ((w.min_value - allMin) / range) * 80 + 20 : 0;
-                    const whiskerMax = isGrouped ? ((w.max_value - allMin) / range) * 80 + 20 : 0;
-                    const periodLabel = w.period || new Date(w.logged_at).toLocaleDateString();
-                    const tooltip = isGrouped
-                      ? `${periodLabel}: avg ${val} kg (${w.min_value}–${w.max_value}, ${w.count} entries)`
-                      : `${val} kg — ${new Date(w.logged_at).toLocaleDateString()}`;
-                    return (
-                      <div key={w.id || w.period || i} className={styles.weightBar} title={tooltip}>
-                        {isGrouped && (
-                          <div className={styles.whisker} style={{
-                            bottom: `${whiskerMin}%`,
-                            height: `${whiskerMax - whiskerMin}%`,
-                          }} />
-                        )}
-                        <div className={styles.weightBarFill} style={{ height: `${barHeight}%` }} />
-                        <span className={styles.weightLabel}>{val}</span>
-                      </div>
-                    );
-                  });
+                  const allMax = Math.max(...weights.map((x: any) => x.max_value ?? x.value), GOAL_WEIGHT);
+                  const padding = (allMax - allMin) * 0.1 || 1;
+                  const chartMin = allMin - padding;
+                  const chartMax = allMax + padding;
+                  const chartRange = chartMax - chartMin || 1;
+                  const goalPct = ((GOAL_WEIGHT - chartMin) / chartRange) * 100;
+
+                  return (
+                    <>
+                      {/* Goal line */}
+                      {goalPct > 0 && goalPct < 100 && (
+                        <div className={styles.goalLine} style={{ bottom: `${goalPct}%` }}>
+                          <span className={styles.goalLabel}>Goal: {GOAL_WEIGHT}kg</span>
+                        </div>
+                      )}
+                      {weights.map((w: any, i: number) => {
+                        const val = w.value;
+                        const barHeight = ((val - chartMin) / chartRange) * 100;
+                        const isGrouped = weightGrouping !== 'daily' && w.min_value != null;
+                        const whiskerMin = isGrouped ? ((w.min_value - chartMin) / chartRange) * 100 : 0;
+                        const whiskerMax = isGrouped ? ((w.max_value - chartMin) / chartRange) * 100 : 0;
+                        const periodLabel = w.period || new Date(w.logged_at).toLocaleDateString();
+                        const tooltip = isGrouped
+                          ? `${periodLabel}: avg ${val} kg (${w.min_value}–${w.max_value}, ${w.count} entries)`
+                          : `${val} kg — ${new Date(w.logged_at).toLocaleDateString()}`;
+                        return (
+                          <div key={w.id || w.period || i} className={styles.weightBar} title={tooltip}>
+                            {isGrouped && (
+                              <div className={styles.whisker} style={{
+                                bottom: `${whiskerMin}%`,
+                                height: `${whiskerMax - whiskerMin}%`,
+                              }} />
+                            )}
+                            <div className={styles.weightBarFill} style={{ height: `${barHeight}%` }} />
+                            <span className={styles.weightLabel}>{val}</span>
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
                 })()}
               </div>
             </div>
@@ -767,7 +1008,85 @@ export function Forge() {
           {/* Workout Trends */}
           <WorkoutTrendsChart range={weightRange} />
 
-          {weights.length === 0 && (
+          {/* Personal Records */}
+          {personalRecords.length > 0 && (
+            <div className={styles.weightSection}>
+              <div className={styles.historyHeader}>
+                <h3>Personal Records</h3>
+                <div className={styles.filters}>
+                  <button
+                    className={`${styles.filterBtn} ${prTimeFilter === 'all' ? styles.filterActive : ''}`}
+                    onClick={() => setPrTimeFilter('all')}
+                  >All-time</button>
+                  <button
+                    className={`${styles.filterBtn} ${prTimeFilter === 'month' ? styles.filterActive : ''}`}
+                    onClick={() => setPrTimeFilter('month')}
+                  >This month</button>
+                </div>
+              </div>
+              <div className={styles.prList}>
+                {personalRecords
+                  .filter(pr => {
+                    if (prTimeFilter === 'month') {
+                      const prDate = new Date(pr.achieved_at);
+                      const now = new Date();
+                      return prDate.getMonth() === now.getMonth() && prDate.getFullYear() === now.getFullYear();
+                    }
+                    return true;
+                  })
+                  .slice(0, 20)
+                  .map((pr: any) => {
+                    const isRecent = (Date.now() - new Date(pr.achieved_at).getTime()) < 7 * 24 * 60 * 60 * 1000;
+                    return (
+                      <div key={pr.id} className={`${styles.prCard} ${isRecent ? styles.prRecent : ''}`}>
+                        <div className={styles.prExercise}>{pr.exercise_name}</div>
+                        <div className={styles.prDetail}>
+                          <span className={styles.prWeight}>{pr.weight} {pr.unit} x {pr.reps}</span>
+                          <span className={styles.prDate}>{new Date(pr.achieved_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                {prTimeFilter === 'month' && personalRecords.filter(pr => {
+                  const d = new Date(pr.achieved_at);
+                  const now = new Date();
+                  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                }).length === 0 && (
+                  <div className={styles.empty}>No PRs this month yet. Keep lifting.</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Muscle Group Balance */}
+          {summary?.heatmap && Object.keys(summary.heatmap).length > 0 && (
+            <div className={styles.weightSection}>
+              <h3>Muscle Group Balance</h3>
+              <div className={styles.muscleBalance}>
+                {(() => {
+                  const groups = summary.heatmap;
+                  const maxVol = Math.max(...Object.values(groups).map((days: any) =>
+                    Array.isArray(days) ? days.reduce((a: number, b: number) => a + b, 0) : (days as number)
+                  ));
+                  return Object.entries(groups).map(([group, vol]: [string, any]) => {
+                    const total = Array.isArray(vol) ? vol.reduce((a: number, b: number) => a + b, 0) : vol;
+                    const pct = maxVol > 0 ? (total / maxVol) * 100 : 0;
+                    return (
+                      <div key={group} className={styles.muscleRow}>
+                        <span className={styles.muscleLabel}>{group}</span>
+                        <div className={styles.muscleBarBg}>
+                          <div className={styles.muscleBarFill} style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className={styles.muscleValue}>{Math.round(total)}</span>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+
+          {weights.length === 0 && !summary && (
             <div className={styles.empty}>No stats data yet. Log some workouts and weights!</div>
           )}
         </div>

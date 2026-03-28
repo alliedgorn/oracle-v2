@@ -4826,6 +4826,33 @@ try { sqlite.prepare(`
 // Migration: add thread_id to spec_reviews (T#413)
 try { sqlite.prepare('ALTER TABLE spec_reviews ADD COLUMN thread_id INTEGER').run(); } catch { /* exists */ }
 
+// T#425: spec multi-linking junction table (many-to-many for tasks + threads)
+sqlite.prepare(`
+  CREATE TABLE IF NOT EXISTS spec_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    spec_id INTEGER NOT NULL REFERENCES spec_reviews(id),
+    link_type TEXT NOT NULL CHECK(link_type IN ('task', 'thread')),
+    link_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(spec_id, link_type, link_id)
+  )
+`).run();
+try { sqlite.prepare('CREATE INDEX IF NOT EXISTS idx_spec_links_spec ON spec_links(spec_id)').run(); } catch { /* exists */ }
+try { sqlite.prepare('CREATE INDEX IF NOT EXISTS idx_spec_links_target ON spec_links(link_type, link_id)').run(); } catch { /* exists */ }
+
+// Migrate existing spec_reviews task_id/thread_id into spec_links
+try {
+  const specsWithLinks = sqlite.prepare("SELECT id, task_id, thread_id FROM spec_reviews WHERE task_id IS NOT NULL OR thread_id IS NOT NULL").all() as any[];
+  const insertLink = sqlite.prepare('INSERT OR IGNORE INTO spec_links (spec_id, link_type, link_id, created_at) VALUES (?, ?, ?, ?)');
+  for (const s of specsWithLinks) {
+    if (s.task_id) {
+      const taskNum = parseInt(String(s.task_id).replace(/\D/g, ''), 10);
+      if (!isNaN(taskNum)) insertLink.run(s.id, 'task', taskNum, new Date().toISOString());
+    }
+    if (s.thread_id) insertLink.run(s.id, 'thread', s.thread_id, new Date().toISOString());
+  }
+} catch { /* migration already done or no data */ }
+
 const ALLOWED_SPEC_REPOS = ['oracle-v2', 'supply-chain-tool', 'karo', 'zaghnal', 'gnarl', 'bertus', 'flint', 'pip', 'dex', 'talon', 'quill', 'sable', 'nyx', 'vigil', 'rax', 'leonard', 'mara', 'snap'];
 
 function resolveSpecPath(repo: string, filePath: string): string | null {
@@ -4848,11 +4875,17 @@ app.get('/api/specs', (c) => {
   if (status) { query += ' AND status = ?'; params.push(status); }
   if (repo) { query += ' AND repo = ?'; params.push(repo); }
   query += ' ORDER BY CASE status WHEN \'pending\' THEN 0 WHEN \'rejected\' THEN 1 WHEN \'approved\' THEN 2 END, updated_at DESC';
-  const specs = sqlite.prepare(query).all(...params);
+  const specs = sqlite.prepare(query).all(...params) as any[];
+  // Attach links to each spec (T#425)
+  for (const spec of specs) {
+    const links = sqlite.prepare('SELECT link_type, link_id FROM spec_links WHERE spec_id = ?').all(spec.id) as any[];
+    spec.linked_tasks = links.filter(l => l.link_type === 'task').map(l => l.link_id);
+    spec.linked_threads = links.filter(l => l.link_type === 'thread').map(l => l.link_id);
+  }
   return c.json({ specs });
 });
 
-// GET /api/specs/:id — get spec detail
+// GET /api/specs/:id — get spec detail (with linked tasks + threads)
 app.get('/api/specs/:id', (c) => {
   const id = parseInt(c.req.param('id'), 10);
   const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(id) as any;
@@ -4861,6 +4894,10 @@ app.get('/api/specs/:id', (c) => {
   if (resolved) {
     try { spec.content = fs.readFileSync(resolved, 'utf-8'); } catch { spec.content = null; }
   }
+  // Attach linked tasks and threads (T#425)
+  const links = sqlite.prepare('SELECT * FROM spec_links WHERE spec_id = ? ORDER BY link_type, link_id').all(id) as any[];
+  spec.linked_tasks = links.filter(l => l.link_type === 'task').map(l => l.link_id);
+  spec.linked_threads = links.filter(l => l.link_type === 'thread').map(l => l.link_id);
   return c.json(spec);
 });
 
@@ -4955,7 +4992,12 @@ app.post('/api/specs', async (c) => {
       const taskIdNum = parseInt(String(task_id).replace(/\D/g, ''), 10);
       if (!isNaN(taskIdNum)) {
         sqlite.prepare('UPDATE tasks SET spec_id = ?, updated_at = ? WHERE id = ?').run(spec.id, now, taskIdNum);
+        sqlite.prepare('INSERT OR IGNORE INTO spec_links (spec_id, link_type, link_id, created_at) VALUES (?, ?, ?, ?)').run(spec.id, 'task', taskIdNum, now);
       }
+    }
+    // Auto-link spec to thread if thread_id provided (T#425)
+    if (thread_id) {
+      sqlite.prepare('INSERT OR IGNORE INTO spec_links (spec_id, link_type, link_id, created_at) VALUES (?, ?, ?, ?)').run(spec.id, 'thread', parseInt(thread_id), now);
     }
         const specFilePath = path.join(import.meta.dirname || __dirname, '..', spec.file_path);
     const specContent = fs.existsSync(specFilePath) ? fs.readFileSync(specFilePath, 'utf-8') : spec.title;
@@ -5055,6 +5097,60 @@ app.post('/api/specs/:id/review', async (c) => {
   } catch {
     return c.json({ error: 'Invalid JSON' }, 400);
   }
+});
+
+// POST /api/specs/:id/link — add a task or thread link (T#425)
+app.post('/api/specs/:id/link', async (c) => {
+  const specId = parseInt(c.req.param('id'), 10);
+  const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(specId) as any;
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+  try {
+    const data = await c.req.json();
+    const { link_type, link_id } = data;
+    if (!link_type || !['task', 'thread'].includes(link_type)) return c.json({ error: 'link_type must be task or thread' }, 400);
+    if (!link_id || isNaN(parseInt(link_id))) return c.json({ error: 'link_id required (integer)' }, 400);
+    const now = new Date().toISOString();
+    sqlite.prepare('INSERT OR IGNORE INTO spec_links (spec_id, link_type, link_id, created_at) VALUES (?, ?, ?, ?)').run(specId, link_type, parseInt(link_id), now);
+    // If linking a task, also set spec_id on the task
+    if (link_type === 'task') {
+      sqlite.prepare('UPDATE tasks SET spec_id = ?, updated_at = ? WHERE id = ? AND (spec_id IS NULL OR spec_id = ?)').run(specId, now, parseInt(link_id), specId);
+    }
+    const links = sqlite.prepare('SELECT * FROM spec_links WHERE spec_id = ?').all(specId) as any[];
+    return c.json({ success: true, links });
+  } catch { return c.json({ error: 'Invalid request' }, 400); }
+});
+
+// DELETE /api/specs/:id/link — remove a task or thread link (T#425)
+app.delete('/api/specs/:id/link', async (c) => {
+  const specId = parseInt(c.req.param('id'), 10);
+  const spec = sqlite.prepare('SELECT * FROM spec_reviews WHERE id = ?').get(specId) as any;
+  if (!spec) return c.json({ error: 'Spec not found' }, 404);
+  try {
+    const data = await c.req.json();
+    const { link_type, link_id } = data;
+    if (!link_type || !link_id) return c.json({ error: 'link_type and link_id required' }, 400);
+    sqlite.prepare('DELETE FROM spec_links WHERE spec_id = ? AND link_type = ? AND link_id = ?').run(specId, link_type, parseInt(link_id));
+    const links = sqlite.prepare('SELECT * FROM spec_links WHERE spec_id = ?').all(specId) as any[];
+    return c.json({ success: true, links });
+  } catch { return c.json({ error: 'Invalid request' }, 400); }
+});
+
+// GET /api/specs/by-task/:taskId — find specs linked to a task (T#425)
+app.get('/api/specs/by-task/:taskId', (c) => {
+  const taskId = parseInt(c.req.param('taskId'), 10);
+  const specs = sqlite.prepare(
+    "SELECT sr.* FROM spec_reviews sr JOIN spec_links sl ON sr.id = sl.spec_id WHERE sl.link_type = 'task' AND sl.link_id = ? ORDER BY sr.updated_at DESC"
+  ).all(taskId);
+  return c.json({ specs });
+});
+
+// GET /api/specs/by-thread/:threadId — find specs linked to a thread (T#425)
+app.get('/api/specs/by-thread/:threadId', (c) => {
+  const threadId = parseInt(c.req.param('threadId'), 10);
+  const specs = sqlite.prepare(
+    "SELECT sr.* FROM spec_reviews sr JOIN spec_links sl ON sr.id = sl.spec_id WHERE sl.link_type = 'thread' AND sl.link_id = ? ORDER BY sr.updated_at DESC"
+  ).all(threadId);
+  return c.json({ specs });
 });
 
 // POST /api/specs/:id/resubmit — reset rejected spec to pending (author/assignee only)

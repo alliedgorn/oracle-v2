@@ -110,7 +110,7 @@ function WorkoutTrendsChart({ range }: { range: string }) {
   if (!trends || !trends.exercises?.length) return null;
 
   const exercises = selectedExercises.filter(e => trends.trends[e]?.length > 0);
-  if (exercises.length === 0) return null;
+  const noSelection = exercises.length === 0;
 
   const allPoints: { date: number; value: number }[] = [];
   for (const ex of exercises) {
@@ -118,12 +118,12 @@ function WorkoutTrendsChart({ range }: { range: string }) {
       allPoints.push({ date: new Date(pt.date).getTime(), value: pt[metric] });
     }
   }
-  if (allPoints.length === 0) return null;
+  const hasData = !noSelection && allPoints.length > 0;
 
-  const minDate = Math.min(...allPoints.map(p => p.date));
-  const maxDate = Math.max(...allPoints.map(p => p.date));
-  const minVal = Math.min(...allPoints.map(p => p.value));
-  const maxVal = Math.max(...allPoints.map(p => p.value));
+  const minDate = hasData ? Math.min(...allPoints.map(p => p.date)) : 0;
+  const maxDate = hasData ? Math.max(...allPoints.map(p => p.date)) : 1;
+  const minVal = hasData ? Math.min(...allPoints.map(p => p.value)) : 0;
+  const maxVal = hasData ? Math.max(...allPoints.map(p => p.value)) : 1;
   const valRange = maxVal - minVal || 1;
   const dateRange = maxDate - minDate || 1;
 
@@ -147,6 +147,12 @@ function WorkoutTrendsChart({ range }: { range: string }) {
       </div>
       <div className={styles.trendChart}>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
+          {showEmptyChart ? (
+            <text x={W / 2} y={H / 2} fill="var(--text-muted)" fontSize={14} textAnchor="middle">
+              Select exercises below to see trends
+            </text>
+          ) : (
+          <>
           {[0, 0.25, 0.5, 0.75, 1].map(frac => {
             const y = toY(minVal + valRange * frac);
             const label = Math.round(minVal + valRange * frac);
@@ -178,6 +184,8 @@ function WorkoutTrendsChart({ range }: { range: string }) {
               </g>
             );
           })}
+          </>
+          )}
         </svg>
       </div>
       <div className={styles.trendLegend}>
@@ -188,8 +196,8 @@ function WorkoutTrendsChart({ range }: { range: string }) {
           </span>
         ))}
       </div>
-      {trends.allExercises?.length > 5 && (
-        <details className={styles.exerciseSelector}>
+      {trends.allExercises?.length > 0 && (
+        <details className={styles.exerciseSelector} open={noSelection || undefined}>
           <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }}>
             Select exercises ({selectedExercises.length}/{trends.allExercises.length})
           </summary>

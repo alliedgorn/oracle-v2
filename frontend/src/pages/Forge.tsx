@@ -154,14 +154,18 @@ function WorkoutTrendsChart({ range }: { range: string }) {
   function toX(date: number) { return PAD_L + ((date - minDate) / dateRange) * (W - PAD_L - PAD_R); }
   function toY(val: number) { return H - PAD_B - ((val - minVal + valRange * 0.1) / (valRange * 1.2)) * (H - PAD_T - PAD_B); }
 
-  // Generate x-axis date labels (4-6 evenly spaced)
+  // Generate x-axis date labels (5 evenly spaced) — include year if data spans multiple years
   const xLabelCount = 5;
   const xLabels: { date: number; label: string }[] = [];
   if (hasData) {
+    const spanYears = new Date(maxDate).getFullYear() !== new Date(minDate).getFullYear();
     for (let i = 0; i < xLabelCount; i++) {
       const t = minDate + (dateRange * i) / (xLabelCount - 1);
       const d = new Date(t);
-      xLabels.push({ date: t, label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
+      const fmt: Intl.DateTimeFormatOptions = spanYears
+        ? { month: 'short', year: '2-digit' }
+        : { month: 'short', day: 'numeric' };
+      xLabels.push({ date: t, label: d.toLocaleDateString('en-US', fmt) });
     }
   }
 

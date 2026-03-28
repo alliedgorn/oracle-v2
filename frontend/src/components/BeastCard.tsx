@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import styles from './BeastCard.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
 
@@ -19,7 +20,7 @@ interface BeastCardProps {
   unreadCount?: number;
 }
 
-export function BeastCard({
+export const BeastCard = memo(function BeastCard({
   name,
   displayName,
   animal,
@@ -80,4 +81,4 @@ export function BeastCard({
       )}
     </div>
   );
-}
+});

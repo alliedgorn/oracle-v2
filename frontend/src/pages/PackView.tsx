@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -225,11 +225,23 @@ export function PackView() {
     } catch { /* ignore */ }
   }
 
-  function selectBeast(beast: Beast) {
+  const selectBeast = useCallback((beast: Beast) => {
     if (pollRef.current) clearInterval(pollRef.current);
     lastContentRef.current = '';
     setSelected(beast);
-  }
+  }, []);
+
+  // Stable callback maps so BeastCard memo works (no new function refs on each render)
+  const beastCallbacks = useMemo(() => {
+    const map: Record<string, { onClick: () => void; onNameClick: (e: React.MouseEvent) => void }> = {};
+    for (const beast of beasts) {
+      map[beast.name] = {
+        onClick: () => selectBeast(beast),
+        onNameClick: (e: React.MouseEvent) => { e.stopPropagation(); window.location.href = `/beast/${beast.name}`; },
+      };
+    }
+    return map;
+  }, [beasts, selectBeast]);
 
   return (
     <div className={styles.container}>
@@ -242,8 +254,8 @@ export function PackView() {
               key={beast.name}
               {...beast}
               selected={selected?.name === beast.name}
-              onClick={() => selectBeast(beast)}
-              onNameClick={(e) => { e.stopPropagation(); window.location.href = `/beast/${beast.name}`; }}
+              onClick={beastCallbacks[beast.name]?.onClick}
+              onNameClick={beastCallbacks[beast.name]?.onNameClick}
             />
           ))}
         </div>

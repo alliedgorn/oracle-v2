@@ -43,10 +43,10 @@ export function EmojiButton({ onSelect }: EmojiButtonProps) {
 
   useEffect(() => {
     if (cachedGroups) return;
-    fetch('/api/forum/emojis')
+    fetch('/api/reactions/supported')
       .then(r => r.json())
       .then((data: any) => {
-        const emojis = (data.emojis || []).map((e: any) => e.emoji || e);
+        const emojis: string[] = (data.emoji || []).map((e: any) => typeof e === 'string' ? e : e.emoji);
         if (emojis.length > 0) {
           const g = categorizeEmojis(emojis);
           cachedGroups = g;

@@ -21,6 +21,7 @@ interface ChatOverlayProps {
   beastName: string;
   displayName: string;
   onClose: () => void;
+  expandSignal?: number;
 }
 
 // Stable references to prevent ReactMarkdown re-parsing
@@ -67,7 +68,7 @@ const EMOJI_GROUPS = [
   { label: 'Objects', emojis: ['🔥', '❤️', '⭐', '💯', '🎉', '🏆', '🚀', '💡', '⚡', '🎯', '🛡️', '⚠️', '✅', '❌', '🏋️', '🔨', '⚓', '🪨', '🗿', '🌋', '💣', '☄️', '🪐', '🥩', '🍖'] },
 ];
 
-export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProps) {
+export function ChatOverlay({ beastName, displayName, onClose, expandSignal }: ChatOverlayProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -80,6 +81,14 @@ export function ChatOverlay({ beastName, displayName, onClose }: ChatOverlayProp
       prevBeastRef.current = beastName;
     }
   }, [beastName]);
+  // Expand when openChat is called (even for same beast)
+  const prevExpandRef = useRef(expandSignal);
+  useEffect(() => {
+    if (expandSignal !== undefined && expandSignal !== prevExpandRef.current) {
+      setCollapsed(false);
+      prevExpandRef.current = expandSignal;
+    }
+  }, [expandSignal]);
   // Persist collapse state
   useEffect(() => { localStorage.setItem('chat-overlay-collapsed', String(collapsed)); }, [collapsed]);
   const [loadingMore, setLoadingMore] = useState(false);

@@ -2705,6 +2705,17 @@ app.patch('/api/thread/:id/pin', async (c) => {
   }
 });
 
+// Update thread title (T#428)
+app.patch('/api/thread/:id/title', async (c) => {
+  const threadId = parseInt(c.req.param('id'), 10);
+  try {
+    const data = await c.req.json();
+    if (!data.title?.trim()) return c.json({ error: 'title required' }, 400);
+    sqlite.prepare('UPDATE forum_threads SET title = ? WHERE id = ?').run(data.title.trim(), threadId);
+    return c.json({ success: true, thread_id: threadId, title: data.title.trim() });
+  } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+});
+
 // Update thread status
 app.patch('/api/thread/:id/status', async (c) => {
   const threadId = parseInt(c.req.param('id'), 10);

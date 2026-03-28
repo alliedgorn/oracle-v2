@@ -6966,7 +6966,7 @@ app.get('/api/rules/markdown', (c) => {
   }
   if (norms.length) {
     md += '## Norms\n\n';
-    for (const n of norms) md += `### ${n.title}\n${n.content}\n\n`;
+    for (const n of norms) md += `### SHOULD — ${n.title}\n${n.content}\n\n`;
   }
   if (!rules.length) md = 'No active rules';
   return c.text(md.trim());

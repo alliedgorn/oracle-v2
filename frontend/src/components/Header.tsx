@@ -2,8 +2,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useChat } from '../contexts/ChatContext';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { ChatOverlay } from './ChatOverlay';
 import styles from './Header.module.css';
 
 interface QuickResult {
@@ -107,7 +107,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   const [searchSelected, setSearchSelected] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [sableChatOpen, setSableChatOpen] = useState(false);
+  const { chatTarget, openChat, closeChat } = useChat();
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouchDevice = 'ontouchstart' in window;
   const [sessionStartTime] = useState(() => {
@@ -407,12 +407,9 @@ export function Header({ onRemoteToggle }: HeaderProps) {
             </svg>
           </button>
         )}
-<button onClick={() => { setSableChatOpen(v => !v); localStorage.removeItem('chatBeast'); window.dispatchEvent(new Event('chatOverlayClosed')); }} className={styles.settingsLink} title="Chat with Sable">
+<button onClick={() => { chatTarget?.beastName === 'sable' ? closeChat() : openChat('sable', 'Sable'); }} className={styles.settingsLink} title="Chat with Sable">
           <img src="/api/forum/file/e8ba613f-e2cd-47b7-a385-a05b6b2ee0ae.jpg" alt="Sable" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }} />
         </button>
-        {sableChatOpen && (
-          <ChatOverlay beastName="sable" displayName="Sable" onClose={() => setSableChatOpen(false)} />
-        )}
         <Link to="/settings" className={styles.settingsLink} title="Settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />

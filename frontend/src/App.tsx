@@ -36,6 +36,8 @@ import { AuditLog } from './pages/AuditLog';
 import { SpecReview } from './pages/SpecReview';
 import { Files } from './pages/Files';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ChatProvider, useChat } from './contexts/ChatContext';
+import { ChatOverlay } from './components/ChatOverlay';
 import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
 
@@ -115,7 +117,20 @@ function AppContent() {
         />
       )}
       </div>
+      {!isLoginPage && <GlobalChatOverlay />}
     </>
+  );
+}
+
+function GlobalChatOverlay() {
+  const { chatTarget, closeChat } = useChat();
+  if (!chatTarget) return null;
+  return (
+    <ChatOverlay
+      beastName={chatTarget.beastName}
+      displayName={chatTarget.displayName}
+      onClose={closeChat}
+    />
   );
 }
 
@@ -129,7 +144,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppContent />
+        <ChatProvider>
+          <AppContent />
+        </ChatProvider>
       </AuthProvider>
     </BrowserRouter>
   );

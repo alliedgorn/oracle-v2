@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BeastCard } from './BeastCard';
-import { ChatOverlay } from './ChatOverlay';
+import { useChat } from '../contexts/ChatContext';
 import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './RemotePanel.module.css';
 
@@ -30,17 +30,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [chatBeast, setChatBeastState] = useState<{ name: string; displayName: string } | null>(() => {
-    try {
-      const saved = localStorage.getItem('chatBeast');
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
-  const setChatBeast = useCallback((val: { name: string; displayName: string } | null) => {
-    setChatBeastState(val);
-    if (val) localStorage.setItem('chatBeast', JSON.stringify(val));
-    else localStorage.removeItem('chatBeast');
-  }, []);
+  const { chatTarget, openChat } = useChat();
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   const loadStatus = useCallback(async () => {
@@ -84,13 +74,6 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
 
   // WebSocket: refresh unread counts on new DM (slight delay so ChatOverlay's markAsRead completes first)
   useWebSocket('new_dm', useCallback(() => { setTimeout(() => loadUnread(), 500); }, [loadUnread]));
-
-  // Close this overlay when another chat overlay opens (e.g. Sable from nav bar)
-  useEffect(() => {
-    const handler = () => { setChatBeast(null); };
-    window.addEventListener('chatOverlayClosed', handler);
-    return () => window.removeEventListener('chatOverlayClosed', handler);
-  }, []);
 
   async function handleClick(beast: Beast) {
     if (beast.status === 'offline') return;
@@ -157,8 +140,8 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
                 badge={isAttached ? 'ATTACHED' : undefined}
                 onClick={() => !loading && handleClick(beast)}
                 onProfileClick={(e) => { e.stopPropagation(); onClose(); navigate(`/?beast=${beast.name}`); }}
-                unreadCount={chatBeast?.name === beast.name ? 0 : (unreadCounts[beast.name] || 0)}
-                onDmClick={(e) => { e.stopPropagation(); setChatBeast({ name: beast.name, displayName: beast.displayName }); }}
+                unreadCount={chatTarget?.beastName === beast.name ? 0 : (unreadCounts[beast.name] || 0)}
+                onDmClick={(e) => { e.stopPropagation(); openChat(beast.name, beast.displayName); }}
               />
             );
           })}
@@ -166,18 +149,6 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
         </div>
       </div>
 
-      {chatBeast && (
-        <ChatOverlay
-          beastName={chatBeast.name}
-          displayName={chatBeast.displayName}
-          onClose={() => {
-            setChatBeast(null);
-            localStorage.removeItem('chatBeast');
-            // Refresh unread counts after close
-            loadUnread();
-          }}
-        />
-      )}
     </>
   );
 }

@@ -4982,7 +4982,7 @@ app.post('/api/specs/:id/review', async (c) => {
         const task = sqlite.prepare('SELECT id, assigned_to, created_by, title FROM tasks WHERE id = ?').get(taskIdNum) as any;
         if (task) {
           const commentContent = action === 'approve'
-            ? `Spec approved by Gorn. Implementation unblocked.`
+            ? `Spec approved by Gorn.${feedback ? ` ${feedback}` : ''} Implementation unblocked.`
             : `Spec rejected by Gorn: ${feedback}`;
           sqlite.prepare(
             'INSERT INTO task_comments (task_id, author, content, created_at) VALUES (?, ?, ?, ?)'

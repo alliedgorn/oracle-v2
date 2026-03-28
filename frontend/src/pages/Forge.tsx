@@ -516,6 +516,11 @@ export function Forge() {
     setLoadingMore(false);
   }
 
+  // Load header stats on mount (always visible regardless of tab)
+  useEffect(() => {
+    fetch(`${API_BASE}/routine/stats`).then(r => r.json()).then(setStats).catch(() => {});
+  }, []);
+
   // Load data based on active tab
   useEffect(() => {
     if (tab === 'log') loadLogTab();
@@ -853,7 +858,16 @@ export function Forge() {
 
           {/* Today's feed */}
           <div className={styles.history}>
-            {logs.length === 0 && <div className={styles.empty}>No entries for {formatDateNav(selectedDate)}.</div>}
+            {logs.length === 0 && (
+              <div className={styles.empty}>
+                No entries for {formatDateNav(selectedDate)}.
+                {isToday && stats && stats.total_logs > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 13 }}>
+                    {stats.total_logs} total logs · {stats.workouts_this_week} workouts this week
+                  </div>
+                )}
+              </div>
+            )}
             {logs.map(log => (
               <div key={log.id} className={styles.logCard} data-type={log.type}>
                 <span className={styles.logIcon}>{TYPE_ICONS[log.type] || '📄'}</span>

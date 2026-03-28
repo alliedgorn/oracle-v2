@@ -59,13 +59,16 @@ export function PhotosTab() {
   const loadPhotos = useCallback(async (append = false) => {
     const params = new URLSearchParams({ type: 'photo', limit: String(PAGE_SIZE) });
     if (append) params.set('offset', String(photos.length));
-    if (tagFilter) params.set('tag', tagFilter);
     const res = await fetch(`${API_BASE}/routine/logs?${params}`);
     const data = await res.json();
-    const logs = (data.logs || []).map((log: any) => ({
+    let logs = (data.logs || []).map((log: any) => ({
       ...log,
       data: parseData(log.data),
     }));
+    // Client-side tag filter (API may not support tag param)
+    if (tagFilter) {
+      logs = logs.filter((p: Photo) => p.data.tag === tagFilter);
+    }
     if (append) {
       setPhotos(prev => [...prev, ...logs]);
     } else {

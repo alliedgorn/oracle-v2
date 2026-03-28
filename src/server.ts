@@ -3461,9 +3461,10 @@ app.get('/api/tasks', (c) => {
 // POST /api/tasks — create task
 app.post('/api/tasks', async (c) => {
   const data = await c.req.json();
-  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type } = data;
+  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type, reviewer } = data;
   if (!title || !created_by) return c.json({ error: 'title and created_by required' }, 400);
   if (!project_id) return c.json({ error: 'project_id required — every task must belong to a project' }, 400);
+  if (!reviewer) return c.json({ error: 'reviewer required — every task must have a reviewer for the in_review workflow' }, 400);
 
   const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   const validPriorities = ['critical', 'high', 'medium', 'low'];
@@ -3475,8 +3476,8 @@ app.post('/api/tasks', async (c) => {
   const now = new Date().toISOString();
   const approvalRequired = data.approval_required ? 1 : 0;
   const result = sqlite.prepare(
-    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, approval_required, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, now, now);
+    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, approval_required, reviewer, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, reviewer, now, now);
 
   const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid) as any;
   searchIndexUpsert('task', task.id, task.title, task.description || '', task.assigned_to || '', now, `/board?task=${task.id}`);
@@ -3542,6 +3543,12 @@ app.patch('/api/tasks/:id', async (c) => {
   if (data.status && ['in_progress', 'in_review', 'done'].includes(data.status)) {
     const gateError = checkApprovalGate(existing);
     if (gateError) return c.json({ error: gateError }, 400);
+  }
+
+  // Require reviewer when moving to in_review
+  if (data.status === 'in_review') {
+    const reviewer = data.reviewer || existing.reviewer;
+    if (!reviewer) return c.json({ error: 'Reviewer required when moving to in_review. Set reviewer field.' }, 400);
   }
 
   const updates: string[] = [];

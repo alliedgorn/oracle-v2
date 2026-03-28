@@ -6954,6 +6954,24 @@ app.post('/api/rules/:id/reject', async (c) => {
   } catch { return c.json({ error: 'Invalid request' }, 400); }
 });
 
+// GET /api/rules/markdown — all active rules as plain markdown (T#426)
+app.get('/api/rules/markdown', (c) => {
+  const rules = (sqlite.prepare("SELECT * FROM rules WHERE status = 'active' AND (approval_status IS NULL OR approval_status = 'approved') ORDER BY CASE type WHEN 'decree' THEN 0 WHEN 'norm' THEN 1 END, created_at DESC").all() as any[]).map(decorateRule);
+  const decrees = rules.filter(r => r.type === 'decree');
+  const norms = rules.filter(r => r.type === 'norm');
+  let md = '';
+  if (decrees.length) {
+    md += '**Decrees:**\n';
+    for (const d of decrees) md += `- ${d.enforcement_text || d.title}\n`;
+  }
+  if (norms.length) {
+    md += '\n**Norms:**\n';
+    for (const n of norms) md += `- ${n.title}\n`;
+  }
+  if (!rules.length) md = 'No active rules';
+  return c.text(md.trim());
+});
+
 // GET /api/rules/norms — active norms only
 app.get('/api/rules/norms', (c) => {
   const rules = sqlite.prepare("SELECT * FROM rules WHERE type = 'norm' AND status = 'active' ORDER BY created_at DESC").all();

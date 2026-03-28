@@ -74,8 +74,8 @@ export function Board() {
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [doneExpanded, setDoneExpanded] = useState(false);
-  const [doneShowAll, setDoneShowAll] = useState(false);
-  const DONE_PREVIEW_COUNT = 5;
+  const [doneVisibleCount, setDoneVisibleCount] = useState(5);
+  const DONE_BATCH_SIZE = 5;
   const [showNewTask, setShowNewTask] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -461,13 +461,13 @@ export function Board() {
             const tasks = board.columns[status] || [];
             const isDone = status === 'done';
             const visibleTasks = isDone
-              ? (doneExpanded ? (doneShowAll ? tasks : tasks.slice(0, DONE_PREVIEW_COUNT)) : [])
+              ? (doneExpanded ? tasks.slice(0, doneVisibleCount) : [])
               : tasks;
             return (
               <div key={status} className={styles.column}>
                 <div
                   className={styles.columnHeader}
-                  onClick={isDone ? () => { setDoneExpanded(prev => !prev); setDoneShowAll(false); } : undefined}
+                  onClick={isDone ? () => { setDoneExpanded(prev => !prev); setDoneVisibleCount(DONE_BATCH_SIZE); } : undefined}
                   style={isDone ? { cursor: 'pointer' } : undefined}
                 >
                   <span className={styles.columnTitle}>{STATUS_LABELS[status]}</span>
@@ -482,9 +482,9 @@ export function Board() {
                     {visibleTasks.map(task => (
                       <TaskCard key={task.id} task={task} onClick={() => openTaskDetail(task)} />
                     ))}
-                    {isDone && doneExpanded && !doneShowAll && tasks.length > DONE_PREVIEW_COUNT && (
-                      <button className={styles.cancelBtn} style={{ width: '100%', fontSize: 12, padding: '6px' }} onClick={() => setDoneShowAll(true)}>
-                        Load More ({tasks.length - DONE_PREVIEW_COUNT} remaining)
+                    {isDone && doneExpanded && tasks.length > doneVisibleCount && (
+                      <button className={styles.cancelBtn} style={{ width: '100%', fontSize: 12, padding: '6px' }} onClick={() => setDoneVisibleCount(prev => prev + DONE_BATCH_SIZE)}>
+                        Load More ({tasks.length - Math.min(doneVisibleCount, tasks.length)} remaining)
                       </button>
                     )}
                   </div>

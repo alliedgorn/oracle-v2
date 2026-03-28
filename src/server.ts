@@ -3564,6 +3564,18 @@ app.patch('/api/tasks/:id', async (c) => {
   const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get(id) as any;
   if (task) searchIndexUpsert('task', id, task.title, task.description || '', task.assigned_to || '', task.created_at);
   wsBroadcast('task_updated', { id: task?.id });
+
+  // Notify reviewer when task moves to in_review (T#439)
+  if (data.status === 'in_review' && task?.reviewer) {
+    try {
+      const { notifyMentioned } = await import('./forum/mentions.ts');
+      const updatedBy = data.updated_by || task.assigned_to || 'system';
+      notifyMentioned([task.reviewer], 0, `T#${id}: ${task.title}`, updatedBy, `Task moved to in_review — you are the reviewer.`, {
+        type: 'PM Board', label: `T#${id}`, hint: `Review at https://denbook.online/board?task=${id}`,
+      });
+    } catch { /* notification failure is non-critical */ }
+  }
+
   return c.json(task);
 });
 

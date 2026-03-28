@@ -2753,6 +2753,9 @@ import {
   getDashboard,
 } from './dm/handler.ts';
 
+// DM performance index — composite for sorted conversation queries
+try { sqlite.prepare('CREATE INDEX IF NOT EXISTS idx_dm_messages_conv_created ON dm_messages(conversation_id, created_at)').run(); } catch { /* exists */ }
+
 // DM Dashboard — accessible to authenticated users (auth middleware handles access)
 app.get('/api/dm/dashboard', (c) => {
   const limit = parseInt(c.req.query('limit') || '50');

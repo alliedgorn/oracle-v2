@@ -1105,12 +1105,16 @@ export function Forge() {
                   }));
                   const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
-                  // X-axis labels (5 evenly spaced)
+                  // X-axis labels (5 evenly spaced) — include year for wider ranges
+                  const showYear = weightRange === '3y' || weightRange === '10y' || weightRange === 'all';
                   const xLabels: { x: number; label: string }[] = [];
                   for (let i = 0; i < 5; i++) {
                     const t = minDate + (dateRange * i) / 4;
                     const d = new Date(t);
-                    xLabels.push({ x: toX(t), label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) });
+                    const fmt: Intl.DateTimeFormatOptions = showYear
+                      ? { month: 'short', year: '2-digit' }
+                      : { month: 'short', day: 'numeric' };
+                    xLabels.push({ x: toX(t), label: d.toLocaleDateString('en-US', fmt) });
                   }
 
                   return (

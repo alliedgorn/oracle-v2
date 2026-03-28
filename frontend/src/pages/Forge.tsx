@@ -349,6 +349,31 @@ export function Forge() {
         <label className={styles.quickAddBtn} style={{ cursor: 'pointer' }}>
           <input
             type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setLoading(true);
+              try {
+                const fd = new FormData();
+                fd.append('file', file);
+                if (formData.photoTag) fd.append('tag', formData.photoTag);
+                if (formData.photoNotes) fd.append('notes', formData.photoNotes);
+                await fetch(`${API_BASE}/routine/photo/upload`, { method: 'POST', body: fd });
+                loadData();
+              } catch { /* ignore */ }
+              setLoading(false);
+              e.target.value = '';
+            }}
+            disabled={loading}
+          />
+          <span className={styles.quickAddIcon}>{TYPE_ICONS.photo}</span>
+          <span>{loading ? 'Uploading...' : 'Photo'}</span>
+        </label>
+        <label className={styles.quickAddBtn} style={{ cursor: 'pointer' }}>
+          <input
+            type="file"
             accept=".csv"
             style={{ display: 'none' }}
             onChange={async (e) => {

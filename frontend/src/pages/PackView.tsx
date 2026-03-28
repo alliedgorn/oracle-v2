@@ -35,13 +35,20 @@ export function PackView() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastContentRef = useRef<string>('');
 
-  // Load beast list with online status
+  const lastPackJsonRef = useRef<string>('');
+
+  // Load beast list with online status — only update state if data changed
   const loadPack = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/pack`);
       const data = await res.json();
       const beastList = data.beasts || [];
-      setBeasts(beastList);
+      // Only update state if beast data actually changed (avoids unnecessary re-renders)
+      const json = JSON.stringify(beastList.map((b: Beast) => `${b.name}:${b.status}:${b.online}`));
+      if (json !== lastPackJsonRef.current) {
+        lastPackJsonRef.current = json;
+        setBeasts(beastList);
+      }
       // Auto-select beast from URL param (?beast=name)
       const beastParam = searchParams.get('beast');
       if (beastParam && (!selected || selected.name !== beastParam)) {

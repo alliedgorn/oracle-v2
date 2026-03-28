@@ -98,6 +98,7 @@ export function PhotosTab() {
   }
 
   async function handleDelete(id: number) {
+    if (!confirm('Delete this photo? This cannot be undone.')) return;
     await fetch(`${API_BASE}/routine/logs/${id}`, { method: 'DELETE' });
     setPhotos(prev => prev.filter(p => p.id !== id));
     if (lightbox?.id === id) setLightbox(null);

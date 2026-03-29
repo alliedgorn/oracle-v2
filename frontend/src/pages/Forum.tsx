@@ -313,10 +313,10 @@ export function Forum() {
           setSelectedThread(prev => {
             if (!prev) return prev;
             const existingIds = new Set(prev.messages.map(m => m.id));
-            const newMsgs = data.messages.filter(m => !existingIds.has(m.id)).reverse();
+            const newMsgs = data.messages.filter(m => !existingIds.has(m.id));
             if (newMsgs.length === 0) return prev;
             loadReactionsForThread(newMsgs);
-            return { ...prev, messages: [...prev.messages, ...newMsgs] };
+            return { ...prev, messages: [...newMsgs, ...prev.messages] };
           });
           setTotalMessages(prev => prev === data.total ? prev : data.total);
         }).catch(() => {});
@@ -336,21 +336,14 @@ export function Forum() {
     };
   }, [selectedThread?.thread.id]);
 
-  // Auto-scroll to bottom on initial thread load, or when user is near bottom and new messages arrive
+  // Auto-scroll to top on initial thread load (newest first)
   useEffect(() => {
     const container = messagesContainerRef.current;
-    if (!container || !messagesEndRef.current) return;
+    if (!container) return;
 
     if (!initialScrollDone.current) {
-      // First load — jump to bottom immediately
-      messagesEndRef.current.scrollIntoView();
+      container.scrollTop = 0;
       initialScrollDone.current = true;
-    } else {
-      // Only auto-scroll if user is near the bottom (within 150px)
-      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceFromBottom < 150) {
-        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-      }
     }
   }, [selectedThread?.messages.length]);
 
@@ -361,10 +354,10 @@ export function Forum() {
         setSelectedThread(prev => {
           if (!prev) return prev;
           const existingIds = new Set(prev.messages.map(m => m.id));
-          const newMsgs = d.messages.filter(m => !existingIds.has(m.id)).reverse();
+          const newMsgs = d.messages.filter(m => !existingIds.has(m.id));
           if (newMsgs.length === 0) return prev;
           loadReactionsForThread(newMsgs);
-          return { ...prev, messages: [...prev.messages, ...newMsgs] };
+          return { ...prev, messages: [...newMsgs, ...prev.messages] };
         });
         setTotalMessages(d.total);
       }).catch(() => {});
@@ -395,22 +388,15 @@ export function Forum() {
   const loadOlderMessages = useCallback(async () => {
     if (!selectedThread || isLoadingMore) return;
     setIsLoadingMore(true);
-    const container = messagesContainerRef.current;
-    const prevScrollHeight = container?.scrollHeight || 0;
     try {
       const currentCount = selectedThread.messages.length;
       const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'desc');
       if (data.messages.length > 0) {
-        data.messages.reverse();
         setSelectedThread(prev => prev ? {
           ...prev,
-          messages: [...data.messages, ...prev.messages],
+          messages: [...prev.messages, ...data.messages],
         } : prev);
         loadReactionsForThread(data.messages);
-        // Restore scroll position after prepending
-        requestAnimationFrame(() => {
-          if (container) container.scrollTop = container.scrollHeight - prevScrollHeight;
-        });
       }
     } finally {
       setIsLoadingMore(false);
@@ -425,9 +411,8 @@ export function Forum() {
 
   async function selectThread(id: number) {
     initialScrollDone.current = false;
-    // Load latest messages (desc), then reverse for chronological display
+    // Load latest messages (desc) — newest first
     const data = await fetchThread(id, PAGE_SIZE, 0, 'desc');
-    data.messages.reverse();
     setSelectedThread(data);
     setTotalMessages(data.total);
     setSearchParams({ thread: id.toString() });
@@ -438,9 +423,9 @@ export function Forum() {
     }
     setReactions(inlineReactions);
     loadReactionsForThread(data.messages);
-    // Mark as read for gorn
+    // Mark as read for gorn (first message is newest in desc order)
     if (data.messages.length > 0) {
-      markThreadRead(id, data.messages[data.messages.length - 1].id);
+      markThreadRead(id, data.messages[0].id);
     }
   }
 
@@ -472,7 +457,7 @@ export function Forum() {
           };
           setSelectedThread(prev => prev ? {
             ...prev,
-            messages: [...prev.messages, newMsg],
+            messages: [newMsg, ...prev.messages],
           } : prev);
           setTotalMessages(prev => prev + 1);
         }
@@ -731,17 +716,6 @@ export function Forum() {
             </div>
 
             <div className={styles.messages} ref={messagesContainerRef}>
-              {hasMore && (
-                <div style={{ textAlign: 'center', padding: '8px' }}>
-                  <button
-                    onClick={loadOlderMessages}
-                    disabled={isLoadingMore}
-                    className={styles.loadMoreBtn}
-                  >
-                    {isLoadingMore ? 'Loading...' : `Load more (${totalMessages - (selectedThread?.messages.length || 0)} older)`}
-                  </button>
-                </div>
-              )}
               {selectedThread.messages.map(msg => {
                 const identity = resolveAuthor(msg.role, msg.author, beastProfiles);
                 return (
@@ -826,6 +800,17 @@ export function Forum() {
                 </div>
                 );
               })}
+              {hasMore && (
+                <div style={{ textAlign: 'center', padding: '8px' }}>
+                  <button
+                    onClick={loadOlderMessages}
+                    disabled={isLoadingMore}
+                    className={styles.loadMoreBtn}
+                  >
+                    {isLoadingMore ? 'Loading...' : `Load more (${totalMessages - (selectedThread?.messages.length || 0)} older)`}
+                  </button>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 

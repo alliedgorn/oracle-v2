@@ -1474,9 +1474,15 @@ app.get('/api/pack', (c) => {
           contextPctMap.set(session.toLowerCase(), contextPct);
 
           // Detect waiting state — Claude is stuck at a permission/choice prompt
-          const fullPane = pane1;
-          const isWaiting = /\bAllow\b.*\bDeny\b|\bDeny\b.*\bAllow\b|Do you trust|Allow once|Always allow|❯.*\b[Yy]es\b.*\b[Nn]o\b|\? .*\(y\/n\)/.test(fullPane)
-            && !isProcessing; // Only if not actively processing
+          // Only scan lines near the prompt (last 8 lines before ❯) to avoid false positives
+          // from notification text or conversation content in the pane buffer
+          const promptArea = promptIdx > 0
+            ? lines.slice(Math.max(promptIdx - 8, 0), promptIdx).join('\n')
+            : '';
+          // Match actual Claude permission UI: bordered choice boxes, (y/n) prompts
+          const isWaiting = promptArea.length > 0
+            && /Allow.*│|│.*Allow|Deny.*│|│.*Deny|Do you want to|trust this|Allow once|Always allow|\(y\/n\)|\(Y\/n\)/.test(promptArea)
+            && !isProcessing;
 
           if (isProcessing) {
             tmuxStatus.set(session.toLowerCase(), 'processing');

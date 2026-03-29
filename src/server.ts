@@ -4677,21 +4677,23 @@ function runSchedulerCycle() {
         console.log(`[Scheduler] Failed to notify ${schedule.beast}: ${err}`);
       }
     }
-    // Prowl due-task notifications (T#467 + T#471) — notify Sable when tasks are due or reminder fires
-    // remind_before offsets: 1m, 5m, 15m, 30m, 1h, 1d — fire at (due_date - offset)
-    const remindOffsets: Record<string, string> = { '1m': '-1 minutes', '5m': '-5 minutes', '15m': '-15 minutes', '30m': '-30 minutes', '1h': '-1 hours', '1d': '-1 days' };
+    // Prowl due-task notifications (T#467 + T#471 + T#473) — notify Sable when tasks are due or reminder fires
+    // Also re-notify daily for overdue tasks (T#473)
     const dueProwl = sqlite.prepare(
-      `SELECT * FROM prowl_tasks WHERE due_date IS NOT NULL AND status = 'pending' AND notified_at IS NULL
+      `SELECT * FROM prowl_tasks WHERE due_date IS NOT NULL AND status = 'pending'
        AND (
-         (remind_before IS NULL AND datetime(due_date) <= datetime(?))
-         OR (remind_before = '1m' AND datetime(due_date, '-1 minutes') <= datetime(?))
-         OR (remind_before = '5m' AND datetime(due_date, '-5 minutes') <= datetime(?))
-         OR (remind_before = '15m' AND datetime(due_date, '-15 minutes') <= datetime(?))
-         OR (remind_before = '30m' AND datetime(due_date, '-30 minutes') <= datetime(?))
-         OR (remind_before = '1h' AND datetime(due_date, '-1 hours') <= datetime(?))
-         OR (remind_before = '1d' AND datetime(due_date, '-1 days') <= datetime(?))
+         (notified_at IS NULL AND (
+           (remind_before IS NULL AND datetime(due_date) <= datetime(?))
+           OR (remind_before = '1m' AND datetime(due_date, '-1 minutes') <= datetime(?))
+           OR (remind_before = '5m' AND datetime(due_date, '-5 minutes') <= datetime(?))
+           OR (remind_before = '15m' AND datetime(due_date, '-15 minutes') <= datetime(?))
+           OR (remind_before = '30m' AND datetime(due_date, '-30 minutes') <= datetime(?))
+           OR (remind_before = '1h' AND datetime(due_date, '-1 hours') <= datetime(?))
+           OR (remind_before = '1d' AND datetime(due_date, '-1 days') <= datetime(?))
+         ))
+         OR (notified_at IS NOT NULL AND datetime(due_date) < datetime(?) AND datetime(notified_at) <= datetime(?, '-1 days'))
        )`
-    ).all(now, now, now, now, now, now, now) as any[];
+    ).all(now, now, now, now, now, now, now, now, now) as any[];
 
     for (const task of dueProwl) {
       const sessionName = 'Sable';
@@ -4703,8 +4705,9 @@ function runSchedulerCycle() {
 
       const priorityEmoji = task.priority === 'high' ? '🔴' : task.priority === 'medium' ? '🟡' : '🟢';
       const reminderLabels: Record<string, string> = { '1m': '1 min', '5m': '5 min', '15m': '15 min', '30m': '30 min', '1h': '1 hour', '1d': '1 day' };
-      const isReminder = task.remind_before && new Date(task.due_date) > new Date(now);
-      const prefix = isReminder ? `Reminder (${reminderLabels[task.remind_before] || task.remind_before} before)` : 'Task due';
+      const isReminder = task.remind_before && !task.notified_at && new Date(task.due_date) > new Date(now);
+      const isOverdueRenotify = task.notified_at && new Date(task.due_date) < new Date(now);
+      const prefix = isOverdueRenotify ? 'OVERDUE (daily reminder)' : isReminder ? `Reminder (${reminderLabels[task.remind_before] || task.remind_before} before)` : 'Task due';
       const notification = `[Prowl] ${prefix}: ${task.title} (Prowl ${priorityEmoji}${task.id}) — Priority: ${task.priority} — send Telegram to Gorn`;
 
       try {

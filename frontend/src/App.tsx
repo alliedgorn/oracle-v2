@@ -63,6 +63,23 @@ function AppContent() {
   const [remoteCollapsed, setRemoteCollapsed] = useState(false);
   const [remoteMobileOpen, setRemoteMobileOpen] = useState(false);
 
+  // Fix mobile keyboard dismiss: reset scroll position when virtual keyboard closes
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    let prevHeight = vv.height;
+    function onResize() {
+      const currentHeight = vv!.height;
+      // Keyboard closing = viewport height increases significantly
+      if (currentHeight - prevHeight > 100) {
+        window.scrollTo(0, 0);
+      }
+      prevHeight = currentHeight;
+    }
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, []);
+
   return (
     <>
       {!isLoginPage && <Header onRemoteToggle={() => setRemoteMobileOpen(prev => !prev)} />}

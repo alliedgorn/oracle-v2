@@ -6880,10 +6880,8 @@ app.post('/api/routine/logs', async (c) => {
         }
         data.data = mealData;
       } else {
-        // T#423: flat macro meal (backward compatible)
-        if (!mealData.description) return c.json({ error: 'Meal description required' }, 400);
-        const missing = ['calories', 'protein', 'carbs', 'fat'].filter(f => mealData[f] == null || mealData[f] === '');
-        if (missing.length > 0) return c.json({ error: `Meal macros required: ${missing.join(', ')}` }, 400);
+        // T#483: meal items are now mandatory — no more total-only logging
+        return c.json({ error: 'Meal items required. Each meal must include an items array with individual food items and per-item macros (name, calories, protein, carbs, fat).' }, 400);
       }
     }
     const jsonData = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
@@ -6931,9 +6929,12 @@ app.patch('/api/routine/logs/:id', async (c) => {
     const updates: string[] = [];
     const values: any[] = [];
     if (body.data) {
-      // Auto-sum meal items on edit (T#430)
+      // Auto-sum meal items on edit (T#430) — items mandatory (T#483)
       if (existingData === 'meal') {
         const mealData = typeof body.data === 'string' ? JSON.parse(body.data) : body.data;
+        if (!mealData.items || !Array.isArray(mealData.items) || mealData.items.length === 0) {
+          return c.json({ error: 'Meal items required. Each meal must include an items array with individual food items and per-item macros.' }, 400);
+        }
         if (mealData.items && Array.isArray(mealData.items) && mealData.items.length > 0) {
           const macroFields = ['calories', 'protein', 'carbs', 'fat'] as const;
           for (const f of macroFields) {

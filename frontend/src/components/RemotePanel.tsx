@@ -14,6 +14,7 @@ interface Beast {
   role: string | null;
   online: boolean;
   status: 'processing' | 'idle' | 'shell' | 'offline';
+  contextPct: number | null;
 }
 
 const API_BASE = '/api';
@@ -137,7 +138,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
                 key={beast.name}
                 {...beast}
                 selected={isAttached}
-                badge={isAttached ? 'ATTACHED' : undefined}
+                badge={isAttached ? 'ATTACHED' : beast.contextPct != null ? `${beast.contextPct}%` : undefined}
                 onClick={() => !loading && handleClick(beast)}
                 onProfileClick={(e) => { e.stopPropagation(); onClose(); navigate(`/?beast=${beast.name}`); }}
                 unreadCount={chatTarget?.beastName === beast.name ? 0 : (unreadCounts[beast.name] || 0)}

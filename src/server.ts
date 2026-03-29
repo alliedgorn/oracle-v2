@@ -1391,6 +1391,7 @@ app.get('/api/pack', (c) => {
 
   // Get active tmux sessions, detect Claude state from pane content
   const tmuxStatus: Map<string, 'processing' | 'idle' | 'shell' | 'offline'> = new Map();
+  const contextPctMap: Map<string, number | null> = new Map();
   try {
     const output = execSync(
       'tmux list-sessions -F "#{session_name}" 2>/dev/null',
@@ -1462,6 +1463,14 @@ app.get('/api/pack', (c) => {
             }
           }
 
+          // Extract context % from status bar (e.g. "██░░░ 42% | $1.23 | 5m")
+          let contextPct: number | null = null;
+          for (let i = lines.length - 1; i >= 0; i--) {
+            const pctMatch = lines[i].match(/(\d+)%\s*\|/);
+            if (pctMatch) { contextPct = parseInt(pctMatch[1], 10); break; }
+          }
+          contextPctMap.set(session.toLowerCase(), contextPct);
+
           if (isProcessing) {
             tmuxStatus.set(session.toLowerCase(), 'processing');
           } else {
@@ -1483,6 +1492,7 @@ app.get('/api/pack', (c) => {
       ...p,
       online: rawStatus === 'processing' || rawStatus === 'idle',
       status: rawStatus, // 'processing' | 'idle' | 'shell' | 'offline'
+      contextPct: contextPctMap.get(sessionName.toLowerCase()) ?? contextPctMap.get(p.name) ?? null,
       sessionName,
     };
   });

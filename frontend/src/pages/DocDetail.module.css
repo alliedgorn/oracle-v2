@@ -514,6 +514,7 @@
 .modalContent {
   padding: 20px;
   overflow: auto;
+  overscroll-behavior: contain;
   font-size: 13px;
   font-family: monospace;
   color: var(--text-primary);

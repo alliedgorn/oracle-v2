@@ -96,6 +96,7 @@
   z-index: 1000;
   max-height: 60vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Bridge the gap to prevent hover loss */
@@ -208,6 +209,7 @@
   width: 380px;
   max-height: 400px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

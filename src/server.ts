@@ -748,7 +748,7 @@ const HELP_ENDPOINTS = [
     // Tasks (PM Board)
     { method: 'GET', path: '/api/tasks', desc: 'List tasks', params: '?assignee=&reviewer=&status=&limit=100&offset=0' },
     { method: 'GET', path: '/api/tasks/:id', desc: 'Get task by ID', params: null },
-    { method: 'POST', path: '/api/tasks', desc: 'Create task', params: 'body: { title, description?, assignee?, reviewer?, status? }' },
+    { method: 'POST', path: '/api/tasks', desc: 'Create task', params: 'body: { title, assigned_to, reviewer, project_id, description?, status? }' },
     { method: 'PATCH', path: '/api/tasks/:id', desc: 'Update task', params: 'body: { title?, description?, assignee?, reviewer?, status? }' },
     { method: 'DELETE', path: '/api/tasks/:id', desc: 'Delete task', params: null },
     { method: 'POST', path: '/api/tasks/:id/comments', desc: 'Add comment to task', params: 'body: { author, content }' },
@@ -3705,6 +3705,7 @@ app.post('/api/tasks', async (c) => {
   const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type, reviewer } = data;
   if (!title || !created_by) return c.json({ error: 'title and created_by required' }, 400);
   if (!project_id) return c.json({ error: 'project_id required — every task must belong to a project' }, 400);
+  if (!assigned_to) return c.json({ error: 'assigned_to required — every task must have an assignee' }, 400);
   if (!reviewer) return c.json({ error: 'reviewer required — every task must have a reviewer for the in_review workflow' }, 400);
 
   const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];

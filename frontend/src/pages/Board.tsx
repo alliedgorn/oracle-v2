@@ -256,7 +256,7 @@ export function Board() {
 
   async function createTask(e: React.FormEvent) {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || !newAssignee) return;
     await fetch(`${API_BASE}/tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -476,8 +476,8 @@ export function Board() {
             <select value={newStatus} onChange={e => setNewStatus(e.target.value)} className={styles.projectSelect}>
               {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
             </select>
-            <select value={newAssignee} onChange={e => setNewAssignee(e.target.value)} className={styles.projectSelect}>
-              <option value="">Unassigned</option>
+            <select value={newAssignee} onChange={e => setNewAssignee(e.target.value)} className={styles.projectSelect} required>
+              <option value="" disabled>Assignee</option>
               {beasts.map(b => <option key={b.name} value={b.name}>{b.displayName}</option>)}
               <option value="gorn">Gorn</option>
             </select>

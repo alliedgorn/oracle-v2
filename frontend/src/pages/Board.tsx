@@ -74,8 +74,11 @@ export function Board() {
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [doneExpanded, setDoneExpanded] = useState(false);
-  const [doneVisibleCount, setDoneVisibleCount] = useState(5);
   const DONE_BATCH_SIZE = 5;
+  const [doneTasks, setDoneTasks] = useState<Task[]>([]);
+  const [doneTotal, setDoneTotal] = useState(0);
+  const [doneLoading, setDoneLoading] = useState(false);
+  const [doneOffset, setDoneOffset] = useState(0);
   const [showNewTask, setShowNewTask] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -112,11 +115,15 @@ export function Board() {
         }).catch(() => {});
       }
     });
+    loadDoneTasks(0);
     fetch(`${API_BASE}/beasts`).then(r => r.json()).then(d => setBeasts(d.beasts || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
     loadBoard();
+    setAllDoneForActive([]);
+    loadDoneTasks(0);
+    setDoneExpanded(false);
   }, [projectFilter, assigneeFilter]);
 
   // ESC key closes modal
@@ -142,6 +149,8 @@ export function Board() {
   // WebSocket real-time updates (replaced 10s polling)
   const handleWsUpdate = useCallback(() => {
     loadBoard();
+    setAllDoneForActive([]);
+    loadDoneTasks(0);
   }, [projectFilter, assigneeFilter]);
 
   useWebSocket('task_created', handleWsUpdate);
@@ -161,7 +170,10 @@ export function Board() {
   // Refresh when page becomes visible (catch updates missed while hidden)
   useEffect(() => {
     const handleVisibility = () => {
-      if (!document.hidden) loadBoard();
+      if (!document.hidden) {
+        loadBoard();
+        loadDoneTasks(0);
+      }
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
@@ -181,7 +193,65 @@ export function Board() {
       }
       data.total = Object.values(data.columns).reduce((sum: number, col: any) => sum + col.length, 0);
     }
+    // Clear done from board data — we fetch it separately via pagination
+    if (data.columns) {
+      data.columns.done = [];
+    }
     setBoard(data);
+  }
+
+  // Cache all done tasks for __active__ filter (client-side filtering needs the full set)
+  const [allDoneForActive, setAllDoneForActive] = useState<Task[]>([]);
+
+  async function loadDoneTasks(offset: number = 0, append: boolean = false) {
+    setDoneLoading(true);
+    try {
+      const isActiveFilter = projectFilter === '__active__';
+
+      if (isActiveFilter) {
+        // Fetch all done tasks and filter client-side by active projects
+        if (!append || allDoneForActive.length === 0) {
+          const params = new URLSearchParams({ status: 'done', limit: '200', offset: '0' });
+          if (assigneeFilter) params.set('assigned_to', assigneeFilter);
+          const res = await fetch(`${API_BASE}/tasks?${params}`);
+          const data = await res.json();
+          let all: Task[] = data.tasks || [];
+          if (board) {
+            const activeIds = new Set(board.projects.filter(p => p.status === 'active').map(p => p.id));
+            all = all.filter(t => t.project_id && activeIds.has(t.project_id));
+          }
+          setAllDoneForActive(all);
+          setDoneTasks(all.slice(0, DONE_BATCH_SIZE));
+          setDoneTotal(all.length);
+          setDoneOffset(DONE_BATCH_SIZE);
+        } else {
+          // Append from cached list
+          const newSlice = allDoneForActive.slice(offset, offset + DONE_BATCH_SIZE);
+          setDoneTasks(prev => [...prev, ...newSlice]);
+          setDoneOffset(offset + newSlice.length);
+        }
+      } else {
+        const params = new URLSearchParams({
+          status: 'done',
+          limit: String(DONE_BATCH_SIZE),
+          offset: String(offset),
+        });
+        if (projectFilter) params.set('project_id', projectFilter);
+        if (assigneeFilter) params.set('assigned_to', assigneeFilter);
+        const res = await fetch(`${API_BASE}/tasks?${params}`);
+        const data = await res.json();
+        const tasks: Task[] = data.tasks || [];
+        const total: number = data.total || 0;
+        if (append) {
+          setDoneTasks(prev => [...prev, ...tasks]);
+        } else {
+          setDoneTasks(tasks);
+        }
+        setDoneTotal(total);
+        setDoneOffset(offset + tasks.length);
+      }
+    } catch {}
+    setDoneLoading(false);
   }
 
   async function createTask(e: React.FormEvent) {
@@ -274,7 +344,7 @@ export function Board() {
 
   function allTasks(): Task[] {
     if (!board) return [];
-    return Object.values(board.columns).flat();
+    return [...Object.values(board.columns).flat(), ...doneTasks];
   }
 
   if (!board) return <div className={styles.loading}>Loading board...</div>;
@@ -458,33 +528,45 @@ export function Board() {
           return proj && proj.status !== 'active' ? styles.pausedBoard : '';
         })()}`}>
           {STATUSES.map(status => {
-            const tasks = board.columns[status] || [];
             const isDone = status === 'done';
-            const visibleTasks = isDone
-              ? (doneExpanded ? tasks.slice(0, doneVisibleCount) : [])
-              : tasks;
+            const tasks = isDone ? doneTasks : (board.columns[status] || []);
+            const taskCount = isDone ? doneTotal : tasks.length;
+            const hasMoreDone = isDone && doneTasks.length < doneTotal;
             return (
               <div key={status} className={styles.column}>
                 <div
                   className={styles.columnHeader}
-                  onClick={isDone ? () => { setDoneExpanded(prev => !prev); setDoneVisibleCount(DONE_BATCH_SIZE); } : undefined}
+                  onClick={isDone ? () => {
+                    setDoneExpanded(prev => {
+                      if (!prev && doneTasks.length === 0) loadDoneTasks(0);
+                      return !prev;
+                    });
+                  } : undefined}
                   style={isDone ? { cursor: 'pointer' } : undefined}
                 >
                   <span className={styles.columnTitle}>{STATUS_LABELS[status]}</span>
-                  <span className={styles.columnCount}>{tasks.length}</span>
+                  <span className={styles.columnCount}>{taskCount}</span>
                   {isDone && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>{doneExpanded ? '▾' : '▸'}</span>}
                 </div>
                 {(isDone ? doneExpanded : true) && (
                   <div className={styles.columnBody}>
-                    {visibleTasks.length === 0 && !isDone && (
+                    {tasks.length === 0 && !isDone && (
                       <div className={styles.emptyColumn}>No tasks</div>
                     )}
-                    {visibleTasks.map(task => (
+                    {isDone && doneExpanded && tasks.length === 0 && !doneLoading && (
+                      <div className={styles.emptyColumn}>No completed tasks</div>
+                    )}
+                    {tasks.map(task => (
                       <TaskCard key={task.id} task={task} onClick={() => openTaskDetail(task)} />
                     ))}
-                    {isDone && doneExpanded && tasks.length > doneVisibleCount && (
-                      <button className={styles.cancelBtn} style={{ width: '100%', fontSize: 12, padding: '6px' }} onClick={() => setDoneVisibleCount(prev => prev + DONE_BATCH_SIZE)}>
-                        Load More ({tasks.length - Math.min(doneVisibleCount, tasks.length)} remaining)
+                    {isDone && doneExpanded && hasMoreDone && (
+                      <button
+                        className={styles.cancelBtn}
+                        style={{ width: '100%', fontSize: 12, padding: '6px' }}
+                        onClick={() => loadDoneTasks(doneOffset, true)}
+                        disabled={doneLoading}
+                      >
+                        {doneLoading ? 'Loading...' : `Load More (${doneTotal - doneTasks.length} remaining)`}
                       </button>
                     )}
                   </div>

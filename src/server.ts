@@ -8138,9 +8138,11 @@ if (fs.existsSync(FRONTEND_DIST)) {
         '.woff2': 'font/woff2',
         '.woff': 'font/woff',
       };
+      const fileBuffer = fs.readFileSync(filePath);
       c.header('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+      c.header('Content-Length', fileBuffer.length.toString());
       c.header('Cache-Control', 'public, max-age=31536000, immutable');
-      return c.body(fs.readFileSync(filePath));
+      return c.body(fileBuffer);
     }
     return c.notFound();
   });
@@ -8149,8 +8151,10 @@ if (fs.existsSync(FRONTEND_DIST)) {
   app.get('*', (c) => {
     if (c.req.path.startsWith('/api/')) return c.notFound();
     const indexPath = path.join(FRONTEND_DIST, 'index.html');
+    const indexBuffer = fs.readFileSync(indexPath);
     c.header('Content-Type', 'text/html');
-    return c.body(fs.readFileSync(indexPath));
+    c.header('Content-Length', indexBuffer.length.toString());
+    return c.body(indexBuffer);
   });
 }
 

@@ -197,7 +197,8 @@ export function Prowl() {
           className={styles.dueDateInput}
           value={newDueDate}
           onChange={e => setNewDueDate(e.target.value)}
-          title="Due date & time"
+          title="Set due date & time"
+          placeholder="Due date"
         />
         {newDueDate && (
           <select

@@ -786,8 +786,8 @@ export function Forge() {
         );
       }
       case 'workout': return <WorkoutCard data={d} />;
-      case 'weight': return `${d.value} ${d.unit || 'kg'}`;
-      case 'bodyfat': return `${d.value}% body fat`;
+      case 'weight': return `${Number(d.value).toFixed(2)} ${d.unit || 'kg'}`;
+      case 'bodyfat': return `${Number(d.value).toFixed(2)}% body fat`;
       case 'note': return d.text || 'Note';
       case 'photo': return `${d.tag ? `[${d.tag}] ` : ''}${d.notes || 'Progress photo'}`;
       default: return JSON.stringify(d);
@@ -822,7 +822,7 @@ export function Forge() {
           <div className={styles.statsRow}>
             <span className={styles.stat}>{stats.total_logs} logs</span>
             <span className={styles.stat}>{stats.workouts_this_week} workouts this week</span>
-            {stats.latest_weight && <span className={styles.stat}>Last: {stats.latest_weight.value} kg</span>}
+            {stats.latest_weight && <span className={styles.stat}>Last: {Number(stats.latest_weight.value).toFixed(2)} kg</span>}
           </div>
         )}
         <WithingsStatus />
@@ -1246,7 +1246,7 @@ export function Forge() {
               </div>
               <div className={styles.summaryCard}>
                 <span className={styles.summaryValue}>
-                  {summary.latestWeight ? summary.latestWeight.value : '—'}
+                  {summary.latestWeight ? Number(summary.latestWeight.value).toFixed(2) : '—'}
                   {summary.latestWeight?.trend === 'up' && <span className={styles.trendArrow}> ↑</span>}
                   {summary.latestWeight?.trend === 'down' && <span className={styles.trendArrowDown}> ↓</span>}
                 </span>
@@ -1364,9 +1364,9 @@ export function Forge() {
                         const w = p.w;
                         const isGrouped = weightGrouping !== 'daily' && w.min_value != null;
                         const periodLabel = w.period || new Date(w.logged_at).toLocaleDateString();
-                        const dv = Math.round(p.displayVal * 10) / 10;
+                        const dv = Number(p.displayVal).toFixed(2);
                         const tooltip = isGrouped
-                          ? `${periodLabel}: avg ${dv} ${weightUnit} (${Math.round(cv(w.min_value) * 10) / 10}–${Math.round(cv(w.max_value) * 10) / 10}, ${w.count} entries)`
+                          ? `${periodLabel}: avg ${dv} ${weightUnit} (${Number(cv(w.min_value)).toFixed(2)}–${Number(cv(w.max_value)).toFixed(2)}, ${w.count} entries)`
                           : `${dv} ${weightUnit} — ${new Date(w.logged_at).toLocaleDateString()}`;
                         return (
                           <circle key={i} cx={p.x} cy={p.y} r={3} fill="#d29922" style={{ cursor: 'pointer' }}>
@@ -1532,7 +1532,7 @@ export function Forge() {
                 )}
                 {detailLog.type === 'workout' && <WorkoutCard data={d} />}
                 {detailLog.type === 'weight' && (
-                  <div className={styles.detailField}><span className={styles.detailLabel}>Weight</span><span style={{ fontSize: 28, fontWeight: 700 }}>{d.value} {d.unit || 'kg'}</span></div>
+                  <div className={styles.detailField}><span className={styles.detailLabel}>Weight</span><span style={{ fontSize: 28, fontWeight: 700 }}>{Number(d.value).toFixed(2)} {d.unit || 'kg'}</span></div>
                 )}
                 {detailLog.type === 'note' && (
                   <div className={styles.detailField}><span className={styles.detailLabel}>Note</span><span>{d.text || '—'}</span></div>

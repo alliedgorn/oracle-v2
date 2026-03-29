@@ -23,7 +23,7 @@ interface Beast {
 const API_BASE = '/api';
 
 export function PackView() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [selected, setSelected] = useState<Beast | null>(null);
   const [interactive, setInteractive] = useState(false);
@@ -229,7 +229,8 @@ export function PackView() {
     if (pollRef.current) clearInterval(pollRef.current);
     lastContentRef.current = '';
     setSelected(beast);
-  }, []);
+    setSearchParams({ beast: beast.name }, { replace: true });
+  }, [setSearchParams]);
 
   // Stable callback maps so BeastCard memo works (no new function refs on each render)
   const beastCallbacks = useMemo(() => {

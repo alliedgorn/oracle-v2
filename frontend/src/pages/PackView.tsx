@@ -49,12 +49,6 @@ export function PackView() {
         lastPackJsonRef.current = json;
         setBeasts(beastList);
       }
-      // Auto-select beast from URL param (?beast=name)
-      const beastParam = searchParams.get('beast');
-      if (beastParam && (!selected || selected.name !== beastParam)) {
-        const match = beastList.find((b: Beast) => b.name === beastParam);
-        if (match) { setSelected(match); }
-      }
     } catch { /* ignore */ }
   }, []);
 

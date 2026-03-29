@@ -4564,14 +4564,11 @@ app.post('/api/schedules/:id/execute', async (c) => {
     return c.json({ error: `tmux session '${sessionName}' not found — Beast may be offline` }, 503);
   }
 
-  // Send notification to Beast — no sanitization needed with Bun.spawnSync (no shell)
-  const notification = `# [Scheduler] Due now: ${schedule.task} (schedule ${schedule.id})${schedule.command ? ` | Command: ${schedule.command}` : ''}`;
-  const reminder = `# Remember: mark done with curl -s -X PATCH http://localhost:47778/api/schedules/${schedule.id}/run?as=${schedule.beast}`;
+  // Send notification to Beast — single message + single Enter to avoid submit race
+  const notification = `[Scheduler] Due now: ${schedule.task} (schedule ${schedule.id})${schedule.command ? ` | Command: ${schedule.command}` : ''}\nRemember: mark done with /scheduler run ${schedule.id}`;
 
   try {
     Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
-    Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
-    Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', reminder]);
     Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
 
     const now = new Date().toISOString();

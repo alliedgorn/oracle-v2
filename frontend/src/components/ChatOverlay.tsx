@@ -84,6 +84,15 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
   }, [collapsed]);
+
+  // Auto-scroll to newest message when expanding
+  useEffect(() => {
+    if (!collapsed) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView();
+      });
+    }
+  }, [collapsed]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
@@ -273,7 +282,10 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
         const wasCollapsed = collapsed;
         onToggleCollapse();
         if (wasCollapsed) {
-          setTimeout(() => messagesEndRef.current?.scrollIntoView(), 50);
+          // Allow DOM to render messages before scrolling
+          requestAnimationFrame(() => {
+            messagesEndRef.current?.scrollIntoView();
+          });
         }
       }} style={{ cursor: 'pointer' }}>
         {avatarUrl && <img src={avatarUrl} alt={displayName} className={styles.headerAvatar} />}

@@ -3673,7 +3673,12 @@ app.get('/api/tasks', (c) => {
   const countQuery = query.replace('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id', 'SELECT COUNT(*) as total FROM tasks t');
   const total = (sqlite.prepare(countQuery).get(...params) as any)?.total || 0;
 
-  query += ' ORDER BY CASE t.priority WHEN \'critical\' THEN 0 WHEN \'high\' THEN 1 WHEN \'medium\' THEN 2 WHEN \'low\' THEN 3 END, t.created_at DESC';
+  // Done tasks sort by most recently completed; others by priority then created_at
+  if (status === 'done') {
+    query += ' ORDER BY t.updated_at DESC';
+  } else {
+    query += ' ORDER BY CASE t.priority WHEN \'critical\' THEN 0 WHEN \'high\' THEN 1 WHEN \'medium\' THEN 2 WHEN \'low\' THEN 3 END, t.created_at DESC';
+  }
   query += ' LIMIT ? OFFSET ?';
   params.push(limit, offset);
 

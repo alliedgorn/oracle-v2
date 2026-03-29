@@ -14,7 +14,7 @@ interface BeastCardProps {
   selected?: boolean;
   badge?: string;
   onClick?: () => void;
-  onNameClick?: (e: React.MouseEvent) => void;
+
   onDmClick?: (e: React.MouseEvent) => void;
   onProfileClick?: (e: React.MouseEvent) => void;
   unreadCount?: number;
@@ -32,7 +32,7 @@ export const BeastCard = memo(function BeastCard({
   selected = false,
   badge,
   onClick,
-  onNameClick,
+
   onDmClick,
   onProfileClick,
   unreadCount = 0,
@@ -56,21 +56,14 @@ export const BeastCard = memo(function BeastCard({
         <span className={`${styles.statusDot} ${online ? styles.dotOnline : styles.dotOffline}`} />
       </div>
       <div className={styles.info}>
-        {onNameClick ? (
-          <a href={`/beast/${name}`} className={styles.name} onClick={onNameClick}>{displayName}</a>
-        ) : (
-          <span className={styles.name}>{displayName}</span>
-        )}
+        <span className={styles.name}>{displayName}</span>
         <div className={styles.role}>{role || animal}</div>
       </div>
       {badge && <span className={styles.badge}>{badge}</span>}
-      {(onNameClick || onProfileClick || onDmClick) && (
+      {(onProfileClick || onDmClick) && (
         <div className={styles.actions}>
-          {onNameClick && (
-            <a href={`/beast/${name}`} className={styles.dmButton} title={`View ${displayName}'s profile`} onClick={onNameClick}>👤</a>
-          )}
           {onProfileClick && (
-            <button className={`${styles.dmButton} ${styles.terminalBtn}`} title={`Open ${displayName}'s terminal`} onClick={onProfileClick}>&#9002;</button>
+            <a href={`/beast/${name}`} className={styles.dmButton} title={`View ${displayName}'s profile`} onClick={onProfileClick}>👤</a>
           )}
           {onDmClick && (
             <button className={styles.dmButton} title={`DM ${displayName}`} onClick={onDmClick}>

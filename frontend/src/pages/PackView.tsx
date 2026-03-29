@@ -234,11 +234,11 @@ export function PackView() {
 
   // Stable callback maps so BeastCard memo works (no new function refs on each render)
   const beastCallbacks = useMemo(() => {
-    const map: Record<string, { onClick: () => void; onNameClick: (e: React.MouseEvent) => void }> = {};
+    const map: Record<string, { onClick: () => void; onProfileClick: (e: React.MouseEvent) => void }> = {};
     for (const beast of beasts) {
       map[beast.name] = {
         onClick: () => selectBeast(beast),
-        onNameClick: (e: React.MouseEvent) => { e.stopPropagation(); window.location.href = `/beast/${beast.name}`; },
+        onProfileClick: (e: React.MouseEvent) => { e.stopPropagation(); window.location.href = `/beast/${beast.name}`; },
       };
     }
     return map;
@@ -256,7 +256,7 @@ export function PackView() {
               {...beast}
               selected={selected?.name === beast.name}
               onClick={beastCallbacks[beast.name]?.onClick}
-              onNameClick={beastCallbacks[beast.name]?.onNameClick}
+              onProfileClick={beastCallbacks[beast.name]?.onProfileClick}
             />
           ))}
         </div>

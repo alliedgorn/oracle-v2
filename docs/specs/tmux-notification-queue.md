@@ -65,7 +65,7 @@ done
 - **Stop**: `/rest` kills the drain PID (read from `<beast>.pid`)
 - **Crash recovery**: If drain dies, notifications accumulate in the queue file and drain on restart
 
-## Migration: All 8 Senders
+## Migration: All 10 Senders
 
 | # | Source | Current | Change to |
 |---|--------|---------|-----------|
@@ -77,6 +77,8 @@ done
 | 6 | Prowl reminders | `tmux send-keys` in Prowl cron | Call `notify.sh <beast> <msg>` |
 | 7 | Task review notifications | `tmux send-keys` in task handler | Call `notify.sh <beast> <msg>` |
 | 8 | Decree/norm notifications | `tmux send-keys` in rules handler | Call `notify.sh <beast> <msg>` |
+| 9 | Mindlink remote command | `tmux send-keys` in POST /api/beast/:name/command | Call `notify.sh <beast> <msg>` |
+| 10 | Mindlink chat message | `tmux send-keys` in POST /api/beast/:name/chat | Call `notify.sh <beast> <msg>` |
 
 ## Quick Fix: Scheduler Batching
 

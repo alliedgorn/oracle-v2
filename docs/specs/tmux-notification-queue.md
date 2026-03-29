@@ -29,7 +29,7 @@ All 8 notification senders call a shared enqueue function instead of `tmux send-
 ```bash
 # /home/gorn/workspace/oracle-v2/scripts/notify.sh
 notify() {
-  BEAST=$1
+  BEAST=$(echo "$1" | tr '[:upper:]' '[:lower:]')  # normalize case
   MESSAGE=$2
   QUEUE="/tmp/den-notify/${BEAST}.queue"
   LOCK="/tmp/den-notify/${BEAST}.lock"

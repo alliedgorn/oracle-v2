@@ -1392,7 +1392,7 @@ app.get('/api/pack', (c) => {
   const profiles = getAllBeastProfiles();
 
   // Get active tmux sessions, detect Claude state from pane content
-  const tmuxStatus: Map<string, 'processing' | 'idle' | 'shell' | 'offline'> = new Map();
+  const tmuxStatus: Map<string, 'processing' | 'idle' | 'waiting' | 'shell' | 'offline'> = new Map();
   const contextPctMap: Map<string, number | null> = new Map();
   try {
     const output = execSync(
@@ -1473,8 +1473,15 @@ app.get('/api/pack', (c) => {
           }
           contextPctMap.set(session.toLowerCase(), contextPct);
 
+          // Detect waiting state — Claude is stuck at a permission/choice prompt
+          const fullPane = pane1;
+          const isWaiting = /\bAllow\b.*\bDeny\b|\bDeny\b.*\bAllow\b|Do you trust|Allow once|Always allow|❯.*\b[Yy]es\b.*\b[Nn]o\b|\? .*\(y\/n\)/.test(fullPane)
+            && !isProcessing; // Only if not actively processing
+
           if (isProcessing) {
             tmuxStatus.set(session.toLowerCase(), 'processing');
+          } else if (isWaiting) {
+            tmuxStatus.set(session.toLowerCase(), 'waiting');
           } else {
             tmuxStatus.set(session.toLowerCase(), 'idle');
           }
@@ -1492,8 +1499,8 @@ app.get('/api/pack', (c) => {
     const rawStatus = tmuxStatus.get(sessionName.toLowerCase()) || tmuxStatus.get(p.name) || 'offline';
     return {
       ...p,
-      online: rawStatus === 'processing' || rawStatus === 'idle',
-      status: rawStatus, // 'processing' | 'idle' | 'shell' | 'offline'
+      online: rawStatus === 'processing' || rawStatus === 'idle' || rawStatus === 'waiting',
+      status: rawStatus, // 'processing' | 'idle' | 'waiting' | 'shell' | 'offline'
       contextPct: contextPctMap.get(sessionName.toLowerCase()) ?? contextPctMap.get(p.name) ?? null,
       sessionName,
     };

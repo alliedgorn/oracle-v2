@@ -236,6 +236,17 @@
   background: rgba(217, 119, 6, 0.1);
 }
 
+.statusWaiting {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.15);
+  animation: pulse-badge 2s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .statusShell {
   color: #6e7681;
   background: rgba(110, 118, 129, 0.1);

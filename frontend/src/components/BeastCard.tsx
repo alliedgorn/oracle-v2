@@ -9,7 +9,7 @@ interface BeastCardProps {
   avatarUrl: string | null;
   themeColor: string | null;
   role: string | null;
-  status: 'processing' | 'idle' | 'shell' | 'offline' | 'online';
+  status: 'processing' | 'idle' | 'waiting' | 'shell' | 'offline' | 'online';
   online: boolean;
   selected?: boolean;
   badge?: string;
@@ -38,12 +38,13 @@ export const BeastCard = memo(function BeastCard({
   unreadCount = 0,
 }: BeastCardProps) {
   const isProcessing = status === 'processing';
+  const isWaiting = status === 'waiting';
   const isOffline = status === 'offline' || !online;
   const emoji = ANIMAL_EMOJI[animal?.toLowerCase()] || '🐾';
 
   return (
     <div
-      className={`${styles.card} ${selected ? styles.selected : ''} ${isProcessing ? styles.processing : ''} ${isOffline ? styles.offline : ''}`}
+      className={`${styles.card} ${selected ? styles.selected : ''} ${isProcessing ? styles.processing : ''} ${isWaiting ? styles.waiting : ''} ${isOffline ? styles.offline : ''}`}
       style={themeColor ? { '--beast-color': themeColor } as React.CSSProperties : undefined}
       onClick={onClick}
     >
@@ -53,7 +54,7 @@ export const BeastCard = memo(function BeastCard({
         ) : (
           <span className={styles.emoji}>{emoji}</span>
         )}
-        <span className={`${styles.statusDot} ${online ? styles.dotOnline : styles.dotOffline}`} />
+        <span className={`${styles.statusDot} ${isWaiting ? styles.dotWaiting : online ? styles.dotOnline : styles.dotOffline}`} />
       </div>
       <div className={styles.info}>
         <span className={styles.name}>{displayName}</span>

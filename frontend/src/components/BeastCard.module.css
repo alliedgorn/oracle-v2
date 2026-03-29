@@ -93,6 +93,16 @@
   background: var(--text-muted);
 }
 
+.dotWaiting {
+  background: #f59e0b;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 /* Info */
 .info {
   flex: 1;

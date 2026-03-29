@@ -16,7 +16,7 @@ interface Beast {
   themeColor: string | null;
   role: string | null;
   online: boolean;
-  status: 'processing' | 'idle' | 'shell' | 'offline';
+  status: 'processing' | 'idle' | 'waiting' | 'shell' | 'offline';
   sessionName: string;
 }
 
@@ -280,8 +280,8 @@ export function PackView() {
                 >
                   {interactive ? '⌨️ INTERACTIVE' : '👁️ VIEW'}
                 </button>
-                <span className={`${styles.terminalStatus} ${selected.status === 'processing' ? styles.statusProcessing : selected.status === 'idle' ? styles.statusIdle : selected.status === 'shell' ? styles.statusShell : styles.statusOffline}`}>
-                  {selected.status === 'processing' ? 'PROCESSING' : selected.status === 'idle' ? 'IDLE' : selected.status === 'shell' ? 'SHELL' : 'OFFLINE'}
+                <span className={`${styles.terminalStatus} ${selected.status === 'processing' ? styles.statusProcessing : selected.status === 'waiting' ? styles.statusWaiting : selected.status === 'idle' ? styles.statusIdle : selected.status === 'shell' ? styles.statusShell : styles.statusOffline}`}>
+                  {selected.status === 'processing' ? 'PROCESSING' : selected.status === 'waiting' ? 'WAITING' : selected.status === 'idle' ? 'IDLE' : selected.status === 'shell' ? 'SHELL' : 'OFFLINE'}
                 </span>
               </div>
             </div>

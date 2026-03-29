@@ -7,6 +7,7 @@
  */
 
 import { getSetting, setSetting, sqlite } from '../db/index.ts';
+import { enqueueNotification } from '../notify.ts';
 
 // ============================================================================
 // Oracle Registry
@@ -198,12 +199,12 @@ export function notifyMentioned(
     }
 
     try {
-      const result = Bun.spawnSync(['tmux', 'send-keys', '-t', entry.tmux, message, 'Enter']);
-      if (result.exitCode === 0) {
+      const success = enqueueNotification(name, message);
+      if (success) {
         notified.push(name);
       }
     } catch {
-      // tmux not available or session not found — continue silently
+      // queue not available — continue silently
     }
   }
 

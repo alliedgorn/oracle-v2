@@ -85,6 +85,8 @@ import {
 } from './forum/handler.ts';
 
 
+import { enqueueNotification } from './notify.ts';
+
 import {
   listTraces,
   getTrace,
@@ -4575,12 +4577,11 @@ app.post('/api/schedules/:id/execute', async (c) => {
     return c.json({ error: `tmux session '${sessionName}' not found — Beast may be offline` }, 503);
   }
 
-  // Send notification to Beast — single message + single Enter to avoid submit race
+  // Send notification to Beast via queue
   const notification = `[Scheduler] Due now: ${schedule.task} (schedule ${schedule.id})${schedule.command ? ` | Command: ${schedule.command}` : ''}\nRemember: mark done with /scheduler run ${schedule.id}`;
 
   try {
-    Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
-    Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
+    enqueueNotification(schedule.beast, notification);
 
     const now = new Date().toISOString();
     sqlite.prepare(
@@ -4666,12 +4667,11 @@ function runSchedulerCycle() {
         continue;
       }
 
-      // Send notification — single send-keys call to avoid race conditions
+      // Send notification via queue
       const notification = `[Scheduler] Due now: ${schedule.task} (schedule ${schedule.id})${schedule.command ? ` | Command: ${schedule.command}` : ''}\nRemember: mark done with /scheduler run ${schedule.id}`;
 
       try {
-        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
-        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
+        enqueueNotification(schedule.beast, notification);
 
         // Mark as triggered
         sqlite.prepare(
@@ -4721,8 +4721,7 @@ function runSchedulerCycle() {
       const notification = `[Prowl] ${prefix}: ${task.title} (Prowl ${priorityEmoji}${task.id}) — Priority: ${task.priority} — send Telegram to Gorn`;
 
       try {
-        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
-        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
+        enqueueNotification('sable', notification);
 
         sqlite.prepare(`UPDATE prowl_tasks SET notified_at = ? WHERE id = ?`).run(localNow, task.id);
         console.log(`[Prowl] Notified Sable: task #${task.id} "${task.title}" is due`);
@@ -7803,8 +7802,7 @@ app.post('/api/prowl/notify-test', (c) => {
     return c.json({ error: 'Sable tmux session not found' }, 503);
   }
   const notification = '[Prowl] TEST: This is a test notification — if Sable receives this and sends Telegram, the pipeline works';
-  Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
-  Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
+  enqueueNotification('sable', notification);
   return c.json({ success: true, message: 'Test notification sent to Sable' });
 });
 

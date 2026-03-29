@@ -11,6 +11,7 @@ import { spawn, execSync } from 'child_process';
 import { writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync } from 'fs';
 import { addMessage, updateThreadStatus, getMessages, getThread } from './handler.ts';
 import { getSetting, sqlite } from '../db/index.ts';
+import { enqueueNotification } from '../notify.ts';
 import type { ForumMessage } from './types.ts';
 
 // Dynamic Oracle workspace mapping — built from beast_profiles
@@ -107,14 +108,13 @@ function sendToLiveSession(pane: string, oracle: string, threadId: number, title
   const prompt = `[Forum message] From ${senderName} in thread #${threadId} ("${title}"):\n\n${preview}\n\nUse /forum thread ${threadId} to read and /forum post <message> (with thread_id ${threadId}) to reply.`;
 
   try {
-    // Use Bun.spawnSync to inject into the session — bypasses shell interpretation
-    Bun.spawnSync(['tmux', 'send-keys', '-t', pane, '-l', prompt]);
-    Bun.spawnSync(['tmux', 'send-keys', '-t', pane, 'Enter']);
-
-    console.log(`[tmux] Injected message into ${oracle}'s live session (pane ${pane})`);
-    return true;
+    const success = enqueueNotification(oracle, prompt);
+    if (success) {
+      console.log(`[notify] Queued message for ${oracle}'s session`);
+    }
+    return success;
   } catch (err) {
-    console.error(`[tmux] Failed to send to ${pane}:`, err instanceof Error ? err.message : err);
+    console.error(`[notify] Failed to queue for ${oracle}:`, err instanceof Error ? err.message : err);
     return false;
   }
 }

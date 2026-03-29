@@ -8,6 +8,7 @@
 import { eq, and, desc, sql, isNull } from 'drizzle-orm';
 import { db, dmConversations, dmMessages } from '../db/index.ts';
 import { getOracleRegistry } from '../forum/mentions.ts';
+import { enqueueNotification } from '../notify.ts';
 import type { DmConversation, DmMessage } from './types.ts';
 
 // ============================================================================
@@ -136,8 +137,7 @@ function notifyDmRecipient(from: string, to: string, content: string): boolean {
   const message = `[DM from ${from}]: ${preview}...\n\nUse /dm to read and /dm ${from} <message> to reply.`;
 
   try {
-    const result = Bun.spawnSync(['tmux', 'send-keys', '-t', entry.tmux, message, 'Enter']);
-    return result.exitCode === 0;
+    return enqueueNotification(to, message);
   } catch {
     return false;
   }

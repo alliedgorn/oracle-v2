@@ -110,7 +110,7 @@ export function Prowl() {
         title: task.title,
         priority: task.priority,
         category: task.category,
-        due_date: task.due_date ? task.due_date.slice(0, 10) : '',
+        due_date: task.due_date ? task.due_date.slice(0, 16) : '',
         notes: task.notes || '',
       });
     }
@@ -118,20 +118,37 @@ export function Prowl() {
 
   function isOverdue(dueDate: string | null): boolean {
     if (!dueDate) return false;
-    return new Date(dueDate) < new Date(new Date().toDateString());
+    return new Date(dueDate) < new Date();
   }
 
   function formatDate(iso: string | null): string {
     if (!iso) return '';
     const d = new Date(iso);
     const now = new Date();
-    const diff = d.getTime() - new Date(now.toDateString()).getTime();
+    const hasTime = iso.includes('T') || iso.includes(':');
+    const diff = d.getTime() - now.getTime();
     const days = Math.round(diff / 86400000);
-    if (days === 0) return 'Today';
-    if (days === 1) return 'Tomorrow';
-    if (days === -1) return 'Yesterday';
-    if (days < -1) return `${Math.abs(days)}d overdue`;
-    if (days <= 7) return `In ${days}d`;
+    const hours = Math.round(diff / 3600000);
+
+    if (hasTime) {
+      const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      if (diff < 0) {
+        if (hours > -24) return `${Math.abs(hours)}h overdue`;
+        return `${Math.abs(days)}d overdue`;
+      }
+      if (hours < 1) return `In ${Math.round(diff / 60000)}m`;
+      if (hours < 24) return `In ${hours}h`;
+      if (days <= 7) return `In ${days}d @ ${timeStr}`;
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ` ${timeStr}`;
+    }
+
+    // Date-only fallback
+    const dayDiff = Math.round((d.getTime() - new Date(now.toDateString()).getTime()) / 86400000);
+    if (dayDiff === 0) return 'Today';
+    if (dayDiff === 1) return 'Tomorrow';
+    if (dayDiff === -1) return 'Yesterday';
+    if (dayDiff < -1) return `${Math.abs(dayDiff)}d overdue`;
+    if (dayDiff <= 7) return `In ${dayDiff}d`;
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
@@ -278,9 +295,9 @@ export function Prowl() {
                     />
                   </div>
                   <div className={styles.expandedField}>
-                    <label>Due Date</label>
+                    <label>Due Date & Time</label>
                     <input
-                      type="date"
+                      type="datetime-local"
                       value={editData.due_date || ''}
                       onChange={e => setEditData({ ...editData, due_date: e.target.value || null })}
                     />

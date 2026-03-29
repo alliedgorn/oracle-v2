@@ -816,8 +816,8 @@ const HELP_ENDPOINTS = [
     // Prowl (Gorn tasks)
     { method: 'GET', path: '/api/prowl', desc: 'List Gorn personal tasks', params: '?status=&category=&priority=' },
     { method: 'GET', path: '/api/prowl/categories', desc: 'List Prowl categories', params: null },
-    { method: 'POST', path: '/api/prowl', desc: 'Create Prowl task', params: 'body: { title, description?, category?, priority?, source? }' },
-    { method: 'PATCH', path: '/api/prowl/:id', desc: 'Update Prowl task', params: 'body: { title?, description?, category?, priority? }' },
+    { method: 'POST', path: '/api/prowl', desc: 'Create Prowl task', params: 'body: { title, due_date? (YYYY-MM-DD or YYYY-MM-DDTHH:MM), category?, priority?, source? }' },
+    { method: 'PATCH', path: '/api/prowl/:id', desc: 'Update Prowl task', params: 'body: { title?, due_date? (YYYY-MM-DD or YYYY-MM-DDTHH:MM), category?, priority?, notes? }' },
     { method: 'PATCH', path: '/api/prowl/:id/status', desc: 'Update Prowl task status', params: 'body: { status }' },
     { method: 'POST', path: '/api/prowl/:id/toggle', desc: 'Toggle Prowl task done/undone', params: null },
     { method: 'DELETE', path: '/api/prowl/:id', desc: 'Delete Prowl task', params: null },
@@ -7446,11 +7446,11 @@ app.get('/api/prowl', (c) => {
     params.push(category);
   }
   if (due === 'overdue') {
-    query += " AND due_date < date('now') AND status = 'pending'";
+    query += " AND due_date < datetime('now') AND status = 'pending'";
   } else if (due === 'today') {
-    query += " AND due_date = date('now')";
+    query += " AND date(due_date) = date('now')";
   } else if (due === 'week') {
-    query += " AND due_date BETWEEN date('now') AND date('now', '+7 days')";
+    query += " AND date(due_date) BETWEEN date('now') AND date('now', '+7 days')";
   }
 
   query += ' ORDER BY CASE priority WHEN \'high\' THEN 0 WHEN \'medium\' THEN 1 WHEN \'low\' THEN 2 END, created_at DESC';
@@ -7461,7 +7461,7 @@ app.get('/api/prowl', (c) => {
   const counts = {
     pending: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE status = 'pending'").get() as any).c,
     done: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE status = 'done'").get() as any).c,
-    overdue: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE due_date < date('now') AND status = 'pending'").get() as any).c,
+    overdue: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE due_date < datetime('now') AND status = 'pending'").get() as any).c,
     high: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE priority = 'high' AND status = 'pending'").get() as any).c,
     medium: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE priority = 'medium' AND status = 'pending'").get() as any).c,
     low: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE priority = 'low' AND status = 'pending'").get() as any).c,

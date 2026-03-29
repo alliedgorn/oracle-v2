@@ -73,7 +73,6 @@ export function Board() {
   const [projectFilter, setProjectFilter] = useState<string>('__active__');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
-  const [doneExpanded, setDoneExpanded] = useState(false);
   const DONE_BATCH_SIZE = 5;
   const [doneTasks, setDoneTasks] = useState<Task[]>([]);
   const [doneTotal, setDoneTotal] = useState(0);
@@ -123,7 +122,6 @@ export function Board() {
     loadBoard();
     setAllDoneForActive([]);
     loadDoneTasks(0);
-    setDoneExpanded(false);
   }, [projectFilter, assigneeFilter]);
 
   // ESC key closes modal
@@ -534,43 +532,31 @@ export function Board() {
             const hasMoreDone = isDone && doneTasks.length < doneTotal;
             return (
               <div key={status} className={styles.column}>
-                <div
-                  className={styles.columnHeader}
-                  onClick={isDone ? () => {
-                    setDoneExpanded(prev => {
-                      if (!prev && doneTasks.length === 0) loadDoneTasks(0);
-                      return !prev;
-                    });
-                  } : undefined}
-                  style={isDone ? { cursor: 'pointer' } : undefined}
-                >
+                <div className={styles.columnHeader}>
                   <span className={styles.columnTitle}>{STATUS_LABELS[status]}</span>
                   <span className={styles.columnCount}>{taskCount}</span>
-                  {isDone && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>{doneExpanded ? '▾' : '▸'}</span>}
                 </div>
-                {(isDone ? doneExpanded : true) && (
-                  <div className={styles.columnBody}>
-                    {tasks.length === 0 && !isDone && (
-                      <div className={styles.emptyColumn}>No tasks</div>
-                    )}
-                    {isDone && doneExpanded && tasks.length === 0 && !doneLoading && (
-                      <div className={styles.emptyColumn}>No completed tasks</div>
-                    )}
-                    {tasks.map(task => (
-                      <TaskCard key={task.id} task={task} onClick={() => openTaskDetail(task)} />
-                    ))}
-                    {isDone && doneExpanded && hasMoreDone && (
-                      <button
-                        className={styles.cancelBtn}
-                        style={{ width: '100%', fontSize: 12, padding: '6px' }}
-                        onClick={() => loadDoneTasks(doneOffset, true)}
-                        disabled={doneLoading}
-                      >
-                        {doneLoading ? 'Loading...' : `Load More (${doneTotal - doneTasks.length} remaining)`}
-                      </button>
-                    )}
-                  </div>
-                )}
+                <div className={styles.columnBody}>
+                  {tasks.length === 0 && !isDone && (
+                    <div className={styles.emptyColumn}>No tasks</div>
+                  )}
+                  {isDone && tasks.length === 0 && !doneLoading && (
+                    <div className={styles.emptyColumn}>No completed tasks</div>
+                  )}
+                  {tasks.map(task => (
+                    <TaskCard key={task.id} task={task} onClick={() => openTaskDetail(task)} />
+                  ))}
+                  {isDone && hasMoreDone && (
+                    <button
+                      className={styles.cancelBtn}
+                      style={{ width: '100%', fontSize: 12, padding: '6px' }}
+                      onClick={() => loadDoneTasks(doneOffset, true)}
+                      disabled={doneLoading}
+                    >
+                      {doneLoading ? 'Loading...' : `Load More (${doneTotal - doneTasks.length} remaining)`}
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}

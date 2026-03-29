@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useRef } from 'react';
 
 interface ChatTarget {
   beastName: string;
@@ -7,16 +7,18 @@ interface ChatTarget {
 
 interface ChatContextType {
   chatTarget: ChatTarget | null;
+  collapsed: boolean;
   openChat: (beastName: string, displayName: string) => void;
   closeChat: () => void;
-  expandSignal: number;
+  toggleCollapse: () => void;
 }
 
 const ChatContext = createContext<ChatContextType>({
   chatTarget: null,
+  collapsed: false,
   openChat: () => {},
   closeChat: () => {},
-  expandSignal: 0,
+  toggleCollapse: () => {},
 });
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
@@ -29,22 +31,36 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
     return null;
   });
-  const [expandSignal, setExpandSignal] = useState(0);
+  const [collapsed, setCollapsed] = useState(false);
+  const chatTargetRef = useRef(chatTarget);
+  chatTargetRef.current = chatTarget;
 
   const openChat = useCallback((beastName: string, displayName: string) => {
-    const target = { beastName, displayName };
-    setChatTarget(target);
-    setExpandSignal(s => s + 1);
-    localStorage.setItem('chatBeast', JSON.stringify(target));
+    const current = chatTargetRef.current;
+    if (current && current.beastName === beastName) {
+      // Same beast: toggle collapsed
+      setCollapsed(prev => !prev);
+    } else {
+      // Different beast or no chat open: switch and expand
+      const target = { beastName, displayName };
+      setChatTarget(target);
+      setCollapsed(false);
+      localStorage.setItem('chatBeast', JSON.stringify(target));
+    }
+  }, []);
+
+  const toggleCollapse = useCallback(() => {
+    setCollapsed(prev => !prev);
   }, []);
 
   const closeChat = useCallback(() => {
     setChatTarget(null);
+    setCollapsed(false);
     localStorage.removeItem('chatBeast');
   }, []);
 
   return (
-    <ChatContext.Provider value={{ chatTarget, openChat, closeChat, expandSignal }}>
+    <ChatContext.Provider value={{ chatTarget, collapsed, openChat, closeChat, toggleCollapse }}>
       {children}
     </ChatContext.Provider>
   );

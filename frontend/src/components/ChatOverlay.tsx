@@ -20,8 +20,9 @@ interface Message {
 interface ChatOverlayProps {
   beastName: string;
   displayName: string;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   onClose: () => void;
-  expandSignal?: number;
 }
 
 // Stable references to prevent ReactMarkdown re-parsing
@@ -68,27 +69,10 @@ const EMOJI_GROUPS = [
   { label: 'Objects', emojis: ['🔥', '❤️', '⭐', '💯', '🎉', '🏆', '🚀', '💡', '⚡', '🎯', '🛡️', '⚠️', '✅', '❌', '🏋️', '🔨', '⚓', '🪨', '🗿', '🌋', '💣', '☄️', '🪐', '🥩', '🍖'] },
 ];
 
-export function ChatOverlay({ beastName, displayName, onClose, expandSignal }: ChatOverlayProps) {
+export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollapse, onClose }: ChatOverlayProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  // Expand when switching to a different beast (skip initial mount)
-  const prevBeastRef = useRef(beastName);
-  useEffect(() => {
-    if (prevBeastRef.current !== beastName) {
-      setCollapsed(false);
-      prevBeastRef.current = beastName;
-    }
-  }, [beastName]);
-  // Expand when openChat is called (even for same beast)
-  const prevExpandRef = useRef(expandSignal);
-  useEffect(() => {
-    if (expandSignal !== undefined && expandSignal !== prevExpandRef.current) {
-      setCollapsed(false);
-      prevExpandRef.current = expandSignal;
-    }
-  }, [expandSignal]);
   // Clean up old localStorage key
   useEffect(() => { localStorage.removeItem('chat-overlay-collapsed'); }, []);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -278,7 +262,7 @@ export function ChatOverlay({ beastName, displayName, onClose, expandSignal }: C
         if ((e.target as HTMLElement).closest('button')) return;
         e.preventDefault();
         const wasCollapsed = collapsed;
-        setCollapsed(!collapsed);
+        onToggleCollapse();
         if (wasCollapsed) {
           setTimeout(() => messagesEndRef.current?.scrollIntoView(), 50);
         }

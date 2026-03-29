@@ -109,7 +109,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   const [searchSelected, setSearchSelected] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { chatTarget, openChat, closeChat } = useChat();
+  const { openChat } = useChat();
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouchDevice = 'ontouchstart' in window;
   const [sessionStartTime] = useState(() => {
@@ -426,7 +426,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
             </svg>
           </button>
         )}
-<button onClick={() => { chatTarget?.beastName === 'sable' ? closeChat() : openChat('sable', 'Sable'); }} className={styles.settingsLink} title="Chat with Sable">
+<button onClick={() => openChat('sable', 'Sable')} className={styles.settingsLink} title="Chat with Sable">
           <img src="/api/forum/file/e8ba613f-e2cd-47b7-a385-a05b6b2ee0ae.jpg" alt="Sable" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }} />
         </button>
         <Link to="/settings" className={styles.settingsLink} title="Settings">

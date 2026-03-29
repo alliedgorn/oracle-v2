@@ -23,6 +23,7 @@ export function RemoteControl() {
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [chatBeast, setChatBeast] = useState<{ name: string; displayName: string } | null>(null);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -140,7 +141,9 @@ export function RemoteControl() {
         <ChatOverlay
           beastName={chatBeast.name}
           displayName={chatBeast.displayName}
-          onClose={() => setChatBeast(null)}
+          collapsed={chatCollapsed}
+          onToggleCollapse={() => setChatCollapsed(prev => !prev)}
+          onClose={() => { setChatBeast(null); setChatCollapsed(false); }}
         />
       )}
     </div>

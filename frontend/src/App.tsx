@@ -123,14 +123,15 @@ function AppContent() {
 }
 
 function GlobalChatOverlay() {
-  const { chatTarget, closeChat, expandSignal } = useChat();
+  const { chatTarget, collapsed, closeChat, toggleCollapse } = useChat();
   if (!chatTarget) return null;
   return (
     <ChatOverlay
       beastName={chatTarget.beastName}
       displayName={chatTarget.displayName}
+      collapsed={collapsed}
+      onToggleCollapse={toggleCollapse}
       onClose={closeChat}
-      expandSignal={expandSignal}
     />
   );
 }

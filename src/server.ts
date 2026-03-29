@@ -840,6 +840,7 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/oauth/withings/callback', desc: 'OAuth callback (internal)', params: null },
     { method: 'GET', path: '/api/oauth/withings/status', desc: 'Check Withings connection status', params: null },
     { method: 'DELETE', path: '/api/oauth/withings/disconnect', desc: 'Disconnect Withings', params: null },
+    { method: 'GET', path: '/api/withings/devices', desc: 'List Withings devices', params: null },
     // Search
     { method: 'GET', path: '/api/search', desc: 'Search documents and knowledge', params: '?q=query&type=all&limit=10' },
     { method: 'GET', path: '/api/search/status', desc: 'Search index status', params: null },
@@ -6185,6 +6186,25 @@ app.get('/api/oauth/withings/status', (c) => {
     lastUpdated: new Date(token.updated_at * 1000).toISOString(),
     scopes: token.scopes,
   });
+});
+
+// GET /api/withings/devices — proxy to Withings device list (T#478)
+app.get('/api/withings/devices', async (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access required' }, 403);
+  try {
+    const tokenData = await ensureFreshWithingsToken();
+    if (!tokenData) return c.json({ error: 'Withings not connected' }, 400);
+    const res = await fetch('https://wbsapi.withings.net/v2/user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Bearer ${tokenData.accessToken}` },
+      body: new URLSearchParams({ action: 'getdevice' }),
+    });
+    const data = await res.json() as any;
+    if (data.status !== 0) return c.json({ error: data.error || `Withings API error: ${data.status}` }, 502);
+    return c.json({ devices: data.body?.devices || [] });
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to fetch devices' }, 500);
+  }
 });
 
 // DELETE /api/oauth/withings/disconnect — revoke connection

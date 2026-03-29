@@ -4756,6 +4756,71 @@ setTimeout(runSchedulerCycle, 5000);
 console.log('[Scheduler] Auto-trigger daemon started (10s interval)');
 
 // ============================================================================
+// Notification Queue Drain (Spec #29, T#497)
+// ============================================================================
+
+const DRAIN_INTERVAL = 1000; // Check queues every 1s
+const DRAIN_SPACING = 3000; // 3s between sends to same Beast
+const DRAIN_DIR = '/tmp/den-notify';
+const drainLastSent: Map<string, number> = new Map(); // beast → last send timestamp
+
+function runDrainCycle() {
+  try {
+    if (!fs.existsSync(DRAIN_DIR)) return;
+    const files = fs.readdirSync(DRAIN_DIR).filter(f => f.endsWith('.queue'));
+
+    for (const file of files) {
+      const beast = file.replace('.queue', '');
+      const queuePath = path.join(DRAIN_DIR, file);
+      const lockPath = path.join(DRAIN_DIR, `${beast}.lock`);
+
+      // Check spacing — don't send to same Beast within DRAIN_SPACING
+      const lastSent = drainLastSent.get(beast) || 0;
+      if (Date.now() - lastSent < DRAIN_SPACING) continue;
+
+      // Check queue has content
+      try {
+        const stat = fs.statSync(queuePath);
+        if (stat.size === 0) continue;
+      } catch { continue; }
+
+      // Read and remove first line atomically via flock
+      try {
+        const result = Bun.spawnSync(['bash', '-c',
+          `flock "${lockPath}" bash -c "head -1 '${queuePath}' && sed -i '1d' '${queuePath}'"`
+        ]);
+        const encoded = result.stdout.toString().trim();
+        if (!encoded) continue;
+
+        // Decode from base64
+        const message = Buffer.from(encoded, 'base64').toString('utf-8');
+        if (!message) continue;
+
+        // Resolve tmux session name
+        const sessionName = beast.charAt(0).toUpperCase() + beast.slice(1);
+
+        // Check session exists
+        const hasSession = Bun.spawnSync(['tmux', 'has-session', '-t', sessionName]);
+        if (hasSession.exitCode !== 0) continue; // Beast offline, leave in queue... actually we already removed it. Re-queue.
+
+        // Send to tmux
+        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', message]);
+        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
+
+        drainLastSent.set(beast, Date.now());
+      } catch (err) {
+        // Silent — don't spam logs on queue errors
+      }
+    }
+  } catch { /* DRAIN_DIR doesn't exist yet */ }
+}
+
+setInterval(runDrainCycle, DRAIN_INTERVAL);
+// Start drain after 3s (let server boot)
+setTimeout(runDrainCycle, 3000);
+console.log('[Notify] Queue drain started (1s interval, 3s spacing)');
+
+// ============================================================================
 // DB Maintenance — audit log retention + VACUUM
 // ============================================================================
 

@@ -2182,7 +2182,7 @@ app.get('/api/files', (c) => {
   if (context) { where += ' AND context = ?'; params.push(context); }
 
   const total = (sqlite.prepare(`SELECT COUNT(*) as c FROM files WHERE ${where}`).get(...params) as any)?.c || 0;
-  const files = sqlite.prepare(`SELECT * FROM files WHERE ${where} ORDER BY logged_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as any[];
+  const files = sqlite.prepare(`SELECT * FROM files WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as any[];
 
   return c.json({
     files: files.map(f => ({
@@ -3385,7 +3385,7 @@ app.get('/api/library', (c) => {
   const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as count');
   const countResult = sqlite.prepare(countQuery).get(...params) as any;
 
-  query += ' ORDER BY logged_at DESC LIMIT ? OFFSET ?';
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const rows = sqlite.prepare(query).all(...params) as any[];
@@ -5642,7 +5642,7 @@ app.get('/api/specs/:id/comments', (c) => {
   const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10));
   const total = (sqlite.prepare('SELECT COUNT(*) as c FROM spec_comments WHERE spec_id = ?').get(id) as any).c;
   // Return most recent comments: order DESC for pagination, then reverse for display
-  const comments = sqlite.prepare('SELECT * FROM spec_comments WHERE spec_id = ? ORDER BY logged_at DESC LIMIT ? OFFSET ?').all(id, limit, offset) as any[];
+  const comments = sqlite.prepare('SELECT * FROM spec_comments WHERE spec_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(id, limit, offset) as any[];
   comments.reverse();
   return c.json({ comments, total });
 });

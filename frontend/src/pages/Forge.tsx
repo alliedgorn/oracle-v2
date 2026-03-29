@@ -615,6 +615,7 @@ export function Forge() {
   const [personalRecords, setPersonalRecords] = useState<any[]>([]);
   const [prTimeFilter, setPrTimeFilter] = useState<'all' | 'month'>('all');
   const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
+  const [bodyComp, setBodyComp] = useState<any>(null);
 
   const PAGE_SIZE = 30;
 
@@ -650,10 +651,11 @@ export function Forge() {
 
   // Load stats tab data
   const loadStats = useCallback(async () => {
-    const [weightRes, summaryRes, prRes] = await Promise.all([
+    const [weightRes, summaryRes, prRes, bodyCompRes] = await Promise.all([
       fetch(`${API_BASE}/routine/weight?range=${weightRange}`),
       fetch(`${API_BASE}/routine/summary?range=week`),
       fetch(`${API_BASE}/routine/personal-records`),
+      fetch(`${API_BASE}/routine/body-composition?range=${weightRange}`),
     ]);
     const weightData = await weightRes.json();
     setWeights(weightData.weights || []);
@@ -661,6 +663,7 @@ export function Forge() {
     setSummary(await summaryRes.json());
     const prData = await prRes.json();
     setPersonalRecords(prData.records || []);
+    setBodyComp(await bodyCompRes.json());
   }, [weightRange]);
 
   async function loadMore() {
@@ -1378,6 +1381,72 @@ export function Forge() {
                   );
                 })()}
               </div>
+            </div>
+          )}
+
+          {/* Body Composition */}
+          {bodyComp?.latest && (
+            <div className={styles.weightSection}>
+              <div className={styles.historyHeader}>
+                <h3>Body Composition</h3>
+              </div>
+              <div className={styles.summaryCards}>
+                {bodyComp.latest.body_fat_pct != null && (
+                  <div className={styles.summaryCard}>
+                    <span className={styles.summaryValue}>
+                      {bodyComp.latest.body_fat_pct}%
+                      {bodyComp.trends?.body_fat_pct?.direction === 'down' && <span className={styles.trendArrowDown}> ↓</span>}
+                      {bodyComp.trends?.body_fat_pct?.direction === 'up' && <span className={styles.trendArrow}> ↑</span>}
+                    </span>
+                    <span className={styles.summaryLabel}>Body Fat</span>
+                  </div>
+                )}
+                {bodyComp.latest.muscle_mass != null && (
+                  <div className={styles.summaryCard}>
+                    <span className={styles.summaryValue}>
+                      {bodyComp.latest.muscle_mass} kg
+                      {bodyComp.trends?.muscle_mass?.direction === 'up' && <span className={styles.trendArrowDown} style={{color: 'var(--accent)'}}>  ↑</span>}
+                      {bodyComp.trends?.muscle_mass?.direction === 'down' && <span className={styles.trendArrow}> ↓</span>}
+                    </span>
+                    <span className={styles.summaryLabel}>Muscle Mass</span>
+                  </div>
+                )}
+                {bodyComp.latest.fat_mass != null && (
+                  <div className={styles.summaryCard}>
+                    <span className={styles.summaryValue}>{bodyComp.latest.fat_mass} kg</span>
+                    <span className={styles.summaryLabel}>Fat Mass</span>
+                  </div>
+                )}
+                {bodyComp.latest.bone_mass != null && (
+                  <div className={styles.summaryCard}>
+                    <span className={styles.summaryValue}>{bodyComp.latest.bone_mass} kg</span>
+                    <span className={styles.summaryLabel}>Bone Mass</span>
+                  </div>
+                )}
+                {bodyComp.latest.hydration != null && (
+                  <div className={styles.summaryCard}>
+                    <span className={styles.summaryValue}>{bodyComp.latest.hydration}%</span>
+                    <span className={styles.summaryLabel}>Hydration</span>
+                  </div>
+                )}
+                {bodyComp.latest.visceral_fat != null && (
+                  <div className={styles.summaryCard}>
+                    <span className={styles.summaryValue}>{bodyComp.latest.visceral_fat}</span>
+                    <span className={styles.summaryLabel}>Visceral Fat</span>
+                  </div>
+                )}
+                {bodyComp.latest.fat_free_mass != null && (
+                  <div className={styles.summaryCard}>
+                    <span className={styles.summaryValue}>{bodyComp.latest.fat_free_mass} kg</span>
+                    <span className={styles.summaryLabel}>Fat-Free Mass</span>
+                  </div>
+                )}
+              </div>
+              {bodyComp.previous && (
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                  vs previous: {new Date(bodyComp.previous.logged_at).toLocaleDateString()}
+                </p>
+              )}
             </div>
           )}
 

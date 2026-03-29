@@ -826,6 +826,7 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/routine/logs', desc: 'List routine logs', params: '?type=&date=&limit=20&offset=0' },
     { method: 'GET', path: '/api/routine/today', desc: 'Today routine summary', params: null },
     { method: 'GET', path: '/api/routine/weight', desc: 'Weight history', params: '?limit=30' },
+    { method: 'GET', path: '/api/routine/body-composition', desc: 'Body composition history from Withings', params: '?range=month (1w,1m,3m,1y,3y,all)' },
     { method: 'GET', path: '/api/routine/stats', desc: 'Routine statistics', params: null },
     { method: 'GET', path: '/api/routine/summary', desc: 'Routine summary with trends', params: null },
     { method: 'GET', path: '/api/routine/exercises', desc: 'List exercises', params: null },
@@ -6621,6 +6622,57 @@ app.get('/api/routine/workout-trends', (c) => {
     totalWorkouts: rows.length,
     allExercises: sortedExercises.map(([name, count]) => ({ name, count })),
   });
+});
+
+// GET /api/routine/body-composition — body comp history from Withings (T#479, Spec #28)
+app.get('/api/routine/body-composition', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access required' }, 403);
+  const range = c.req.query('range') || 'month';
+  const rangeMap: Record<string, string> = {
+    '1w': '-7 days', week: '-7 days', '1m': '-30 days', month: '-30 days',
+    '3m': '-90 days', '1y': '-365 days', year: '-365 days',
+    '3y': '-1095 days', '10y': '-3650 days', all: '-36500 days',
+  };
+  const dateOffset = rangeMap[range] || '-30 days';
+
+  const rows = sqlite.prepare(
+    `SELECT logged_at, data FROM routine_logs
+     WHERE type = 'measurement' AND source = 'withings' AND deleted_at IS NULL
+     AND logged_at >= datetime('now', 'localtime', ?)
+     ORDER BY logged_at ASC`
+  ).all(dateOffset) as any[];
+
+  const measurements = rows.map(r => {
+    const d = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+    return {
+      logged_at: r.logged_at,
+      weight: d.weight ? Number(d.weight.toFixed(2)) : null,
+      body_fat_pct: d.body_fat_pct ? Number(d.body_fat_pct.toFixed(1)) : null,
+      fat_mass: d.fat_mass ? Number(d.fat_mass.toFixed(2)) : null,
+      fat_free_mass: d.fat_free_mass ? Number(d.fat_free_mass.toFixed(2)) : null,
+      muscle_mass: d.muscle_mass ? Number(d.muscle_mass.toFixed(2)) : null,
+      bone_mass: d.bone_mass ? Number(d.bone_mass.toFixed(2)) : null,
+      hydration: d.hydration ? Number(d.hydration.toFixed(1)) : null,
+      visceral_fat: d.visceral_fat ?? null,
+    };
+  });
+
+  const latest = measurements.length > 0 ? measurements[measurements.length - 1] : null;
+  const previous = measurements.length > 1 ? measurements[measurements.length - 2] : null;
+
+  // Compute trends
+  const trends: Record<string, { current: number | null; previous: number | null; direction: string }> = {};
+  if (latest && previous) {
+    for (const key of ['body_fat_pct', 'fat_mass', 'muscle_mass', 'bone_mass', 'hydration', 'visceral_fat'] as const) {
+      const curr = (latest as any)[key];
+      const prev = (previous as any)[key];
+      if (curr != null && prev != null) {
+        trends[key] = { current: curr, previous: prev, direction: curr > prev ? 'up' : curr < prev ? 'down' : 'stable' };
+      }
+    }
+  }
+
+  return c.json({ measurements, latest, previous, trends, range, total: measurements.length });
 });
 
 // GET /api/routine/stats — summary stats

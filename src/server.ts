@@ -4812,9 +4812,18 @@ function runDrainCycle() {
         // Resolve tmux session name
         const sessionName = beast.charAt(0).toUpperCase() + beast.slice(1);
 
-        // Check session exists
+        // Check session exists — re-queue if Beast is offline
         const hasSession = Bun.spawnSync(['tmux', 'has-session', '-t', sessionName]);
-        if (hasSession.exitCode !== 0) continue; // Beast offline, leave in queue... actually we already removed it. Re-queue.
+        if (hasSession.exitCode !== 0) {
+          // Beast offline — re-append to tail of queue so it retries next cycle
+          try {
+            Bun.spawnSync(['bash', '-c',
+              `flock "${lockPath}" bash -c "echo '${encoded}' >> '${queuePath}'"`
+            ]);
+          } catch { /* best effort re-queue */ }
+          drainLastSent.set(beast, Date.now()); // avoid spinning on offline Beasts
+          continue;
+        }
 
         // Send to tmux
         Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', message]);

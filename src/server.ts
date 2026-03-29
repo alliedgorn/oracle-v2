@@ -821,6 +821,7 @@ const HELP_ENDPOINTS = [
     { method: 'PATCH', path: '/api/prowl/:id/status', desc: 'Update Prowl task status', params: 'body: { status }' },
     { method: 'POST', path: '/api/prowl/:id/toggle', desc: 'Toggle Prowl task done/undone', params: null },
     { method: 'DELETE', path: '/api/prowl/:id', desc: 'Delete Prowl task', params: null },
+    { method: 'POST', path: '/api/prowl/notify-test', desc: 'Test Prowl notification pipeline (Gorn-only)', params: null },
     // Routine (Forge)
     { method: 'GET', path: '/api/routine/logs', desc: 'List routine logs', params: '?type=&date=&limit=20&offset=0' },
     { method: 'GET', path: '/api/routine/today', desc: 'Today routine summary', params: null },
@@ -4676,6 +4677,32 @@ function runSchedulerCycle() {
         console.log(`[Scheduler] Failed to notify ${schedule.beast}: ${err}`);
       }
     }
+    // Prowl due-task notifications (T#467) — notify Sable when tasks are due
+    const dueProwl = sqlite.prepare(
+      `SELECT * FROM prowl_tasks WHERE due_date IS NOT NULL AND datetime(due_date) <= datetime(?) AND status = 'pending' AND notified_at IS NULL`
+    ).all(now) as any[];
+
+    for (const task of dueProwl) {
+      const sessionName = 'Sable';
+      const hasSession = Bun.spawnSync(['tmux', 'has-session', '-t', sessionName]);
+      if (hasSession.exitCode !== 0) {
+        console.log(`[Prowl] Skip notification for task #${task.id}: tmux session 'Sable' not found`);
+        continue;
+      }
+
+      const priorityEmoji = task.priority === 'high' ? '🔴' : task.priority === 'medium' ? '🟡' : '🟢';
+      const notification = `[Prowl] Task due: ${task.title} (Prowl ${priorityEmoji}${task.id}) — Priority: ${task.priority} — send Telegram to Gorn`;
+
+      try {
+        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
+        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
+
+        sqlite.prepare(`UPDATE prowl_tasks SET notified_at = ? WHERE id = ?`).run(now, task.id);
+        console.log(`[Prowl] Notified Sable: task #${task.id} "${task.title}" is due`);
+      } catch (err) {
+        console.log(`[Prowl] Failed to notify for task #${task.id}: ${err}`);
+      }
+    }
   } catch (err) {
     console.error(`[Scheduler] Cycle error: ${err}`);
   }
@@ -7422,6 +7449,9 @@ try { sqlite.prepare(`
   )
 `).run(); } catch { /* exists */ }
 
+// Add notified_at column for Prowl Telegram notifications (T#467)
+try { sqlite.prepare(`ALTER TABLE prowl_tasks ADD COLUMN notified_at TEXT`).run(); } catch { /* already exists */ }
+
 // GET /api/prowl — list tasks with filters
 app.get('/api/prowl', (c) => {
   if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
@@ -7616,6 +7646,20 @@ app.delete('/api/prowl/:id', async (c) => {
   sqlite.prepare('DELETE FROM prowl_tasks WHERE id = ?').run(id);
   wsBroadcast('prowl_update', { action: 'delete' });
   return c.json({ deleted: true, id });
+});
+
+// POST /api/prowl/notify-test — test notification pipeline (Gorn-only)
+app.post('/api/prowl/notify-test', (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+  const sessionName = 'Sable';
+  const hasSession = Bun.spawnSync(['tmux', 'has-session', '-t', sessionName]);
+  if (hasSession.exitCode !== 0) {
+    return c.json({ error: 'Sable tmux session not found' }, 503);
+  }
+  const notification = '[Prowl] TEST: This is a test notification — if Sable receives this and sends Telegram, the pipeline works';
+  Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
+  Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
+  return c.json({ success: true, message: 'Test notification sent to Sable' });
 });
 
 // ============================================================================

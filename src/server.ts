@@ -184,8 +184,20 @@ app.notFound((c) => {
   }, 404);
 });
 
-// CORS middleware
-app.use('*', cors());
+// CORS middleware — restricted to known origins (T#502)
+app.use('*', cors({
+  origin: ['http://localhost:47778', 'http://127.0.0.1:47778', 'https://denbook.online'],
+  credentials: true,
+}));
+
+// Security headers middleware (T#502 — Talon audit finding)
+app.use('*', async (c, next) => {
+  await next();
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+});
 
 // ============================================================================
 // Auth Helpers
@@ -446,7 +458,7 @@ app.post('/api/auth/login', async (c) => {
   setCookie(c, SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: true, // Always behind HTTPS via Caddy
-    sameSite: 'None',
+    sameSite: 'Lax',
     maxAge: SESSION_DURATION_MS / 1000,
     path: '/'
   });

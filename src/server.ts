@@ -7622,7 +7622,7 @@ app.get('/api/prowl', (c) => {
     query += " AND date(due_date) BETWEEN date('now', 'localtime') AND date('now', 'localtime', '+7 days')";
   }
 
-  query += ' ORDER BY created_at DESC';
+  query += ' ORDER BY CASE priority WHEN \'high\' THEN 0 WHEN \'medium\' THEN 1 WHEN \'low\' THEN 2 END, created_at DESC';
 
   const tasks = sqlite.prepare(query).all(...params);
 

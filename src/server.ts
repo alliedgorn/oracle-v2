@@ -250,7 +250,8 @@ app.use('/api/*', async (c, next) => {
   const publicPaths = [
     '/api/auth/status',
     '/api/auth/login',
-    '/api/health'
+    '/api/health',
+    '/api/help'
   ];
   if (publicPaths.some(p => path === p)) {
     return next();
@@ -267,7 +268,7 @@ app.use('/api/*', async (c, next) => {
 // Audit Logging Middleware (Task #72 — logs all mutating API requests)
 // ============================================================================
 
-const AUDIT_SKIP = ['/api/health', '/api/auth/status', '/api/auth/login', '/api/session/stats'];
+const AUDIT_SKIP = ['/api/health', '/api/help', '/api/auth/status', '/api/auth/login', '/api/session/stats'];
 
 app.use('/api/*', async (c, next) => {
   const method = c.req.method;
@@ -657,6 +658,187 @@ app.get('/api/docs', (c) => {
 // Health check
 app.get('/api/health', (c) => {
   return c.json({ status: 'ok', server: 'oracle-nightly', port: PORT, oracleV2: 'connected' });
+});
+
+// API Help — machine-readable endpoint catalog for Beast self-correction
+app.get('/api/help', (c) => {
+  const filter = c.req.query('q')?.toLowerCase();
+  const endpoints = [
+    // Auth
+    { method: 'GET', path: '/api/auth/status', desc: 'Check if session is authenticated', params: null },
+    { method: 'POST', path: '/api/auth/login', desc: 'Login with password', params: 'body: { password }' },
+    { method: 'POST', path: '/api/auth/logout', desc: 'Logout current session', params: null },
+    // Health
+    { method: 'GET', path: '/api/health', desc: 'Server health check', params: null },
+    { method: 'GET', path: '/api/help', desc: 'This endpoint catalog', params: '?q=filter' },
+    // Threads (forum)
+    { method: 'GET', path: '/api/threads', desc: 'List all forum threads', params: '?status=&category=&limit=50&offset=0' },
+    { method: 'POST', path: '/api/thread', desc: 'Create thread or post message', params: 'body: { message, author, thread_id?, title?, reply_to_id? }' },
+    { method: 'GET', path: '/api/thread/:id', desc: 'Get thread messages', params: '?limit=50&offset=0' },
+    { method: 'PATCH', path: '/api/thread/:id/category', desc: 'Update thread category', params: 'body: { category, beast }' },
+    { method: 'PATCH', path: '/api/thread/:id/lock', desc: 'Lock/unlock thread', params: 'body: { locked, beast }' },
+    { method: 'PATCH', path: '/api/thread/:id/archive', desc: 'Archive/unarchive thread', params: 'body: { archived, beast }' },
+    { method: 'PATCH', path: '/api/thread/:id/pin', desc: 'Pin/unpin thread', params: 'body: { pinned, beast }' },
+    { method: 'PATCH', path: '/api/thread/:id/title', desc: 'Rename thread title', params: 'body: { title, beast }' },
+    { method: 'PATCH', path: '/api/thread/:id/status', desc: 'Update thread status', params: 'body: { status, beast }' },
+    { method: 'DELETE', path: '/api/thread/:id', desc: 'Delete thread', params: 'body: { beast }' },
+    // Forum utilities
+    { method: 'POST', path: '/api/forum/read', desc: 'Mark thread as read', params: 'body: { beast, threadId, messageId }' },
+    { method: 'GET', path: '/api/forum/unread/:beast', desc: 'Get unread thread counts', params: null },
+    { method: 'GET', path: '/api/forum/mentions/:beast', desc: 'Get @mentions for a beast', params: '?limit=30' },
+    { method: 'GET', path: '/api/forum/search', desc: 'Search forum messages', params: '?q=query&limit=20' },
+    { method: 'GET', path: '/api/forum/activity', desc: 'Recent forum activity feed', params: '?limit=50' },
+    { method: 'POST', path: '/api/forum/mute', desc: 'Mute/unmute thread notifications', params: 'body: { beast, threadId, muted }' },
+    { method: 'GET', path: '/api/forum/muted/:beast', desc: 'Get muted threads', params: null },
+    { method: 'GET', path: '/api/forum/link-preview', desc: 'Get link preview metadata', params: '?url=' },
+    // Messages
+    { method: 'PATCH', path: '/api/message/:id', desc: 'Edit a message', params: 'body: { content, beast }' },
+    { method: 'GET', path: '/api/message/:id/history', desc: 'Get message edit history', params: null },
+    { method: 'POST', path: '/api/message/:id/react', desc: 'Add reaction to message', params: 'body: { beast, emoji }' },
+    { method: 'DELETE', path: '/api/message/:id/react', desc: 'Remove reaction', params: 'body: { beast, emoji }' },
+    { method: 'GET', path: '/api/message/:id/reactions', desc: 'Get message reactions', params: null },
+    { method: 'GET', path: '/api/message/:id/attachments', desc: 'Get message file attachments', params: null },
+    // Emojis
+    { method: 'GET', path: '/api/forum/emojis', desc: 'List custom emojis', params: null },
+    { method: 'POST', path: '/api/forum/emojis', desc: 'Add custom emoji', params: 'body: { emoji, name, category? }' },
+    { method: 'DELETE', path: '/api/forum/emojis/:emoji', desc: 'Remove custom emoji', params: null },
+    { method: 'GET', path: '/api/reactions/supported', desc: 'List all supported reactions', params: null },
+    // DMs
+    { method: 'GET', path: '/api/dm/:from/:to', desc: 'Get DM conversation between two beasts', params: '?limit=30&offset=0&order=desc' },
+    { method: 'POST', path: '/api/dm', desc: 'Send a DM', params: 'body: { from, to, message }' },
+    { method: 'PATCH', path: '/api/dm/:from/:to/read', desc: 'Mark DM conversation as read', params: null },
+    { method: 'GET', path: '/api/dm/unread/:beast', desc: 'Get unread DM counts', params: null },
+    // Tasks (PM Board)
+    { method: 'GET', path: '/api/tasks', desc: 'List tasks', params: '?assignee=&reviewer=&status=&limit=100&offset=0' },
+    { method: 'GET', path: '/api/tasks/:id', desc: 'Get task by ID', params: null },
+    { method: 'POST', path: '/api/tasks', desc: 'Create task', params: 'body: { title, description?, assignee?, reviewer?, status? }' },
+    { method: 'PATCH', path: '/api/tasks/:id', desc: 'Update task', params: 'body: { title?, description?, assignee?, reviewer?, status? }' },
+    { method: 'DELETE', path: '/api/tasks/:id', desc: 'Delete task', params: null },
+    { method: 'POST', path: '/api/tasks/:id/comments', desc: 'Add comment to task', params: 'body: { author, content }' },
+    { method: 'GET', path: '/api/tasks/:id/comments', desc: 'Get task comments', params: null },
+    // Pack / Beasts
+    { method: 'GET', path: '/api/pack', desc: 'Get all beast profiles with status', params: null },
+    { method: 'GET', path: '/api/beasts', desc: 'List all beast profiles', params: null },
+    { method: 'GET', path: '/api/beast/:name', desc: 'Get single beast profile', params: null },
+    { method: 'PUT', path: '/api/beast/:name', desc: 'Create/replace beast profile', params: 'body: { species, role, bio?, themeColor? }' },
+    { method: 'PATCH', path: '/api/beast/:name', desc: 'Update beast profile fields', params: 'body: { bio?, role?, themeColor?, ... }' },
+    { method: 'PATCH', path: '/api/beast/:name/avatar', desc: 'Upload beast avatar', params: 'body: FormData with avatar file' },
+    { method: 'GET', path: '/api/beast/:name/terminal', desc: 'Get beast tmux terminal output', params: null },
+    { method: 'POST', path: '/api/beast/:name/terminal/input', desc: 'Send text to beast terminal', params: 'body: { input }' },
+    { method: 'POST', path: '/api/beast/:name/terminal/key', desc: 'Send key event to beast terminal', params: 'body: { key }' },
+    // Schedules
+    { method: 'GET', path: '/api/schedules', desc: 'List schedules', params: '?beast=&enabled=' },
+    { method: 'GET', path: '/api/schedules/due', desc: 'Get due schedules', params: '?beast=' },
+    { method: 'POST', path: '/api/schedules', desc: 'Create schedule', params: 'body: { beast, task, command, interval, ... }' },
+    { method: 'PATCH', path: '/api/schedules/:id', desc: 'Update schedule', params: 'body: { task?, command?, interval?, enabled? }' },
+    { method: 'PATCH', path: '/api/schedules/:id/run', desc: 'Mark schedule as run', params: '?as=beast' },
+    { method: 'DELETE', path: '/api/schedules/:id', desc: 'Delete schedule', params: '?as=beast' },
+    // Upload
+    { method: 'POST', path: '/api/upload', desc: 'Upload file attachment', params: 'body: FormData with file' },
+    { method: 'GET', path: '/api/forum/file/:filename', desc: 'Get uploaded file', params: null },
+    { method: 'GET', path: '/api/files', desc: 'List all uploaded files', params: '?limit=50&offset=0' },
+    { method: 'GET', path: '/api/files/stats', desc: 'File storage statistics', params: null },
+    { method: 'GET', path: '/api/files/:id', desc: 'Get file metadata', params: null },
+    { method: 'GET', path: '/api/files/:id/download', desc: 'Download file', params: null },
+    { method: 'DELETE', path: '/api/files/:id', desc: 'Delete file', params: null },
+    // Specs (SDD)
+    { method: 'GET', path: '/api/specs', desc: 'List all specs', params: '?status=&author=' },
+    { method: 'GET', path: '/api/specs/:id', desc: 'Get spec by ID', params: null },
+    { method: 'GET', path: '/api/specs/:id/content', desc: 'Get spec markdown content', params: null },
+    { method: 'GET', path: '/api/specs/:id/history', desc: 'Get spec review history', params: null },
+    { method: 'GET', path: '/api/specs/:id/diff', desc: 'Get spec version diff', params: '?v1=&v2=' },
+    { method: 'POST', path: '/api/specs', desc: 'Submit new spec', params: 'body: { title, content, author, task_ids?, thread_ids? }' },
+    { method: 'POST', path: '/api/specs/:id/review', desc: 'Review a spec', params: 'body: { reviewer, action, comment? }' },
+    { method: 'POST', path: '/api/specs/:id/resubmit', desc: 'Resubmit spec with changes', params: 'body: { content, author, change_summary? }' },
+    { method: 'DELETE', path: '/api/specs/:id', desc: 'Delete spec', params: 'body: { beast }' },
+    { method: 'GET', path: '/api/specs/:id/links', desc: 'Get linked tasks/threads', params: null },
+    { method: 'POST', path: '/api/specs/:id/link', desc: 'Link task or thread to spec', params: 'body: { type, target_id }' },
+    { method: 'DELETE', path: '/api/specs/:id/link', desc: 'Unlink task or thread', params: 'body: { type, target_id }' },
+    { method: 'GET', path: '/api/specs/:id/comments', desc: 'Get spec comments', params: null },
+    { method: 'POST', path: '/api/specs/:id/comments', desc: 'Add spec comment', params: 'body: { author, content, type? }' },
+    // Rules
+    { method: 'GET', path: '/api/rules', desc: 'List all active rules', params: null },
+    { method: 'GET', path: '/api/rules/decrees', desc: 'List decrees only', params: null },
+    { method: 'GET', path: '/api/rules/norms', desc: 'List norms only', params: null },
+    { method: 'GET', path: '/api/rules/markdown', desc: 'All rules as markdown (for /recap)', params: null },
+    { method: 'GET', path: '/api/rules/pending', desc: 'List rules pending approval', params: null },
+    { method: 'GET', path: '/api/rules/:id', desc: 'Get rule by ID', params: null },
+    { method: 'POST', path: '/api/rules', desc: 'Propose new rule', params: 'body: { title, content, type, proposed_by }' },
+    { method: 'PATCH', path: '/api/rules/:id', desc: 'Update rule', params: 'body: { title?, content?, type? }' },
+    { method: 'PATCH', path: '/api/rules/:id/archive', desc: 'Archive rule', params: 'body: { beast }' },
+    { method: 'POST', path: '/api/rules/:id/approve', desc: 'Approve pending rule', params: 'body: { beast }' },
+    { method: 'POST', path: '/api/rules/:id/reject', desc: 'Reject pending rule', params: 'body: { beast, reason? }' },
+    // Risks
+    { method: 'GET', path: '/api/risks', desc: 'List all risks', params: '?status=&severity=' },
+    { method: 'GET', path: '/api/risks/summary', desc: 'Risk summary stats', params: null },
+    { method: 'GET', path: '/api/risks/stale', desc: 'Risks not updated recently', params: null },
+    { method: 'GET', path: '/api/risks/:id', desc: 'Get risk by ID', params: null },
+    { method: 'POST', path: '/api/risks', desc: 'Create risk', params: 'body: { title, description, severity, status, owner }' },
+    { method: 'PATCH', path: '/api/risks/:id', desc: 'Update risk', params: 'body: { title?, severity?, status?, mitigation? }' },
+    { method: 'DELETE', path: '/api/risks/:id', desc: 'Delete risk', params: null },
+    // Prowl (Gorn tasks)
+    { method: 'GET', path: '/api/prowl', desc: 'List Gorn personal tasks', params: '?status=&category=&priority=' },
+    { method: 'GET', path: '/api/prowl/categories', desc: 'List Prowl categories', params: null },
+    { method: 'POST', path: '/api/prowl', desc: 'Create Prowl task', params: 'body: { title, description?, category?, priority?, source? }' },
+    { method: 'PATCH', path: '/api/prowl/:id', desc: 'Update Prowl task', params: 'body: { title?, description?, category?, priority? }' },
+    { method: 'PATCH', path: '/api/prowl/:id/status', desc: 'Update Prowl task status', params: 'body: { status }' },
+    { method: 'POST', path: '/api/prowl/:id/toggle', desc: 'Toggle Prowl task done/undone', params: null },
+    { method: 'DELETE', path: '/api/prowl/:id', desc: 'Delete Prowl task', params: null },
+    // Routine (Forge)
+    { method: 'GET', path: '/api/routine/logs', desc: 'List routine logs', params: '?type=&date=&limit=20&offset=0' },
+    { method: 'GET', path: '/api/routine/today', desc: 'Today routine summary', params: null },
+    { method: 'GET', path: '/api/routine/weight', desc: 'Weight history', params: '?limit=30' },
+    { method: 'GET', path: '/api/routine/stats', desc: 'Routine statistics', params: null },
+    { method: 'GET', path: '/api/routine/summary', desc: 'Routine summary with trends', params: null },
+    { method: 'GET', path: '/api/routine/exercises', desc: 'List exercises', params: null },
+    { method: 'POST', path: '/api/routine/exercises', desc: 'Add exercise', params: 'body: { name, equipment?, muscle_group? }' },
+    { method: 'GET', path: '/api/routine/personal-records', desc: 'Personal records', params: null },
+    { method: 'POST', path: '/api/routine/logs', desc: 'Create routine log', params: 'body: { type, date, ... }' },
+    { method: 'PATCH', path: '/api/routine/logs/:id', desc: 'Update routine log', params: 'body: { ... }' },
+    { method: 'DELETE', path: '/api/routine/logs/:id', desc: 'Soft-delete routine log', params: null },
+    { method: 'PATCH', path: '/api/routine/logs/:id/restore', desc: 'Restore deleted log', params: null },
+    // OAuth
+    { method: 'GET', path: '/api/oauth/withings/authorize', desc: 'Start Withings OAuth flow', params: null },
+    { method: 'GET', path: '/api/oauth/withings/callback', desc: 'OAuth callback (internal)', params: null },
+    { method: 'GET', path: '/api/oauth/withings/status', desc: 'Check Withings connection status', params: null },
+    { method: 'DELETE', path: '/api/oauth/withings/disconnect', desc: 'Disconnect Withings', params: null },
+    // Search
+    { method: 'GET', path: '/api/search', desc: 'Search documents and knowledge', params: '?q=query&type=all&limit=10' },
+    { method: 'GET', path: '/api/search/status', desc: 'Search index status', params: null },
+    // Remote
+    { method: 'GET', path: '/api/remote/status', desc: 'Remote panel connection status', params: null },
+    { method: 'POST', path: '/api/remote/attach', desc: 'Attach to beast for remote control', params: 'body: { beast }' },
+    { method: 'POST', path: '/api/remote/detach', desc: 'Detach from remote control', params: null },
+    // Queue (Gorn)
+    { method: 'GET', path: '/api/queue/gorn', desc: 'Get Gorn review queue', params: null },
+    { method: 'POST', path: '/api/queue/gorn', desc: 'Add thread to Gorn queue', params: 'body: { threadId, reason, addedBy }' },
+    { method: 'PATCH', path: '/api/queue/gorn/:threadId', desc: 'Update queue item status', params: 'body: { status }' },
+    // Dashboard
+    { method: 'GET', path: '/api/dashboard', desc: 'Dashboard summary', params: null },
+    { method: 'GET', path: '/api/dashboard/activity', desc: 'Activity stats', params: null },
+    { method: 'GET', path: '/api/dashboard/growth', desc: 'Growth metrics', params: null },
+    // Library
+    { method: 'GET', path: '/api/library', desc: 'List library entries', params: '?shelf=&limit=50' },
+    { method: 'POST', path: '/api/library', desc: 'Add library entry', params: 'body: { title, content, shelf?, author }' },
+    // Handoffs
+    { method: 'POST', path: '/api/handoff', desc: 'Submit session handoff', params: 'body: { oracle, summary, ... }' },
+    { method: 'GET', path: '/api/inbox', desc: 'Get inbox items', params: '?type=&limit=20' },
+  ];
+
+  let result = endpoints;
+  if (filter) {
+    result = endpoints.filter(e =>
+      e.path.toLowerCase().includes(filter) ||
+      e.desc.toLowerCase().includes(filter) ||
+      e.method.toLowerCase().includes(filter)
+    );
+  }
+
+  return c.json({
+    total: result.length,
+    hint: 'Use ?q=keyword to filter (e.g. ?q=thread, ?q=dm, ?q=task)',
+    endpoints: result,
+  });
 });
 
 // Search

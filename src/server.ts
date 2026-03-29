@@ -6237,8 +6237,8 @@ async function syncWithingsMeasurements(startdate: number, enddate: number): Pro
 
   for (const grp of measuregrps) {
     const grpid = grp.grpid;
-    // Dedup by withings_grpid
-    const existing = sqlite.prepare("SELECT id FROM routine_logs WHERE source = 'withings' AND json_extract(data, '$.withings_grpid') = ? AND deleted_at IS NULL").get(grpid);
+    // Dedup by withings_grpid (check both weight and measurement types)
+    const existing = sqlite.prepare("SELECT id FROM routine_logs WHERE source = 'withings' AND json_extract(data, '$.withings_grpid') = ? AND deleted_at IS NULL LIMIT 1").get(grpid);
     if (existing) { skipped++; continue; }
 
     const measurements: Record<string, number> = {};
@@ -6251,10 +6251,23 @@ async function syncWithingsMeasurements(startdate: number, enddate: number): Pro
     if (Object.keys(measurements).length === 0) continue;
 
     const loggedAt = new Date(grp.date * 1000).toISOString();
-    const logData = JSON.stringify({ ...measurements, withings_grpid: grpid });
-    sqlite.prepare(
-      'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).run('measurement', loggedAt, logData, 'withings', new Date().toISOString());
+    const now = new Date().toISOString();
+
+    // Store weight as 'weight' type so Forge chart picks it up
+    if (measurements.weight) {
+      const weightData = JSON.stringify({ value: measurements.weight, unit: 'kg', source: 'withings', withings_grpid: grpid });
+      sqlite.prepare(
+        'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
+      ).run('weight', loggedAt, weightData, 'withings', now);
+    }
+
+    // Store full body composition as 'measurement' type
+    if (Object.keys(measurements).length > 1 || !measurements.weight) {
+      const logData = JSON.stringify({ ...measurements, withings_grpid: grpid });
+      sqlite.prepare(
+        'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
+      ).run('measurement', loggedAt, logData, 'withings', now);
+    }
     synced++;
   }
 

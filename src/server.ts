@@ -6452,7 +6452,7 @@ app.get('/api/routine/logs', (c) => {
   if (type) { query += ' AND type = ?'; params.push(type); }
   if (from) { query += ' AND logged_at >= ?'; params.push(from); }
   if (to) { query += ' AND logged_at <= ?'; params.push(to); }
-  query += ' ORDER BY logged_at DESC LIMIT ? OFFSET ?';
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const logs = sqlite.prepare(query).all(...params);
@@ -6465,7 +6465,7 @@ app.get('/api/routine/today', (c) => {
   if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const today = new Date().toISOString().slice(0, 10);
   const logs = sqlite.prepare(
-    "SELECT * FROM routine_logs WHERE deleted_at IS NULL AND date(logged_at) = ? ORDER BY logged_at DESC"
+    "SELECT * FROM routine_logs WHERE deleted_at IS NULL AND date(logged_at) = ? ORDER BY created_at DESC"
   ).all(today);
   return c.json({ logs, date: today });
 });

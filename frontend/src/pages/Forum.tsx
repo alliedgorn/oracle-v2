@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -389,29 +388,34 @@ export function Forum() {
 
   useWebSocket('reaction', handleWsReaction);
 
-  // Infinite scroll — load older messages when scrolling up
+  // Load More button — fetch older messages in batches
   const hasMore = selectedThread ? selectedThread.messages.length < totalMessages : false;
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const loadOlderMessages = useCallback(async () => {
-    if (!selectedThread) return;
-    const currentCount = selectedThread.messages.length;
-    const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'desc');
-    if (data.messages.length > 0) {
-      data.messages.reverse();
-      setSelectedThread(prev => prev ? {
-        ...prev,
-        messages: [...data.messages, ...prev.messages],
-      } : prev);
-      loadReactionsForThread(data.messages);
+    if (!selectedThread || isLoadingMore) return;
+    setIsLoadingMore(true);
+    const container = messagesContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight || 0;
+    try {
+      const currentCount = selectedThread.messages.length;
+      const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'desc');
+      if (data.messages.length > 0) {
+        data.messages.reverse();
+        setSelectedThread(prev => prev ? {
+          ...prev,
+          messages: [...data.messages, ...prev.messages],
+        } : prev);
+        loadReactionsForThread(data.messages);
+        // Restore scroll position after prepending
+        requestAnimationFrame(() => {
+          if (container) container.scrollTop = container.scrollHeight - prevScrollHeight;
+        });
+      }
+    } finally {
+      setIsLoadingMore(false);
     }
-  }, [selectedThread?.thread.id, selectedThread?.messages.length]);
-
-  const { isLoadingMore } = useInfiniteScroll({
-    containerRef: messagesContainerRef,
-    hasMore,
-    loading: loading,
-    onLoadMore: loadOlderMessages,
-  });
+  }, [selectedThread?.thread.id, selectedThread?.messages.length, isLoadingMore]);
 
 
   async function loadThreads() {
@@ -727,11 +731,16 @@ export function Forum() {
             </div>
 
             <div className={styles.messages} ref={messagesContainerRef}>
-              {isLoadingMore && (
-                <div style={{ textAlign: 'center', padding: '8px', opacity: 0.6, fontSize: '0.85em' }}>Loading older messages...</div>
-              )}
-              {hasMore && !isLoadingMore && (
-                <div style={{ textAlign: 'center', padding: '8px', opacity: 0.4, fontSize: '0.8em' }}>↑ Scroll up for older messages</div>
+              {hasMore && (
+                <div style={{ textAlign: 'center', padding: '8px' }}>
+                  <button
+                    onClick={loadOlderMessages}
+                    disabled={isLoadingMore}
+                    className={styles.loadMoreBtn}
+                  >
+                    {isLoadingMore ? 'Loading...' : `Load more (${totalMessages - (selectedThread?.messages.length || 0)} older)`}
+                  </button>
+                </div>
               )}
               {selectedThread.messages.map(msg => {
                 const identity = resolveAuthor(msg.role, msg.author, beastProfiles);

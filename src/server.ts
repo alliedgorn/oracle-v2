@@ -143,6 +143,45 @@ registerSignalHandlers(async () => {
 // Create Hono app
 const app = new Hono();
 
+// Custom 404 with did-you-mean hints for API routes
+// Uses HELP_ENDPOINTS (defined below with /api/help) for path matching
+function findSimilarPaths(requested: string): string[] {
+  const reqParts = requested.toLowerCase().split('/').filter(Boolean);
+  const paths = HELP_ENDPOINTS.map(e => e.path);
+  const uniquePaths = [...new Set(paths)];
+  const scored = uniquePaths.map(p => {
+    const parts = p.toLowerCase().split('/').filter(Boolean);
+    let score = 0;
+    for (const rp of reqParts) {
+      if (rp === 'api') continue;
+      for (const pp of parts) {
+        if (pp.startsWith(':')) continue;
+        if (pp === rp) { score += 3; break; }
+        if (pp.includes(rp) || rp.includes(pp)) { score += 1; break; }
+      }
+    }
+    return { path: p, score };
+  }).filter(s => s.score > 0).sort((a, b) => b.score - a.score);
+  return scored.slice(0, 3).map(s => s.path);
+}
+
+app.notFound((c) => {
+  const reqPath = c.req.path;
+  if (!reqPath.startsWith('/api/')) {
+    return c.text('Not Found', 404);
+  }
+  const suggestions = findSimilarPaths(reqPath);
+  return c.json({
+    error: 'Not Found',
+    path: reqPath,
+    method: c.req.method,
+    hint: suggestions.length > 0
+      ? `Did you mean: ${suggestions.join(', ')}?`
+      : 'Use GET /api/help to see all available endpoints, or GET /api/help?q=keyword to search.',
+    docs: '/api/help',
+  }, 404);
+});
+
 // CORS middleware
 app.use('*', cors());
 
@@ -660,10 +699,8 @@ app.get('/api/health', (c) => {
   return c.json({ status: 'ok', server: 'oracle-nightly', port: PORT, oracleV2: 'connected' });
 });
 
-// API Help — machine-readable endpoint catalog for Beast self-correction
-app.get('/api/help', (c) => {
-  const filter = c.req.query('q')?.toLowerCase();
-  const endpoints = [
+// Endpoint catalog — shared by /api/help and 404 handler
+const HELP_ENDPOINTS = [
     // Auth
     { method: 'GET', path: '/api/auth/status', desc: 'Check if session is authenticated', params: null },
     { method: 'POST', path: '/api/auth/login', desc: 'Login with password', params: 'body: { password }' },
@@ -825,9 +862,13 @@ app.get('/api/help', (c) => {
     { method: 'GET', path: '/api/inbox', desc: 'Get inbox items', params: '?type=&limit=20' },
   ];
 
-  let result = endpoints;
+// API Help — machine-readable endpoint catalog for Beast self-correction
+app.get('/api/help', (c) => {
+  const filter = c.req.query('q')?.toLowerCase();
+
+  let result = HELP_ENDPOINTS;
   if (filter) {
-    result = endpoints.filter(e =>
+    result = HELP_ENDPOINTS.filter(e =>
       e.path.toLowerCase().includes(filter) ||
       e.desc.toLowerCase().includes(filter) ||
       e.method.toLowerCase().includes(filter)

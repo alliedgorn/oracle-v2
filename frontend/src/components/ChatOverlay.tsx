@@ -75,6 +75,15 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
   const [loading, setLoading] = useState(false);
   // Clean up old localStorage key
   useEffect(() => { localStorage.removeItem('chat-overlay-collapsed'); }, []);
+
+  // Lock body scroll on mobile when overlay is expanded (prevents scroll bleed)
+  useEffect(() => {
+    if (collapsed) return;
+    const isMobile = window.innerWidth <= 480;
+    if (!isMobile) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [collapsed]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);

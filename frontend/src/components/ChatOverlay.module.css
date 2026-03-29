@@ -55,6 +55,7 @@
 .messages {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -243,6 +244,7 @@
   padding: 8px;
   max-height: 200px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   margin-bottom: 4px;
 }
 

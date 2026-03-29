@@ -4679,6 +4679,9 @@ function runSchedulerCycle() {
     }
     // Prowl due-task notifications (T#467 + T#471 + T#473) — notify Sable when tasks are due or reminder fires
     // Also re-notify daily for overdue tasks (T#473)
+    // Note: Prowl due_date is stored in local time (from datetime-local picker), so compare with local time
+    const d = new Date();
+    const localNow = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
     const dueProwl = sqlite.prepare(
       `SELECT * FROM prowl_tasks WHERE due_date IS NOT NULL AND status = 'pending'
        AND (
@@ -4693,7 +4696,7 @@ function runSchedulerCycle() {
          ))
          OR (notified_at IS NOT NULL AND datetime(due_date) < datetime(?) AND datetime(notified_at) <= datetime(?, '-1 days'))
        )`
-    ).all(now, now, now, now, now, now, now, now, now) as any[];
+    ).all(localNow, localNow, localNow, localNow, localNow, localNow, localNow, localNow, localNow) as any[];
 
     for (const task of dueProwl) {
       const sessionName = 'Sable';
@@ -4714,7 +4717,7 @@ function runSchedulerCycle() {
         Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
         Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
 
-        sqlite.prepare(`UPDATE prowl_tasks SET notified_at = ? WHERE id = ?`).run(now, task.id);
+        sqlite.prepare(`UPDATE prowl_tasks SET notified_at = ? WHERE id = ?`).run(localNow, task.id);
         console.log(`[Prowl] Notified Sable: task #${task.id} "${task.title}" is due`);
       } catch (err) {
         console.log(`[Prowl] Failed to notify for task #${task.id}: ${err}`);
@@ -7495,11 +7498,11 @@ app.get('/api/prowl', (c) => {
     params.push(category);
   }
   if (due === 'overdue') {
-    query += " AND due_date < datetime('now') AND status = 'pending'";
+    query += " AND due_date < datetime('now', 'localtime') AND status = 'pending'";
   } else if (due === 'today') {
-    query += " AND date(due_date) = date('now')";
+    query += " AND date(due_date) = date('now', 'localtime')";
   } else if (due === 'week') {
-    query += " AND date(due_date) BETWEEN date('now') AND date('now', '+7 days')";
+    query += " AND date(due_date) BETWEEN date('now', 'localtime') AND date('now', 'localtime', '+7 days')";
   }
 
   query += ' ORDER BY CASE priority WHEN \'high\' THEN 0 WHEN \'medium\' THEN 1 WHEN \'low\' THEN 2 END, created_at DESC';
@@ -7510,7 +7513,7 @@ app.get('/api/prowl', (c) => {
   const counts = {
     pending: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE status = 'pending'").get() as any).c,
     done: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE status = 'done'").get() as any).c,
-    overdue: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE due_date < datetime('now') AND status = 'pending'").get() as any).c,
+    overdue: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE due_date < datetime('now', 'localtime') AND status = 'pending'").get() as any).c,
     high: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE priority = 'high' AND status = 'pending'").get() as any).c,
     medium: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE priority = 'medium' AND status = 'pending'").get() as any).c,
     low: (sqlite.prepare("SELECT COUNT(*) as c FROM prowl_tasks WHERE priority = 'low' AND status = 'pending'").get() as any).c,

@@ -4677,10 +4677,21 @@ function runSchedulerCycle() {
         console.log(`[Scheduler] Failed to notify ${schedule.beast}: ${err}`);
       }
     }
-    // Prowl due-task notifications (T#467) — notify Sable when tasks are due
+    // Prowl due-task notifications (T#467 + T#471) — notify Sable when tasks are due or reminder fires
+    // remind_before offsets: 1m, 5m, 15m, 30m, 1h, 1d — fire at (due_date - offset)
+    const remindOffsets: Record<string, string> = { '1m': '-1 minutes', '5m': '-5 minutes', '15m': '-15 minutes', '30m': '-30 minutes', '1h': '-1 hours', '1d': '-1 days' };
     const dueProwl = sqlite.prepare(
-      `SELECT * FROM prowl_tasks WHERE due_date IS NOT NULL AND datetime(due_date) <= datetime(?) AND status = 'pending' AND notified_at IS NULL`
-    ).all(now) as any[];
+      `SELECT * FROM prowl_tasks WHERE due_date IS NOT NULL AND status = 'pending' AND notified_at IS NULL
+       AND (
+         (remind_before IS NULL AND datetime(due_date) <= datetime(?))
+         OR (remind_before = '1m' AND datetime(due_date, '-1 minutes') <= datetime(?))
+         OR (remind_before = '5m' AND datetime(due_date, '-5 minutes') <= datetime(?))
+         OR (remind_before = '15m' AND datetime(due_date, '-15 minutes') <= datetime(?))
+         OR (remind_before = '30m' AND datetime(due_date, '-30 minutes') <= datetime(?))
+         OR (remind_before = '1h' AND datetime(due_date, '-1 hours') <= datetime(?))
+         OR (remind_before = '1d' AND datetime(due_date, '-1 days') <= datetime(?))
+       )`
+    ).all(now, now, now, now, now, now, now) as any[];
 
     for (const task of dueProwl) {
       const sessionName = 'Sable';
@@ -4691,7 +4702,10 @@ function runSchedulerCycle() {
       }
 
       const priorityEmoji = task.priority === 'high' ? '🔴' : task.priority === 'medium' ? '🟡' : '🟢';
-      const notification = `[Prowl] Task due: ${task.title} (Prowl ${priorityEmoji}${task.id}) — Priority: ${task.priority} — send Telegram to Gorn`;
+      const reminderLabels: Record<string, string> = { '1m': '1 min', '5m': '5 min', '15m': '15 min', '30m': '30 min', '1h': '1 hour', '1d': '1 day' };
+      const isReminder = task.remind_before && new Date(task.due_date) > new Date(now);
+      const prefix = isReminder ? `Reminder (${reminderLabels[task.remind_before] || task.remind_before} before)` : 'Task due';
+      const notification = `[Prowl] ${prefix}: ${task.title} (Prowl ${priorityEmoji}${task.id}) — Priority: ${task.priority} — send Telegram to Gorn`;
 
       try {
         Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
@@ -7451,6 +7465,8 @@ try { sqlite.prepare(`
 
 // Add notified_at column for Prowl Telegram notifications (T#467)
 try { sqlite.prepare(`ALTER TABLE prowl_tasks ADD COLUMN notified_at TEXT`).run(); } catch { /* already exists */ }
+// Add remind_before column for advance reminders (T#471) — values: null, 15m, 30m, 1h, 1d
+try { sqlite.prepare(`ALTER TABLE prowl_tasks ADD COLUMN remind_before TEXT`).run(); } catch { /* already exists */ }
 
 // GET /api/prowl — list tasks with filters
 app.get('/api/prowl', (c) => {
@@ -7524,8 +7540,11 @@ app.post('/api/prowl', async (c) => {
     const priority = ['high', 'medium', 'low'].includes(data.priority) ? data.priority : 'medium';
     const now = new Date().toISOString();
 
+    const validReminders = [null, '1m', '5m', '15m', '30m', '1h', '1d'];
+    const remindBefore = validReminders.includes(data.remind_before) ? data.remind_before : null;
+
     const result = sqlite.prepare(
-      'INSERT INTO prowl_tasks (title, priority, category, due_date, status, notes, source, source_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO prowl_tasks (title, priority, category, due_date, status, notes, source, source_id, created_by, remind_before, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(
       data.title.trim(),
       priority,
@@ -7536,6 +7555,7 @@ app.post('/api/prowl', async (c) => {
       data.source || 'manual',
       data.source_id ?? null,
       requester,
+      remindBefore,
       now,
       now
     );
@@ -7561,7 +7581,7 @@ app.patch('/api/prowl/:id', async (c) => {
     const data = await c.req.json();
     if ('status' in data) return c.json({ error: 'Use PATCH /api/prowl/:id/status to change status' }, 400);
 
-    const allowed = ['title', 'priority', 'category', 'due_date', 'notes'];
+    const allowed = ['title', 'priority', 'category', 'due_date', 'notes', 'remind_before'];
     const updates: string[] = [];
     const values: any[] = [];
     for (const field of allowed) {

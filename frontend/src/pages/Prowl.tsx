@@ -10,6 +10,7 @@ interface ProwlTask {
   priority: 'high' | 'medium' | 'low';
   category: string;
   due_date: string | null;
+  remind_before: string | null;
   status: 'pending' | 'done';
   notes: string | null;
   source: string | null;
@@ -40,6 +41,7 @@ export function Prowl() {
   const [newTitle, setNewTitle] = useState('');
   const [newPriority, setNewPriority] = useState<'high' | 'medium' | 'low'>('medium');
   const [newDueDate, setNewDueDate] = useState('');
+  const [newRemindBefore, setNewRemindBefore] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editData, setEditData] = useState<Partial<ProwlTask>>({});
 
@@ -72,11 +74,12 @@ export function Prowl() {
     await fetch('/api/prowl', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: newTitle.trim(), priority: newPriority, due_date: newDueDate || undefined }),
+      body: JSON.stringify({ title: newTitle.trim(), priority: newPriority, due_date: newDueDate || undefined, remind_before: newRemindBefore || undefined }),
     });
     setNewTitle('');
     setNewPriority('medium');
     setNewDueDate('');
+    setNewRemindBefore('');
     await loadTasks();
   }
 
@@ -113,6 +116,7 @@ export function Prowl() {
         priority: task.priority,
         category: task.category,
         due_date: task.due_date ? task.due_date.slice(0, 16) : '',
+        remind_before: task.remind_before || '',
         notes: task.notes || '',
       });
     }
@@ -195,6 +199,22 @@ export function Prowl() {
           onChange={e => setNewDueDate(e.target.value)}
           title="Due date & time"
         />
+        {newDueDate && (
+          <select
+            className={styles.prioritySelect}
+            value={newRemindBefore}
+            onChange={e => setNewRemindBefore(e.target.value)}
+            title="Remind before"
+          >
+            <option value="">No reminder</option>
+            <option value="1m">1 min before</option>
+            <option value="5m">5 min before</option>
+            <option value="15m">15 min before</option>
+            <option value="30m">30 min before</option>
+            <option value="1h">1 hr before</option>
+            <option value="1d">1 day before</option>
+          </select>
+        )}
         <button className={styles.addBtn} type="submit" disabled={!newTitle.trim()}>
           Add
         </button>
@@ -311,6 +331,23 @@ export function Prowl() {
                       onChange={e => setEditData({ ...editData, due_date: e.target.value || null })}
                     />
                   </div>
+                  {editData.due_date && (
+                    <div className={styles.expandedField}>
+                      <label>Remind Before</label>
+                      <select
+                        value={editData.remind_before || ''}
+                        onChange={e => setEditData({ ...editData, remind_before: e.target.value || null })}
+                      >
+                        <option value="">No reminder</option>
+                        <option value="1m">1 min before</option>
+                        <option value="5m">5 min before</option>
+                        <option value="15m">15 min before</option>
+                        <option value="30m">30 min before</option>
+                        <option value="1h">1 hr before</option>
+                        <option value="1d">1 day before</option>
+                      </select>
+                    </div>
+                  )}
                   <div className={styles.expandedField}>
                     <label>Notes</label>
                     <textarea

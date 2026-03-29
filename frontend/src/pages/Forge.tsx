@@ -1148,6 +1148,9 @@ export function Forge() {
                   {loading ? 'Saving...' : 'Log it'}
                 </button>
                 <button className={styles.cancelBtn} onClick={() => { setActiveForm(null); setFormData({}); setMealItems([]); setAddingItem(false); }}>Cancel</button>
+                {activeForm === 'meal' && mealItems.length === 0 && (
+                  <span style={{ fontSize: '0.8em', color: 'var(--text-muted)', marginLeft: 8 }}>Add at least one food item</span>
+                )}
               </div>
             </div>
           )}

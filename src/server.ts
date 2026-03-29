@@ -5973,11 +5973,34 @@ sqlite.exec(`
     updated_at INTEGER NOT NULL
   )
 `);
-// Migration: rename columns if old schema exists
+// Migration: add separate IV/tag columns for access and refresh tokens
 try { sqlite.prepare('ALTER TABLE oauth_tokens ADD COLUMN access_iv TEXT').run(); } catch { /* exists */ }
 try { sqlite.prepare('ALTER TABLE oauth_tokens ADD COLUMN access_tag TEXT').run(); } catch { /* exists */ }
 try { sqlite.prepare('ALTER TABLE oauth_tokens ADD COLUMN refresh_iv TEXT').run(); } catch { /* exists */ }
 try { sqlite.prepare('ALTER TABLE oauth_tokens ADD COLUMN refresh_tag TEXT').run(); } catch { /* exists */ }
+// Migration: drop NOT NULL on old token_iv/token_tag columns (T#476 — schema mismatch)
+// SQLite can't ALTER columns, so recreate the table if old columns exist
+try {
+  const cols = sqlite.prepare("PRAGMA table_info(oauth_tokens)").all() as any[];
+  const hasOldCol = cols.some((c: any) => c.name === 'token_iv' && c.notnull === 1);
+  if (hasOldCol) {
+    sqlite.exec(`
+      CREATE TABLE oauth_tokens_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL, user_id TEXT,
+        access_token_enc TEXT NOT NULL, refresh_token_enc TEXT NOT NULL,
+        token_iv TEXT, token_tag TEXT,
+        access_iv TEXT, access_tag TEXT, refresh_iv TEXT, refresh_tag TEXT,
+        expires_at INTEGER NOT NULL, scopes TEXT,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
+      INSERT INTO oauth_tokens_new SELECT * FROM oauth_tokens;
+      DROP TABLE oauth_tokens;
+      ALTER TABLE oauth_tokens_new RENAME TO oauth_tokens;
+    `);
+    console.log('[OAuth] Migrated oauth_tokens: dropped NOT NULL on token_iv/token_tag');
+  }
+} catch (err) { console.error('[OAuth] Migration error:', err); }
 
 // AES-256-GCM encryption for OAuth tokens
 const OAUTH_KEY = process.env.OAUTH_ENCRYPTION_KEY; // 32-byte hex string

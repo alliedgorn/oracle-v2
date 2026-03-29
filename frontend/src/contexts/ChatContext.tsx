@@ -31,9 +31,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
     return null;
   });
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsedRaw] = useState(() => localStorage.getItem('chat-overlay-collapsed') === 'true');
   const chatTargetRef = useRef(chatTarget);
   chatTargetRef.current = chatTarget;
+
+  const setCollapsed = useCallback((val: boolean | ((prev: boolean) => boolean)) => {
+    setCollapsedRaw(prev => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      localStorage.setItem('chat-overlay-collapsed', String(next));
+      return next;
+    });
+  }, []);
 
   const openChat = useCallback((beastName: string, displayName: string) => {
     const current = chatTargetRef.current;

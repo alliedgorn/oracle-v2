@@ -6341,10 +6341,13 @@ app.post('/api/oauth/withings/sync', async (c) => {
     ).get() as any;
 
     const now = Math.floor(Date.now() / 1000);
-    // If we have previous data, sync from last entry; otherwise sync last 30 days
-    const startdate = lastLog
-      ? Math.floor(new Date(lastLog.logged_at).getTime() / 1000)
-      : now - 30 * 86400;
+    const full = c.req.query('full') === 'true';
+    // Full sync: from 2010 (earliest Withings scales); incremental: from last entry or 30 days
+    const startdate = full
+      ? 1262304000 // 2010-01-01
+      : lastLog
+        ? Math.floor(new Date(lastLog.logged_at).getTime() / 1000)
+        : now - 30 * 86400;
 
     const result = await syncWithingsMeasurements(startdate, now);
     return c.json({ success: true, ...result });

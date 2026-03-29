@@ -287,6 +287,7 @@
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
+  overflow: hidden;
 }
 
 .expandedField {
@@ -304,6 +305,7 @@
 .expandedField textarea,
 .expandedField select {
   width: 100%;
+  max-width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -314,11 +316,13 @@
   color-scheme: dark;
 }
 
-.expandedField input[type="date"] {
+.expandedField input[type="date"],
+.expandedField input[type="datetime-local"] {
   cursor: pointer;
 }
 
-.expandedField input[type="date"]::-webkit-calendar-picker-indicator {
+.expandedField input[type="date"]::-webkit-calendar-picker-indicator,
+.expandedField input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
   cursor: pointer;
 }

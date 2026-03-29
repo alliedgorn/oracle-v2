@@ -57,6 +57,21 @@
   cursor: pointer;
 }
 
+.dueDateInput {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.85em;
+  color-scheme: dark;
+}
+
+.dueDateInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .addBtn {
   padding: 10px 18px;
   border: none;
@@ -368,6 +383,10 @@
   }
 
   .prioritySelect {
+    flex: 1;
+  }
+
+  .dueDateInput {
     flex: 1;
   }
 

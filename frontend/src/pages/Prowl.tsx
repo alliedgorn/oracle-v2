@@ -39,6 +39,7 @@ export function Prowl() {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [newPriority, setNewPriority] = useState<'high' | 'medium' | 'low'>('medium');
+  const [newDueDate, setNewDueDate] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editData, setEditData] = useState<Partial<ProwlTask>>({});
 
@@ -71,10 +72,11 @@ export function Prowl() {
     await fetch('/api/prowl', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: newTitle.trim(), priority: newPriority }),
+      body: JSON.stringify({ title: newTitle.trim(), priority: newPriority, due_date: newDueDate || undefined }),
     });
     setNewTitle('');
     setNewPriority('medium');
+    setNewDueDate('');
     await loadTasks();
   }
 
@@ -186,6 +188,13 @@ export function Prowl() {
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
+        <input
+          type="datetime-local"
+          className={styles.dueDateInput}
+          value={newDueDate}
+          onChange={e => setNewDueDate(e.target.value)}
+          title="Due date & time"
+        />
         <button className={styles.addBtn} type="submit" disabled={!newTitle.trim()}>
           Add
         </button>

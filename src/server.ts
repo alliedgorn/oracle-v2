@@ -4665,14 +4665,11 @@ function runSchedulerCycle() {
         continue;
       }
 
-      // Send notification — Bun.spawnSync bypasses shell, no sanitization needed
-      const notification = `[Scheduler] Due now: ${schedule.task} (schedule ${schedule.id})${schedule.command ? ` | Command: ${schedule.command}` : ''}`;
-      const reminder = `Remember: mark done with /scheduler run ${schedule.id}`;
+      // Send notification — single send-keys call to avoid race conditions
+      const notification = `[Scheduler] Due now: ${schedule.task} (schedule ${schedule.id})${schedule.command ? ` | Command: ${schedule.command}` : ''}\nRemember: mark done with /scheduler run ${schedule.id}`;
 
       try {
         Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', notification]);
-        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
-        Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', reminder]);
         Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
 
         // Mark as triggered

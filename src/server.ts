@@ -2175,7 +2175,7 @@ app.get('/api/files', (c) => {
   if (context) { where += ' AND context = ?'; params.push(context); }
 
   const total = (sqlite.prepare(`SELECT COUNT(*) as c FROM files WHERE ${where}`).get(...params) as any)?.c || 0;
-  const files = sqlite.prepare(`SELECT * FROM files WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as any[];
+  const files = sqlite.prepare(`SELECT * FROM files WHERE ${where} ORDER BY logged_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as any[];
 
   return c.json({
     files: files.map(f => ({
@@ -3378,7 +3378,7 @@ app.get('/api/library', (c) => {
   const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as count');
   const countResult = sqlite.prepare(countQuery).get(...params) as any;
 
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  query += ' ORDER BY logged_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const rows = sqlite.prepare(query).all(...params) as any[];
@@ -5570,7 +5570,7 @@ app.get('/api/specs/:id/comments', (c) => {
   const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10));
   const total = (sqlite.prepare('SELECT COUNT(*) as c FROM spec_comments WHERE spec_id = ?').get(id) as any).c;
   // Return most recent comments: order DESC for pagination, then reverse for display
-  const comments = sqlite.prepare('SELECT * FROM spec_comments WHERE spec_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(id, limit, offset) as any[];
+  const comments = sqlite.prepare('SELECT * FROM spec_comments WHERE spec_id = ? ORDER BY logged_at DESC LIMIT ? OFFSET ?').all(id, limit, offset) as any[];
   comments.reverse();
   return c.json({ comments, total });
 });
@@ -6422,6 +6422,12 @@ try {
   `);
 } catch { /* already migrated or no constraint to remove */ }
 
+// T#496: Normalize logged_at to UTC — fix entries stored without Z suffix
+try {
+  const fixed = sqlite.prepare("UPDATE routine_logs SET logged_at = logged_at || 'Z' WHERE logged_at NOT LIKE '%Z' AND logged_at NOT LIKE '%+%' AND deleted_at IS NULL").run();
+  if ((fixed as any).changes > 0) console.log(`[Forge] Normalized ${(fixed as any).changes} logged_at entries to UTC`);
+} catch { /* table may not exist yet */ }
+
 // Ensure uploads/routine dir exists
 const ROUTINE_UPLOADS = path.join(ORACLE_DATA_DIR, 'uploads', 'routine');
 if (!fs.existsSync(ROUTINE_UPLOADS)) fs.mkdirSync(ROUTINE_UPLOADS, { recursive: true });
@@ -6451,7 +6457,7 @@ app.get('/api/routine/logs', (c) => {
   if (type) { query += ' AND type = ?'; params.push(type); }
   if (from) { query += ' AND logged_at >= ?'; params.push(from); }
   if (to) { query += ' AND logged_at <= ?'; params.push(to); }
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  query += ' ORDER BY logged_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const logs = sqlite.prepare(query).all(...params);
@@ -6464,7 +6470,7 @@ app.get('/api/routine/today', (c) => {
   if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const today = new Date().toISOString().slice(0, 10);
   const logs = sqlite.prepare(
-    "SELECT * FROM routine_logs WHERE deleted_at IS NULL AND date(logged_at) = ? ORDER BY created_at DESC"
+    "SELECT * FROM routine_logs WHERE deleted_at IS NULL AND date(logged_at) = ? ORDER BY logged_at DESC"
   ).all(today);
   return c.json({ logs, date: today });
 });
@@ -6890,9 +6896,14 @@ app.post('/api/routine/logs', async (c) => {
     }
     const jsonData = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
     const now = new Date().toISOString();
+    // Normalize logged_at to UTC — datetime-local inputs arrive without timezone
+    let normalizedLoggedAt = logged_at || now;
+    if (logged_at && !logged_at.endsWith('Z') && !logged_at.includes('+')) {
+      normalizedLoggedAt = logged_at + 'Z';
+    }
     const result = sqlite.prepare(
       'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(type, logged_at || now, jsonData, data.source || 'manual', now);
+    ).run(type, normalizedLoggedAt, jsonData, data.source || 'manual', now);
     const logId = (result as any).lastInsertRowid;
     const log = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ?').get(logId);
 
@@ -6952,7 +6963,13 @@ app.patch('/api/routine/logs/:id', async (c) => {
       }
       updates.push('data = ?'); values.push(typeof body.data === 'string' ? body.data : JSON.stringify(body.data));
     }
-    if (body.logged_at) { updates.push('logged_at = ?'); values.push(body.logged_at); }
+    if (body.logged_at) {
+      let normalizedLoggedAt = body.logged_at;
+      if (!body.logged_at.endsWith('Z') && !body.logged_at.includes('+')) {
+        normalizedLoggedAt = body.logged_at + 'Z';
+      }
+      updates.push('logged_at = ?'); values.push(normalizedLoggedAt);
+    }
     if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
     values.push(id);
     sqlite.prepare(`UPDATE routine_logs SET ${updates.join(', ')} WHERE id = ?`).run(...values);

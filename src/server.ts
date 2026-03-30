@@ -7027,6 +7027,38 @@ app.post('/api/routine/logs', async (c) => {
         return c.json({ error: 'Meal items required. Each meal must include an items array with individual food items and per-item macros (name, calories, protein, carbs, fat).' }, 400);
       }
     }
+    // Workout validation — enforce structured exercise format (T#521, T#522)
+    if (type === 'workout') {
+      const workoutData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+      if (!workoutData.exercises || !Array.isArray(workoutData.exercises)) {
+        return c.json({
+          error: 'Workout must include an exercises array.',
+          hint: 'Expected format: { exercises: [{ name: "Chest Press", equipment: "Machine", sets: [{ weight: 80, reps: 10, unit: "kg" }] }] }',
+        }, 400);
+      }
+      for (let i = 0; i < workoutData.exercises.length; i++) {
+        const ex = workoutData.exercises[i];
+        if (typeof ex === 'string') {
+          return c.json({
+            error: `Exercise ${i + 1} is a string ("${ex.slice(0, 60)}"). Exercises must be objects with name and sets.`,
+            hint: 'Expected format: { name: "Chest Press", equipment: "Machine", sets: [{ weight: 80, reps: 10, unit: "kg" }] }',
+          }, 400);
+        }
+        if (!ex.name?.trim()) {
+          return c.json({ error: `Exercise ${i + 1}: name is required.`, hint: '{ name: "Bench Press", sets: [{ weight: 80, reps: 10, unit: "kg" }] }' }, 400);
+        }
+        if (!ex.sets || !Array.isArray(ex.sets) || ex.sets.length === 0) {
+          return c.json({ error: `Exercise ${i + 1} ("${ex.name}"): sets array is required with at least one set.`, hint: 'sets: [{ weight: 80, reps: 10, unit: "kg" }]' }, 400);
+        }
+        for (let j = 0; j < ex.sets.length; j++) {
+          const s = ex.sets[j];
+          if (s.weight == null || s.reps == null) {
+            return c.json({ error: `Exercise ${i + 1} ("${ex.name}"), set ${j + 1}: weight and reps are required.`, hint: '{ weight: 80, reps: 10, unit: "kg" }' }, 400);
+          }
+        }
+      }
+      data.data = workoutData;
+    }
     const jsonData = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
     const now = new Date().toISOString();
     // Normalize logged_at to UTC — datetime-local inputs arrive without timezone

@@ -1578,7 +1578,11 @@ export function Forge() {
                     const displayW = convertWeight(pr.weight, prUnit, weightUnit);
                     return (
                       <div key={pr.id} className={`${styles.prCard} ${isRecent ? styles.prRecent : ''}`}>
-                        <div className={styles.prExercise}>{pr.exercise_name}</div>
+                        <div className={styles.prExercise}>
+                          {isRecent && <span title="Recent PR">👑</span>}
+                          {pr.exercise_name}
+                          {isRecent && <span className={styles.prBadge}>New PR</span>}
+                        </div>
                         <div className={styles.prDetail}>
                           <span className={styles.prWeight}>{Math.round(displayW)} {weightUnit} x {pr.reps}</span>
                           <span className={styles.prDate}>{new Date(pr.achieved_at).toLocaleDateString()}</span>

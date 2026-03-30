@@ -6646,6 +6646,18 @@ function parseExerciseName(raw: string): { name: string; equipment: string } {
   return { name: parts[0] || cleaned, equipment: parts[1] || '' };
 }
 
+// Parse string-format exercises like "Chest Press 190lbs 8/8/6" into sets
+function parseExerciseString(raw: string): { name: string; sets: { weight: number; reps: number; unit: string }[] } {
+  // Match: "Exercise Name <weight><unit> <reps>/<reps>/..."
+  const match = raw.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*(kg|lbs?|KG|LBS?)\s+([\d/]+)$/);
+  if (!match) return { name: raw, sets: [] };
+  const name = match[1].trim();
+  const weight = parseFloat(match[2]);
+  const unit = match[3].toLowerCase().startsWith('lb') ? 'lbs' : 'kg';
+  const repsList = match[4].split('/').map(r => parseInt(r) || 0).filter(r => r > 0);
+  return { name, sets: repsList.map(reps => ({ weight, reps, unit })) };
+}
+
 // GET /api/routine/workout-trends — exercise progress over time (T#397)
 app.get('/api/routine/workout-trends', (c) => {
   if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
@@ -6832,13 +6844,23 @@ app.get('/api/routine/summary', (c) => {
     try {
       const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
       for (const ex of (data.exercises || [])) {
-        const { name } = parseExerciseName(typeof ex === 'string' ? ex : (ex.name || ''));
-        for (const s of (ex.sets || [])) {
-          const w = parseFloat(s.weight) || 0;
-          const r = parseInt(s.reps) || 0;
-          totalVolume += w * r;
-          if (w > bestLift.weight) {
-            bestLift = { exercise: name, weight: w, reps: r, unit: s.unit || 'kg' };
+        if (typeof ex === 'string') {
+          const parsed = parseExerciseString(ex);
+          for (const s of parsed.sets) {
+            totalVolume += s.weight * s.reps;
+            if (s.weight > bestLift.weight) {
+              bestLift = { exercise: parsed.name, weight: s.weight, reps: s.reps, unit: s.unit };
+            }
+          }
+        } else {
+          const { name } = parseExerciseName(ex.name || '');
+          for (const s of (ex.sets || [])) {
+            const w = parseFloat(s.weight) || 0;
+            const r = parseInt(s.reps) || 0;
+            totalVolume += w * r;
+            if (w > bestLift.weight) {
+              bestLift = { exercise: name, weight: w, reps: r, unit: s.unit || 'kg' };
+            }
           }
         }
       }

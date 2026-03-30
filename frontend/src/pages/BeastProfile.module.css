@@ -383,6 +383,36 @@
   background: var(--accent-hover);
 }
 
+/* Lightbox */
+.avatarClickable {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.avatarClickable:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 16px rgba(212, 148, 58, 0.3);
+}
+
+.lightboxOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  cursor: pointer;
+}
+
+.lightboxImg {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 12px;
+  object-fit: contain;
+  cursor: default;
+}
+
 /* Mobile */
 @media (max-width: 640px) {
   .profileCard {

@@ -36,6 +36,14 @@ export function BeastProfile() {
   const [editRole, setEditRole] = useState('');
   const [editSex, setEditSex] = useState('');
   const [saving, setSaving] = useState(false);
+  const [lightbox, setLightbox] = useState(false);
+
+  useEffect(() => {
+    if (!lightbox) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightbox(false); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [lightbox]);
 
   useEffect(() => {
     if (!name) return;
@@ -133,8 +141,9 @@ export function BeastProfile() {
         {/* Avatar */}
         <div className={styles.avatarSection}>
           <div
-            className={styles.avatarRing}
+            className={`${styles.avatarRing} ${beast.avatarUrl ? styles.avatarClickable : ''}`}
             style={beast.themeColor ? { borderColor: beast.themeColor } : undefined}
+            onClick={() => beast.avatarUrl && setLightbox(true)}
           >
             {beast.avatarUrl ? (
               <img src={beast.avatarUrl} alt={beast.displayName} className={styles.avatarImg} />
@@ -259,6 +268,18 @@ export function BeastProfile() {
             </Link>
           </div>
         </>
+      )}
+
+      {/* Lightbox */}
+      {lightbox && beast.avatarUrl && (
+        <div className={styles.lightboxOverlay} onClick={() => setLightbox(false)}>
+          <img
+            src={beast.avatarUrl}
+            alt={beast.displayName}
+            className={styles.lightboxImg}
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
       )}
 
       {/* Other Beasts */}

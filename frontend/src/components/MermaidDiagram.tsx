@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
+import DOMPurify from 'dompurify';
 
 mermaid.initialize({
   startOnLoad: false,
@@ -35,7 +36,7 @@ export function MermaidDiagram({ code }: { code: string }) {
       try {
         const { svg } = await mermaid.render(id, code.trim());
         if (containerRef.current) {
-          containerRef.current.innerHTML = svg;
+          containerRef.current.innerHTML = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ['foreignObject'] });
           setError(null);
         }
       } catch (e) {

@@ -211,7 +211,7 @@ export function validateToken(token: string): TokenValidationResult {
       if (now - lastLogged > 60_000) {
         tokenValidatedCache.set(beast, now);
         logSecurityEvent({
-          eventType: 'token_created', // Reuse existing type for validation logging
+          eventType: 'token_validated',
           severity: 'info',
           actor: beast,
           actorType: 'beast',
@@ -336,11 +336,12 @@ const TOKEN_PRUNE_DAYS = TOKEN_PRUNE_GRACE_DAYS;
 
 export function pruneBeastTokens(): number {
   try {
+    const cutoff = `-${TOKEN_PRUNE_DAYS} days`;
     const result = sqlite.prepare(
       `DELETE FROM beast_tokens WHERE
-        (expires_at < datetime('now', '-${TOKEN_PRUNE_DAYS} days'))
-        OR (revoked_at IS NOT NULL AND revoked_at < datetime('now', '-${TOKEN_PRUNE_DAYS} days'))`
-    ).run();
+        (expires_at < datetime('now', ?))
+        OR (revoked_at IS NOT NULL AND revoked_at < datetime('now', ?))`
+    ).run(cutoff, cutoff);
     return result.changes || 0;
   } catch (err) {
     console.error(`[BeastTokens] Prune failed: ${err}`);

@@ -26,7 +26,8 @@ export type SecurityEventType =
   | 'settings_changed'       // Auth/security settings modified
   | 'impersonation_blocked'  // ?as= spoofing blocked on protected endpoint
   | 'session_destroyed'      // Session logout
-  | 'alert_triggered';       // Threshold alert fired by checkAlertThresholds
+  | 'alert_triggered'        // Threshold alert fired by checkAlertThresholds
+  | 'token_validated';       // Beast token validated (sampled, T#546)
 
 export type SecuritySeverity = 'info' | 'warning' | 'critical';
 

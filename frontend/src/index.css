@@ -75,6 +75,11 @@
   padding: 0;
 }
 
+html, body {
+  overflow: hidden;
+  height: 100%;
+}
+
 body {
   font-family: var(--font-body);
   background: var(--bg-primary);
@@ -140,6 +145,11 @@ a {
 }
 
 @media (max-width: 768px) {
+  html, body {
+    overflow: auto;
+    height: auto;
+  }
+
   .app-layout {
     display: block;
     height: auto;

@@ -253,7 +253,7 @@ The audit log (see Audit Logging section) makes suspicious access patterns trace
 
 ## Frontend (Minimal)
 
-Add "Google" section to Forge settings, same pattern as Withings:
+Add "Google" section to **Den Settings** (not Forge — Forge is for Beast-specific config, Den Settings is for system-wide integrations):
 - Connect/Disconnect button
 - Status display (connected email, token expiry)
 - Beast access management (add/remove Beasts)

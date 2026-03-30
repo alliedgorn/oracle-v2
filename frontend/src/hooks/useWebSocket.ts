@@ -8,6 +8,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000; // Start at 1s, exponential backoff
 const RECONNECT_MAX = 30000; // Cap at 30s
 const RECONNECT_BASE = 1000;
+let hasConnectedBefore = false;
 
 function connect() {
   if (globalWs?.readyState === WebSocket.OPEN) return;
@@ -21,6 +22,14 @@ function connect() {
     globalWs.onopen = () => {
       // Reset backoff on successful connection
       reconnectDelay = RECONNECT_BASE;
+      // Notify listeners of reconnect so they can refetch stale data (T#534)
+      if (hasConnectedBefore) {
+        const handlers = listeners.get('ws_reconnect');
+        if (handlers) {
+          for (const handler of handlers) handler({});
+        }
+      }
+      hasConnectedBefore = true;
     };
 
     globalWs.onmessage = (e) => {

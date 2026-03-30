@@ -225,6 +225,23 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
 
   useWebSocket('new_dm', appendNewMessages);
 
+  // Refetch on WS reconnect (T#534 — stale overlay after long break)
+  const handleReconnect = useCallback(() => {
+    loadMessages().then(() => markAsRead());
+  }, [loadMessages, markAsRead]);
+  useWebSocket('ws_reconnect', handleReconnect);
+
+  // Refetch on tab visibility change (T#534 — covers cases where WS didn't drop)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden && !collapsed) {
+        loadMessages().then(() => markAsRead());
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [loadMessages, markAsRead, collapsed]);
+
   // Scroll detection: load-more at top + show scroll-down button
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {

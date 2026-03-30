@@ -405,9 +405,9 @@ app.use('/api/*', async (c, next) => {
     const resourceId = parts[1] || null;
 
     sqlite.prepare(
-      `INSERT INTO audit_log (actor, actor_type, action, resource_type, resource_id, ip_source, request_method, request_path, status_code)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(actor, actorType, `${method} ${path}`, resourceType, resourceId, ip, method, path, statusCode);
+      `INSERT INTO audit_log (actor, actor_type, action, resource_type, resource_id, ip_source, request_method, request_path, status_code, request_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(actor, actorType, `${method} ${path}`, resourceType, resourceId, ip, method, path, statusCode, requestId);
 
     // Auto-log 403 permission denials as security events
     if (statusCode === 403) {
@@ -4170,12 +4170,15 @@ try {
     ip_source TEXT,
     request_method TEXT,
     request_path TEXT,
-    status_code INTEGER
+    status_code INTEGER,
+    request_id TEXT
   )`).run();
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)`).run();
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log(actor)`).run();
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_log(resource_type, resource_id)`).run();
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)`).run();
+  try { sqlite.prepare(`ALTER TABLE audit_log ADD COLUMN request_id TEXT`).run(); } catch { /* exists */ }
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_audit_request_id ON audit_log(request_id)`).run();
 } catch { /* already exists */ }
 
 // Teams tables (Task #81 — Gnarl spec, thread #105)
@@ -4221,6 +4224,7 @@ app.get('/api/audit', (c) => {
   const resourceType = c.req.query('resource_type');
   const statusCode = c.req.query('status_code');
   const method = c.req.query('method');
+  const requestId = c.req.query('request_id');
   const limit = parseInt(c.req.query('limit') || '100');
   const offset = parseInt(c.req.query('offset') || '0');
   const since = c.req.query('since');
@@ -4234,6 +4238,7 @@ app.get('/api/audit', (c) => {
   if (resourceType) { query += ' AND resource_type = ?'; countQuery += ' AND resource_type = ?'; params.push(resourceType); countParams.push(resourceType); }
   if (statusCode) { query += ' AND status_code = ?'; countQuery += ' AND status_code = ?'; params.push(parseInt(statusCode)); countParams.push(parseInt(statusCode)); }
   if (method) { query += ' AND request_method = ?'; countQuery += ' AND request_method = ?'; params.push(method.toUpperCase()); countParams.push(method.toUpperCase()); }
+  if (requestId) { query += ' AND request_id = ?'; countQuery += ' AND request_id = ?'; params.push(requestId); countParams.push(requestId); }
   if (since) { query += ' AND datetime(timestamp) >= datetime(?)'; countQuery += ' AND datetime(timestamp) >= datetime(?)'; params.push(since); countParams.push(since); }
   query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);

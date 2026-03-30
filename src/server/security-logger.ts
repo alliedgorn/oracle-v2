@@ -25,8 +25,8 @@ export type SecurityEventType =
   | 'token_revoked'          // OAuth token revoked/disconnected
   | 'settings_changed'       // Auth/security settings modified
   | 'impersonation_blocked'  // ?as= spoofing blocked on protected endpoint
-  | 'session_created'        // New session token issued
-  | 'session_destroyed';     // Session logout
+  | 'session_destroyed'      // Session logout
+  | 'alert_triggered';       // Threshold alert fired by checkAlertThresholds
 
 export type SecuritySeverity = 'info' | 'warning' | 'critical';
 

@@ -4935,7 +4935,7 @@ setInterval(runDbMaintenance, DB_MAINTENANCE_INTERVAL);
 console.log(`[DB Maintenance] Retention: ${DB_RETENTION_DAYS} days, interval: 6h`);
 
 // Withings daily auto-sync (T#523) — sync every 24h, first run 60s after boot
-const WITHINGS_SYNC_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+const WITHINGS_SYNC_INTERVAL = 60 * 60 * 1000; // 1 hour
 async function runWithingsAutoSync() {
   try {
     const token = sqlite.prepare("SELECT * FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
@@ -4955,7 +4955,7 @@ async function runWithingsAutoSync() {
 }
 setTimeout(runWithingsAutoSync, 60_000);
 setInterval(runWithingsAutoSync, WITHINGS_SYNC_INTERVAL);
-console.log('[Withings] Auto-sync enabled (24h interval, first run in 60s)');
+console.log('[Withings] Auto-sync enabled (1h interval, first run in 60s)');
 
 // ============================================================================
 // Supersede Log Routes (Issue #18, #19)

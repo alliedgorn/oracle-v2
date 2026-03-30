@@ -329,7 +329,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
               }}
             >
               {group.label} ▾
-              {(badges.dms + badges.rules) > 0 && <span className={styles.navBadge}>{badges.dms + badges.rules}</span>}
+              {badges.rules > 0 && <span className={styles.navBadge}>{badges.rules}</span>}
             </button>
             {openGroup === group.label && dropdownPos && createPortal(
               <>
@@ -354,7 +354,6 @@ export function Header({ onRemoteToggle }: HeaderProps) {
                           onClick={() => setOpenGroup(null)}
                         >
                           {item.label}
-                          {item.path === '/dms' && badges.dms > 0 && <span className={styles.navBadge}>{badges.dms}</span>}
                           {item.path === '/rules' && badges.rules > 0 && <span className={styles.navBadge}>{badges.rules}</span>}
                         </Link>
                       ))}

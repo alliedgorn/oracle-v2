@@ -190,13 +190,25 @@ app.use('*', cors({
   credentials: true,
 }));
 
-// Security headers middleware (T#502 — Talon audit finding)
+// Security headers middleware (T#502 — Talon audit finding, T#503 — CSP)
 app.use('*', async (c, next) => {
   await next();
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('X-Frame-Options', 'DENY');
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  c.header('Content-Security-Policy', [
+    "default-src 'none'",
+    "script-src 'self' cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' fonts.googleapis.com",
+    "font-src fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "connect-src 'self' ws: wss:",
+    "object-src 'none'",
+    "frame-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; '));
 });
 
 // ============================================================================

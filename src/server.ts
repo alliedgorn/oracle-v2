@@ -5152,6 +5152,8 @@ console.log(`[File Archive] Grace: ${FILE_ARCHIVE_GRACE_DAYS} days, interval: 6h
 
 // Withings daily auto-sync (T#523) — sync every 24h, first run 60s after boot
 const WITHINGS_SYNC_INTERVAL = 60 * 60 * 1000; // 1 hour
+let withingsLastSyncAt: string | null = null; // Tracks last successful sync attempt (T#536)
+
 async function runWithingsAutoSync() {
   try {
     const token = sqlite.prepare("SELECT * FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
@@ -5164,7 +5166,7 @@ async function runWithingsAutoSync() {
       ? Math.floor(new Date(lastLog.logged_at).getTime() / 1000)
       : now - 30 * 86400;
     const result = await syncWithingsMeasurements(startdate, now);
-    if (result.synced > 0) console.log(`[Withings] Auto-sync: ${result.synced} new, ${result.skipped} skipped`);
+    console.log(`[Withings] Auto-sync: ${result.synced} new, ${result.skipped} skipped`);
   } catch (err) {
     console.error('[Withings] Auto-sync failed:', err instanceof Error ? err.message : err);
   }
@@ -6534,16 +6536,21 @@ app.get('/api/oauth/withings/status', (c) => {
   const token = sqlite.prepare("SELECT provider, user_id, expires_at, scopes, updated_at FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
   if (!token) return c.json({ connected: false });
   const now = Math.floor(Date.now() / 1000);
-  // Last actual data sync time (T#524)
-  const lastSyncRow = sqlite.prepare(
-    "SELECT MAX(created_at) as sync_time FROM routine_logs WHERE source = 'withings' AND deleted_at IS NULL"
-  ).get() as any;
+  // Last successful sync time — use in-memory tracker (updated every sync, even with 0 new records)
+  // Fall back to DB created_at for first load after server restart (T#536)
+  let lastSync = withingsLastSyncAt;
+  if (!lastSync) {
+    const lastSyncRow = sqlite.prepare(
+      "SELECT MAX(created_at) as sync_time FROM routine_logs WHERE source = 'withings' AND deleted_at IS NULL"
+    ).get() as any;
+    lastSync = lastSyncRow?.sync_time || null;
+  }
   return c.json({
     connected: true,
     userId: token.user_id,
     tokenExpired: token.expires_at < now,
     lastUpdated: new Date(token.updated_at * 1000).toISOString(),
-    lastSync: lastSyncRow?.sync_time || null,
+    lastSync,
     scopes: token.scopes,
   });
 });
@@ -6651,6 +6658,7 @@ async function syncWithingsMeasurements(startdate: number, enddate: number): Pro
     synced++;
   }
 
+  withingsLastSyncAt = new Date().toISOString(); // Track last successful sync (T#536)
   console.log(`[Withings] Synced ${synced} measurements, skipped ${skipped} duplicates`);
   return { synced, skipped };
 }

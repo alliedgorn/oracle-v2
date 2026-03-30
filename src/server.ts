@@ -7712,11 +7712,31 @@ app.post('/api/routine/exercises/seed', (c) => {
   return c.json({ seeded, total: seen.size });
 });
 
-// GET /api/routine/personal-records — personal records list (T#410)
+// GET /api/routine/personal-records — personal records list (T#410, T#543)
 app.get('/api/routine/personal-records', (c) => {
   if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const exercise = c.req.query('exercise');
   const range = c.req.query('range');
+  const grouped = c.req.query('grouped'); // 'true' = best lift per exercise
+
+  if (grouped === 'true') {
+    // Best lift per exercise — highest weight, then highest reps at that weight
+    let dateFilter = '';
+    if (range === 'month') dateFilter = "AND achieved_at >= datetime('now', '-30 days')";
+    const records = sqlite.prepare(`
+      SELECT pr.* FROM personal_records pr
+      INNER JOIN (
+        SELECT exercise_name, MAX(weight) as max_weight
+        FROM personal_records
+        WHERE 1=1 ${dateFilter}
+        GROUP BY exercise_name
+      ) best ON pr.exercise_name = best.exercise_name AND pr.weight = best.max_weight
+      WHERE 1=1 ${dateFilter}
+      GROUP BY pr.exercise_name
+      ORDER BY pr.weight DESC, pr.reps DESC
+    `).all();
+    return c.json({ records });
+  }
 
   let query = 'SELECT * FROM personal_records WHERE 1=1';
   const params: any[] = [];
@@ -7728,6 +7748,53 @@ app.get('/api/routine/personal-records', (c) => {
 
   const records = sqlite.prepare(query).all(...params);
   return c.json({ records });
+});
+
+// POST /api/routine/personal-records/seed — backfill PRs from all workout logs (T#543)
+app.post('/api/routine/personal-records/seed', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const workouts = sqlite.prepare(
+    "SELECT id, logged_at, data FROM routine_logs WHERE type = 'workout' AND deleted_at IS NULL"
+  ).all() as any[];
+
+  const prInsert = sqlite.prepare(
+    'INSERT OR IGNORE INTO personal_records (exercise_name, weight, reps, unit, achieved_at, log_id) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+
+  let inserted = 0;
+  const insertPR = sqlite.transaction(() => {
+    for (const log of workouts) {
+      const d = typeof log.data === 'string' ? JSON.parse(log.data) : log.data;
+      for (const ex of (d.exercises || [])) {
+        if (typeof ex === 'string') {
+          // Manual format: "Chest Press 190lbs 8/8/6"
+          const parsed = parseExerciseString(ex);
+          for (const s of parsed.sets) {
+            if (s.weight > 0 && s.reps > 0) {
+              const res = prInsert.run(parsed.name, s.weight, s.reps, s.unit, log.logged_at, log.id);
+              if ((res as any).changes > 0) inserted++;
+            }
+          }
+        } else {
+          // Structured format from Alpha Progression
+          const { name } = parseExerciseName(typeof ex === 'string' ? ex : (ex.name || ''));
+          if (!name) continue;
+          for (const s of (ex.sets || [])) {
+            const w = parseFloat(s.weight) || 0;
+            const r = parseInt(s.reps) || 0;
+            if (w > 0 && r > 0) {
+              const unit = (s.unit || 'kg').toLowerCase().startsWith('lb') ? 'lbs' : 'kg';
+              const res = prInsert.run(name, w, r, unit, log.logged_at, log.id);
+              if ((res as any).changes > 0) inserted++;
+            }
+          }
+        }
+      }
+    }
+  });
+  insertPR();
+
+  return c.json({ seeded: inserted, from_workouts: workouts.length });
 });
 
 // GET /api/routine/photos — photo gallery

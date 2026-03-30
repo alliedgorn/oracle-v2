@@ -654,7 +654,7 @@ export function Forge() {
     const [weightRes, summaryRes, prRes, bodyCompRes] = await Promise.all([
       fetch(`${API_BASE}/routine/weight?range=${weightRange}`),
       fetch(`${API_BASE}/routine/summary?range=week`),
-      fetch(`${API_BASE}/routine/personal-records`),
+      fetch(`${API_BASE}/routine/personal-records?grouped=true`),
       fetch(`${API_BASE}/routine/body-composition?range=${weightRange}`),
     ]);
     const weightData = await weightRes.json();
@@ -1572,14 +1572,15 @@ export function Forge() {
                     }
                     return true;
                   })
-                  .slice(0, 20)
                   .map((pr: any) => {
                     const isRecent = (Date.now() - new Date(pr.achieved_at).getTime()) < 7 * 24 * 60 * 60 * 1000;
+                    const prUnit = normalizeUnit(pr.unit || 'kg');
+                    const displayW = convertWeight(pr.weight, prUnit, weightUnit);
                     return (
                       <div key={pr.id} className={`${styles.prCard} ${isRecent ? styles.prRecent : ''}`}>
                         <div className={styles.prExercise}>{pr.exercise_name}</div>
                         <div className={styles.prDetail}>
-                          <span className={styles.prWeight}>{pr.weight} {pr.unit} x {pr.reps}</span>
+                          <span className={styles.prWeight}>{Math.round(displayW)} {weightUnit} x {pr.reps}</span>
                           <span className={styles.prDate}>{new Date(pr.achieved_at).toLocaleDateString()}</span>
                         </div>
                       </div>

@@ -323,3 +323,26 @@ export const settings = sqliteTable('settings', {
   value: text('value'),
   updatedAt: integer('updated_at').notNull(),
 });
+
+// ============================================================================
+// Security Events (T#545) — Security-specific event logging
+// ============================================================================
+
+export const securityEvents = sqliteTable('security_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  timestamp: integer('timestamp').notNull(),
+  eventType: text('event_type').notNull(),
+  severity: text('severity').notNull().default('info'),
+  actor: text('actor'),
+  actorType: text('actor_type'),
+  target: text('target'),
+  details: text('details'),          // JSON blob for event-specific data
+  ipSource: text('ip_source'),
+  requestId: text('request_id'),     // Correlation ID to link back to audit_log
+}, (table) => [
+  index('idx_security_events_timestamp').on(table.timestamp),
+  index('idx_security_events_type').on(table.eventType),
+  index('idx_security_events_severity').on(table.severity),
+  index('idx_security_events_actor').on(table.actor),
+  index('idx_security_events_request_id').on(table.requestId),
+]);

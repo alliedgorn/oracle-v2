@@ -88,6 +88,13 @@ import {
 import { enqueueNotification } from './notify.ts';
 
 import {
+  logSecurityEvent,
+  generateRequestId,
+  pruneSecurityEvents,
+  SECURITY_RETENTION_DAYS,
+} from './server/security-logger.ts';
+
+import {
   listTraces,
   getTrace,
   getTraceChain,
@@ -339,6 +346,10 @@ app.use('/api/*', async (c, next) => {
   const method = c.req.method;
   const path = c.req.path;
 
+  // Generate request ID for correlation between audit_log and security_events
+  const requestId = generateRequestId();
+  c.set('requestId' as any, requestId);
+
   // Skip: GETs (except sensitive), static, health, WS
   const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
   const isSensitiveGet = method === 'GET' && (path.includes('/dm/') || path.includes('/settings') || path.includes('/audit'));
@@ -397,6 +408,20 @@ app.use('/api/*', async (c, next) => {
       `INSERT INTO audit_log (actor, actor_type, action, resource_type, resource_id, ip_source, request_method, request_path, status_code)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(actor, actorType, `${method} ${path}`, resourceType, resourceId, ip, method, path, statusCode);
+
+    // Auto-log 403 permission denials as security events
+    if (statusCode === 403) {
+      logSecurityEvent({
+        eventType: 'permission_denied',
+        severity: 'warning',
+        actor: actor || undefined,
+        actorType: actorType as any,
+        target: path,
+        details: { method, status_code: statusCode, resource_type: resourceType },
+        ipSource: ip,
+        requestId,
+      });
+    }
   } catch { /* never block requests for logging failures */ }
 });
 
@@ -436,6 +461,16 @@ app.post('/api/auth/login', async (c) => {
       loginAttempts.delete(ip);
     } else if (attempts.count >= LOGIN_RATE_LIMIT) {
       const retryAfter = Math.ceil((attempts.firstAttempt + LOGIN_RATE_WINDOW_MS - now) / 1000);
+      logSecurityEvent({
+        eventType: 'rate_limited',
+        severity: 'warning',
+        actor: undefined,
+        actorType: 'unknown',
+        target: '/api/auth/login',
+        details: { attempts: attempts.count, window_ms: LOGIN_RATE_WINDOW_MS },
+        ipSource: ip,
+        requestId: (c.get as any)('requestId'),
+      });
       return c.json({ success: false, error: `Too many login attempts. Try again in ${Math.ceil(retryAfter / 60)} minutes.` }, 429);
     }
   }
@@ -458,11 +493,29 @@ app.post('/api/auth/login', async (c) => {
     const entry = loginAttempts.get(ip) || { count: 0, firstAttempt: now };
     entry.count++;
     loginAttempts.set(ip, entry);
+    logSecurityEvent({
+      eventType: 'auth_failure',
+      severity: 'warning',
+      actorType: 'unknown',
+      target: '/api/auth/login',
+      details: { attempt_number: entry.count },
+      ipSource: ip,
+      requestId: (c.get as any)('requestId'),
+    });
     return c.json({ success: false, error: 'Invalid password' }, 401);
   }
 
   // Successful login clears rate limit
   loginAttempts.delete(ip);
+  logSecurityEvent({
+    eventType: 'auth_success',
+    severity: 'info',
+    actor: 'gorn',
+    actorType: 'human',
+    target: '/api/auth/login',
+    ipSource: ip,
+    requestId: (c.get as any)('requestId'),
+  });
 
   // Set session cookie
   const token = generateSessionToken();
@@ -480,6 +533,16 @@ app.post('/api/auth/login', async (c) => {
 
 // Logout
 app.post('/api/auth/logout', (c) => {
+  const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+  logSecurityEvent({
+    eventType: 'session_destroyed',
+    severity: 'info',
+    actor: 'gorn',
+    actorType: 'human',
+    target: '/api/auth/logout',
+    ipSource: ip,
+    requestId: (c.get as any)('requestId'),
+  });
   deleteCookie(c, SESSION_COOKIE_NAME, { path: '/' });
   return c.json({ success: true });
 });
@@ -508,6 +571,17 @@ app.post('/api/settings', async (c) => {
   // Only allow from browser sessions (Gorn) or local requests, not beast API calls
   const asParam = c.req.query('as');
   if (asParam) {
+    const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+    logSecurityEvent({
+      eventType: 'impersonation_blocked',
+      severity: 'warning',
+      actor: asParam,
+      actorType: 'beast',
+      target: '/api/settings',
+      details: { method: 'POST', blocked_reason: 'beast_api_call' },
+      ipSource: ip,
+      requestId: (c.get as any)('requestId'),
+    });
     return c.json({ error: 'Settings can only be changed by Gorn via the UI' }, 403);
   }
   const body = await c.req.json();
@@ -559,6 +633,26 @@ app.post('/api/settings', async (c) => {
   // Handle local bypass toggle
   if (typeof body.localBypass === 'boolean') {
     setSetting('auth_local_bypass', body.localBypass ? 'true' : 'false');
+  }
+
+  // Log security settings changes
+  const changes: string[] = [];
+  if (body.newPassword) changes.push('password_changed');
+  if (body.removePassword) changes.push('password_removed');
+  if (typeof body.authEnabled === 'boolean') changes.push(`auth_${body.authEnabled ? 'enabled' : 'disabled'}`);
+  if (typeof body.localBypass === 'boolean') changes.push(`local_bypass_${body.localBypass ? 'enabled' : 'disabled'}`);
+  if (changes.length > 0) {
+    const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+    logSecurityEvent({
+      eventType: 'settings_changed',
+      severity: 'warning',
+      actor: 'gorn',
+      actorType: 'human',
+      target: '/api/settings',
+      details: { changes },
+      ipSource: ip,
+      requestId: (c.get as any)('requestId'),
+    });
   }
 
   return c.json({
@@ -4167,6 +4261,82 @@ app.get('/api/audit/stats', (c) => {
 });
 
 // ============================================================================
+// Security Events API (T#545 — Security event logging)
+// ============================================================================
+
+const SECURITY_READ_ALLOWLIST = ['bertus', 'talon'];
+
+// GET /api/security/events — query security events
+app.get('/api/security/events', (c) => {
+  const requester = (c.req.query('as') || '').toLowerCase();
+  if (!hasSessionAuth(c) && !SECURITY_READ_ALLOWLIST.includes(requester)) {
+    return c.json({ error: 'Security events are restricted to Gorn and security team' }, 403);
+  }
+
+  const eventType = c.req.query('event_type');
+  const severity = c.req.query('severity');
+  const actor = c.req.query('actor');
+  const since = c.req.query('since');
+  const limit = parseInt(c.req.query('limit') || '100');
+  const offset = parseInt(c.req.query('offset') || '0');
+
+  let query = 'SELECT * FROM security_events WHERE 1=1';
+  let countQuery = 'SELECT COUNT(*) as count FROM security_events WHERE 1=1';
+  const params: any[] = [];
+  const countParams: any[] = [];
+
+  if (eventType) { query += ' AND event_type = ?'; countQuery += ' AND event_type = ?'; params.push(eventType); countParams.push(eventType); }
+  if (severity) { query += ' AND severity = ?'; countQuery += ' AND severity = ?'; params.push(severity); countParams.push(severity); }
+  if (actor) { query += ' AND actor = ?'; countQuery += ' AND actor = ?'; params.push(actor); countParams.push(actor); }
+  if (since) {
+    const sinceEpoch = Math.floor(new Date(since).getTime() / 1000);
+    query += ' AND timestamp >= ?'; countQuery += ' AND timestamp >= ?';
+    params.push(sinceEpoch); countParams.push(sinceEpoch);
+  }
+  query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+
+  const total = (sqlite.prepare(countQuery).get(...countParams) as any)?.count || 0;
+  const rows = sqlite.prepare(query).all(...params) as any[];
+
+  // Parse details JSON for convenience
+  const events = rows.map(r => ({
+    ...r,
+    details: r.details ? JSON.parse(r.details) : null,
+    timestamp_iso: new Date(r.timestamp * 1000).toISOString(),
+  }));
+
+  return c.json({ events, total, limit, offset });
+});
+
+// GET /api/security/events/stats — summary counts
+app.get('/api/security/events/stats', (c) => {
+  const requester = (c.req.query('as') || '').toLowerCase();
+  if (!hasSessionAuth(c) && !SECURITY_READ_ALLOWLIST.includes(requester)) {
+    return c.json({ error: 'Security event stats are restricted to Gorn and security team' }, 403);
+  }
+
+  const total = (sqlite.prepare('SELECT COUNT(*) as count FROM security_events').get() as any)?.count || 0;
+  const bySeverity = sqlite.prepare('SELECT severity, COUNT(*) as count FROM security_events GROUP BY severity ORDER BY count DESC').all();
+  const byType = sqlite.prepare('SELECT event_type, COUNT(*) as count FROM security_events GROUP BY event_type ORDER BY count DESC').all();
+  const byActor = sqlite.prepare('SELECT actor, COUNT(*) as count FROM security_events WHERE actor IS NOT NULL GROUP BY actor ORDER BY count DESC LIMIT 10').all();
+  const last24h = (sqlite.prepare('SELECT COUNT(*) as count FROM security_events WHERE timestamp > ?').get(Math.floor(Date.now() / 1000) - 86400) as any)?.count || 0;
+  const criticalCount = (sqlite.prepare("SELECT COUNT(*) as count FROM security_events WHERE severity = 'critical'").get() as any)?.count || 0;
+  const warningCount = (sqlite.prepare("SELECT COUNT(*) as count FROM security_events WHERE severity = 'warning'").get() as any)?.count || 0;
+
+  return c.json({
+    total,
+    last_24h: last24h,
+    critical: criticalCount,
+    warnings: warningCount,
+    by_severity: bySeverity,
+    by_type: byType,
+    by_actor: byActor,
+    retention_days: SECURITY_RETENTION_DAYS,
+  });
+});
+
+// ============================================================================
 // Teams API (Task #81 — Gnarl spec, thread #105)
 // ============================================================================
 
@@ -4913,12 +5083,15 @@ function runDbMaintenance() {
       `DELETE FROM audit_log WHERE timestamp < datetime('now', ?)`
     ).run(cutoff);
 
-    const pruned = (auditResult.changes || 0);
+    // Prune security_events older than 90-day retention period
+    const securityPruned = pruneSecurityEvents();
+
+    const pruned = (auditResult.changes || 0) + securityPruned;
 
     if (pruned > 0) {
       // VACUUM to reclaim space after large deletes
       sqlite.exec('VACUUM');
-      console.log(`[DB Maintenance] Pruned ${auditResult.changes} audit rows (>${DB_RETENTION_DAYS}d). VACUUM complete.`);
+      console.log(`[DB Maintenance] Pruned ${auditResult.changes} audit rows (>${DB_RETENTION_DAYS}d), ${securityPruned} security events (>${SECURITY_RETENTION_DAYS}d). VACUUM complete.`);
     } else {
       console.log(`[DB Maintenance] Nothing to prune.`);
     }
@@ -6443,6 +6616,15 @@ async function ensureFreshWithingsToken(): Promise<{ accessToken: string; userId
        expires_at = ?, user_id = ?, updated_at = ? WHERE id = ?`
     ).run(enc.encrypted, refreshEnc.encrypted, enc.iv, enc.tag, refreshEnc.iv, refreshEnc.tag, now + expires_in, userid, now, token.id);
 
+    logSecurityEvent({
+      eventType: 'token_refreshed',
+      severity: 'info',
+      actor: 'system',
+      actorType: 'system',
+      target: 'oauth:withings',
+      details: { provider: 'withings', user_id: userid },
+    });
+
     return { accessToken: access_token, userId: userid };
   } catch (err) {
     console.error('[Withings] Token refresh failed:', err);
@@ -6513,6 +6695,15 @@ app.get('/api/oauth/withings/callback', async (c) => {
       `INSERT INTO oauth_tokens (provider, user_id, access_token_enc, refresh_token_enc, access_iv, access_tag, refresh_iv, refresh_tag, expires_at, scopes, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run('withings', String(userid), accessEnc.encrypted, refreshEnc.encrypted, accessEnc.iv, accessEnc.tag, refreshEnc.iv, refreshEnc.tag, now + expires_in, scope || 'user.info,user.metrics', now, now);
+
+    logSecurityEvent({
+      eventType: 'token_created',
+      severity: 'info',
+      actor: 'gorn',
+      actorType: 'human',
+      target: 'oauth:withings',
+      details: { provider: 'withings', user_id: String(userid) },
+    });
 
     // Subscribe to webhook for weight/body composition (appli=1)
     try {
@@ -6589,6 +6780,17 @@ app.delete('/api/oauth/withings/disconnect', async (c) => {
     }
   } catch { /* best effort */ }
   sqlite.prepare("DELETE FROM oauth_tokens WHERE provider = 'withings'").run();
+  const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+  logSecurityEvent({
+    eventType: 'token_revoked',
+    severity: 'info',
+    actor: 'gorn',
+    actorType: 'human',
+    target: 'oauth:withings',
+    details: { provider: 'withings' },
+    ipSource: ip,
+    requestId: (c.get as any)('requestId'),
+  });
   return c.json({ disconnected: true });
 });
 
@@ -6815,6 +7017,15 @@ async function ensureFreshGoogleToken(): Promise<{ accessToken: string; userId: 
        expires_at = ?, updated_at = ? WHERE id = ?`
     ).run(enc.encrypted, enc.iv, enc.tag, now + expires_in, now, token.id);
 
+    logSecurityEvent({
+      eventType: 'token_refreshed',
+      severity: 'info',
+      actor: 'system',
+      actorType: 'system',
+      target: 'oauth:google',
+      details: { provider: 'google', user_id: token.user_id },
+    });
+
     return { accessToken: access_token, userId: token.user_id };
   } catch (err) {
     console.error('[Google] Token refresh failed:', err);
@@ -6935,6 +7146,15 @@ app.get('/api/oauth/google/callback', async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run('google', userEmail, accessEnc.encrypted, refreshEnc.encrypted, accessEnc.iv, accessEnc.tag, refreshEnc.iv, refreshEnc.tag, now + expires_in, scope || GOOGLE_SCOPES, now, now);
 
+    logSecurityEvent({
+      eventType: 'token_created',
+      severity: 'info',
+      actor: 'gorn',
+      actorType: 'human',
+      target: 'oauth:google',
+      details: { provider: 'google', user_id: userEmail },
+    });
+
     console.log(`[Google] OAuth connected: ${userEmail}`);
     return c.redirect('/settings?google=connected');
   } catch (err) {
@@ -6974,6 +7194,17 @@ app.delete('/api/oauth/google/disconnect', async (c) => {
     }
   } catch { /* best effort */ }
   sqlite.prepare("DELETE FROM oauth_tokens WHERE provider = 'google'").run();
+  const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+  logSecurityEvent({
+    eventType: 'token_revoked',
+    severity: 'info',
+    actor: 'gorn',
+    actorType: 'human',
+    target: 'oauth:google',
+    details: { provider: 'google' },
+    ipSource: ip,
+    requestId: (c.get as any)('requestId'),
+  });
   return c.json({ disconnected: true });
 });
 

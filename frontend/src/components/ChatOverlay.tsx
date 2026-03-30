@@ -12,7 +12,7 @@ const PAGE_SIZE = 30;
 interface Message {
   id: number;
   sender: string;
-  content: string;
+  message: string;
   read_at: string | null;
   created_at: string;
 }
@@ -50,7 +50,7 @@ const ChatMessage = memo(function ChatMessage({ msg, onImgClick }: {
         <ReactMarkdown
           remarkPlugins={remarkPluginsStable}
           components={mdComponentsStable}
-        >{autolinkIds(msg.content)}</ReactMarkdown>
+        >{autolinkIds(msg.message)}</ReactMarkdown>
       </div>
       <span className={styles.msgTime}>
         {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
@@ -60,7 +60,7 @@ const ChatMessage = memo(function ChatMessage({ msg, onImgClick }: {
       </span>
     </div>
   );
-}, (prev, next) => prev.msg.id === next.msg.id && prev.msg.read_at === next.msg.read_at && prev.msg.content === next.msg.content);
+}, (prev, next) => prev.msg.id === next.msg.id && prev.msg.read_at === next.msg.read_at && prev.msg.message === next.msg.message);
 
 const EMOJI_GROUPS = [
   { label: 'Smileys', emojis: ['😊', '😂', '🤣', '😍', '🥰', '😘', '😎', '🤔', '😅', '😢', '😤', '🙄', '😴', '🤗', '😇', '🫡', '🫠'] },

@@ -2090,7 +2090,7 @@ app.post('/api/upload', async (c) => {
           processedBuffer = await sharp(buffer)
             .rotate()
             .resize(1920, null, { withoutEnlargement: true })
-            .jpeg({ quality: 80 })
+            .jpeg({ quality: 95 })
             .withMetadata({ orientation: undefined })
             .toBuffer();
           finalExt = '.jpg';
@@ -2098,7 +2098,7 @@ app.post('/api/upload', async (c) => {
         } else if (buffer.length > 2 * 1024 * 1024) {
           processedBuffer = await sharp(buffer)
             .rotate()
-            .jpeg({ quality: 85 })
+            .jpeg({ quality: 95 })
             .withMetadata({ orientation: undefined })
             .toBuffer();
           finalExt = '.jpg';
@@ -7241,7 +7241,7 @@ app.post('/api/routine/photo/upload', async (c) => {
       processedBuffer = await sharp(buffer)
         .rotate()
         .resize(1920, null, { withoutEnlargement: true })
-        .jpeg({ quality: 85 })
+        .jpeg({ quality: 95 })
         .withMetadata({ orientation: undefined })
         .toBuffer();
       ext = '.jpg';

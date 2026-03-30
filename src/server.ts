@@ -95,6 +95,15 @@ import {
 } from './server/security-logger.ts';
 
 import {
+  createToken,
+  validateToken,
+  rotateToken,
+  revokeToken,
+  listTokens,
+  pruneBeastTokens,
+} from './server/beast-tokens.ts';
+
+import {
   listTraces,
   getTrace,
   getTraceChain,
@@ -329,6 +338,36 @@ app.use('/api/*', async (c, next) => {
     return next();
   }
 
+  // Bearer token auth (T#546 — Beast API tokens)
+  const authHeader = c.req.header('Authorization');
+  if (authHeader?.startsWith('Bearer den_')) {
+    const token = authHeader.slice(7); // Strip "Bearer "
+    const result = validateToken(token);
+
+    if (result.valid) {
+      // Token validated — set actor identity and skip further auth
+      c.set('actor' as any, result.beast);
+      c.set('actorType' as any, 'beast');
+      c.set('authMethod' as any, 'token');
+      c.set('tokenId' as any, result.tokenId);
+      return next();
+    } else {
+      // Invalid/expired token — log and reject
+      const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+      logSecurityEvent({
+        eventType: 'auth_failure',
+        severity: 'warning',
+        actor: result.beast || 'unknown',
+        actorType: 'beast',
+        target: path,
+        details: { reason: result.reason, auth_method: 'bearer_token' },
+        ipSource: ip,
+        requestId: (c.get as any)('requestId'),
+      });
+      return c.json({ error: 'Invalid or expired token' }, 401);
+    }
+  }
+
   if (!isAuthenticated(c)) {
     return c.json({ error: 'Unauthorized', requiresAuth: true }, 401);
   }
@@ -369,34 +408,54 @@ app.use('/api/*', async (c, next) => {
   // Log after handler completes
   try {
     const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
-    // Actor extraction chain (Bertus spec):
-    // 1. ?as= query param (Beast API calls)
-    // 2. Request body .author or .beast field (forum posts, reactions)
-    // 3. Path patterns (e.g. /api/dm/karo/..., /api/notifications/karo)
-    // 4. Session cookie → "gorn" (browser requests)
-    // 5. X-Beast header (future: Beast-to-API calls)
-    // 6. Fallback: "unknown"
-    let actor = c.req.query('as') || '';
+    // Actor extraction chain (updated for T#546 Beast tokens):
+    // 1. Bearer token identity (set by auth middleware — trusted)
+    // 2. Session cookie → "gorn" (browser requests — trusted)
+    // 3. ?as= query param (legacy, logged for migration tracking)
+    // 4. Request body .author or .beast field (legacy)
+    // 5. Path patterns (e.g. /api/dm/karo/...)
+    // 6. X-Beast header (future)
+    // 7. Fallback: "unknown"
+    const tokenActor = (c.get as any)('actor') as string | undefined;
+    const tokenActorType = (c.get as any)('actorType') as string | undefined;
+    let actor = tokenActor || '';
+    let actorType = tokenActorType || '';
+
+    if (!actor) {
+      // Legacy: ?as= parameter (log for migration tracking)
+      const asParam = c.req.query('as') || '';
+      if (asParam) {
+        actor = asParam;
+        logSecurityEvent({
+          eventType: 'settings_changed', // Reuse existing type for legacy tracking
+          severity: 'info',
+          actor: asParam,
+          actorType: 'beast',
+          target: path,
+          details: { auth_method: 'legacy_as_param', deprecation: 'Use Bearer token auth' },
+          ipSource: ip,
+          requestId,
+        });
+      }
+    }
     if (!actor && bodyData) {
       if (bodyData.author && typeof bodyData.author === 'string') actor = bodyData.author;
       else if (bodyData.beast && typeof bodyData.beast === 'string') actor = bodyData.beast;
       else if (bodyData.from && typeof bodyData.from === 'string') actor = bodyData.from;
     }
     if (!actor) {
-      // Try path patterns: /api/dm/{beast}/..., /api/schedules/{beast}
-      // Exclude known sub-paths (messages, dashboard, due) that aren't beast names
       const pathMatch = path.match(/\/api\/(?:dm|schedules)\/(?!messages|dashboard|due|pending)([a-z][\w-]*)/i);
       if (pathMatch) actor = pathMatch[1];
     }
     if (!actor) {
-      // Session cookie = Gorn (browser)
       if (hasSessionAuth(c)) actor = 'gorn';
     }
     if (!actor) {
-      // X-Beast header (future use)
       actor = c.req.header('x-beast') || 'unknown';
     }
-    const actorType = hasSessionAuth(c) ? 'human' : 'beast';
+    if (!actorType) {
+      actorType = hasSessionAuth(c) ? 'human' : 'beast';
+    }
     const statusCode = c.res.status;
 
     // Extract resource info from path
@@ -545,6 +604,87 @@ app.post('/api/auth/logout', (c) => {
   });
   deleteCookie(c, SESSION_COOKIE_NAME, { path: '/' });
   return c.json({ success: true });
+});
+
+// ============================================================================
+// Beast Token Routes (T#546 — API tokens per Beast)
+// ============================================================================
+
+// Create token — Gorn session auth only
+app.post('/api/auth/tokens', async (c) => {
+  if (!hasSessionAuth(c)) {
+    return c.json({ error: 'Token creation requires Gorn session auth' }, 403);
+  }
+  // Block ?as= on this endpoint
+  if (c.req.query('as')) {
+    return c.json({ error: 'Token creation does not accept ?as= parameter' }, 403);
+  }
+
+  const body = await c.req.json();
+  const { beast, ttl_hours } = body;
+  if (!beast || typeof beast !== 'string') {
+    return c.json({ error: 'beast name required' }, 400);
+  }
+
+  const result = createToken(beast, 'gorn', ttl_hours);
+  if ('error' in result) {
+    return c.json({ error: result.error }, 400);
+  }
+
+  return c.json({
+    token: result.token,
+    id: result.id,
+    expires_at: result.expiresAt,
+    beast,
+  });
+});
+
+// List tokens — Gorn session auth only (no hashes exposed)
+app.get('/api/auth/tokens', (c) => {
+  if (!hasSessionAuth(c)) {
+    return c.json({ error: 'Token listing requires Gorn session auth' }, 403);
+  }
+  return c.json({ tokens: listTokens() });
+});
+
+// Revoke token — Gorn session auth only
+app.delete('/api/auth/tokens/:id', (c) => {
+  if (!hasSessionAuth(c)) {
+    return c.json({ error: 'Token revocation requires Gorn session auth' }, 403);
+  }
+  const tokenId = parseInt(c.req.param('id'), 10);
+  if (isNaN(tokenId)) {
+    return c.json({ error: 'Invalid token ID' }, 400);
+  }
+
+  const result = revokeToken(tokenId, 'gorn');
+  if (!result.success) {
+    return c.json({ error: result.error }, 404);
+  }
+  return c.json({ revoked: true });
+});
+
+// Rotate token — Beast self-service (requires valid Bearer token)
+app.post('/api/auth/tokens/rotate', (c) => {
+  const authMethod = (c.get as any)('authMethod');
+  const beast = (c.get as any)('actor') as string;
+  const tokenId = (c.get as any)('tokenId') as number;
+
+  if (authMethod !== 'token' || !beast || !tokenId) {
+    return c.json({ error: 'Token rotation requires Bearer token auth' }, 403);
+  }
+
+  const result = rotateToken(tokenId, beast);
+  if ('error' in result) {
+    return c.json({ error: result.error }, 500);
+  }
+
+  return c.json({
+    token: result.token,
+    id: result.id,
+    expires_at: result.expiresAt,
+    beast,
+  });
 });
 
 // ============================================================================
@@ -5093,12 +5233,15 @@ function runDbMaintenance() {
     // Prune security_events older than 90-day retention period
     const securityPruned = pruneSecurityEvents();
 
-    const pruned = (auditResult.changes || 0) + securityPruned;
+    // Prune expired/revoked beast tokens older than 7 days (T#546)
+    const tokensPruned = pruneBeastTokens();
+
+    const pruned = (auditResult.changes || 0) + securityPruned + tokensPruned;
 
     if (pruned > 0) {
       // VACUUM to reclaim space after large deletes
       sqlite.exec('VACUUM');
-      console.log(`[DB Maintenance] Pruned ${auditResult.changes} audit rows (>${DB_RETENTION_DAYS}d), ${securityPruned} security events (>${SECURITY_RETENTION_DAYS}d). VACUUM complete.`);
+      console.log(`[DB Maintenance] Pruned ${auditResult.changes} audit rows (>${DB_RETENTION_DAYS}d), ${securityPruned} security events (>${SECURITY_RETENTION_DAYS}d), ${tokensPruned} expired tokens. VACUUM complete.`);
     } else {
       console.log(`[DB Maintenance] Nothing to prune.`);
     }

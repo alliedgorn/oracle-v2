@@ -1992,8 +1992,13 @@ app.get('/api/forum/unread/:beast', (c) => {
   });
 });
 
+// File archive columns (T#533)
+try { sqlite.prepare(`ALTER TABLE files ADD COLUMN archived_at INTEGER`).run(); } catch { /* exists */ }
+try { sqlite.prepare(`ALTER TABLE files ADD COLUMN archive_path TEXT`).run(); } catch { /* exists */ }
+
 // Image upload with validation and resize
 const UPLOADS_DIR = path.join(ORACLE_DATA_DIR, 'uploads');
+const ARCHIVE_DIR = path.join(ORACLE_DATA_DIR, 'uploads', 'archive');
 const MAX_IMAGE_SIZE = 30 * 1024 * 1024; // 30MB for images
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB for other files
 
@@ -2247,11 +2252,21 @@ app.get('/api/files/stats', (c) => {
   `).all() as any[];
   const byContext = sqlite.prepare('SELECT context, COUNT(*) as count FROM files WHERE deleted_at IS NULL GROUP BY context').all() as any[];
 
+  const archived = sqlite.prepare(
+    'SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as total_size FROM files WHERE archived_at IS NOT NULL'
+  ).get() as any;
+  const pendingArchive = sqlite.prepare(
+    'SELECT COUNT(*) as count FROM files WHERE deleted_at IS NOT NULL AND archived_at IS NULL'
+  ).get() as any;
+
   return c.json({
     total_files: total.count,
     total_size: total.total_size,
     by_type: byType,
     by_context: byContext,
+    archived_files: archived.count,
+    archived_size: archived.total_size,
+    pending_archive: pendingArchive.count,
   });
 });
 
@@ -4939,6 +4954,191 @@ app.get('/api/db/stats', (c) => {
 setTimeout(runDbMaintenance, 30_000);
 setInterval(runDbMaintenance, DB_MAINTENANCE_INTERVAL);
 console.log(`[DB Maintenance] Retention: ${DB_RETENTION_DAYS} days, interval: 6h`);
+
+// ── File Archive Cycle (T#533) ──────────────────────────────────────
+// Moves soft-deleted files to compressed tar.gz archives after 7-day grace period.
+// Nothing is Deleted — files are archived, never permanently removed.
+
+const FILE_ARCHIVE_GRACE_DAYS = 7;
+const FILE_ARCHIVE_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours (same as DB maintenance)
+
+function runFileArchive() {
+  try {
+    const graceCutoff = Date.now() - (FILE_ARCHIVE_GRACE_DAYS * 24 * 60 * 60 * 1000);
+
+    // Find files deleted more than 7 days ago that haven't been archived yet
+    const filesToArchive = sqlite.prepare(
+      `SELECT id, filename, original_name, size_bytes FROM files
+       WHERE deleted_at IS NOT NULL AND deleted_at < ? AND archived_at IS NULL`
+    ).all(graceCutoff) as { id: number; filename: string; original_name: string; size_bytes: number }[];
+
+    if (filesToArchive.length === 0) return;
+
+    // Create archive directory: uploads/archive/YYYY-MM/
+    const now = new Date();
+    const monthDir = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const archiveDir = path.join(ARCHIVE_DIR, monthDir);
+    if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
+
+    // Archive filename: archive-YYYY-MM-DD.tar.gz
+    const dateStr = now.toISOString().slice(0, 10);
+    const archiveName = `archive-${dateStr}.tar.gz`;
+    const archivePath = path.join(archiveDir, archiveName);
+    const relativeArchivePath = `archive/${monthDir}/${archiveName}`;
+
+    // Collect files that actually exist on disk
+    const existingFiles: typeof filesToArchive = [];
+    for (const f of filesToArchive) {
+      const filePath = path.join(UPLOADS_DIR, f.filename);
+      if (fs.existsSync(filePath)) {
+        existingFiles.push(f);
+      } else {
+        // File already gone from disk — mark as archived with no path
+        sqlite.prepare('UPDATE files SET archived_at = ? WHERE id = ?').run(Date.now(), f.id);
+      }
+    }
+
+    if (existingFiles.length === 0) return;
+
+    // Build tar.gz using system tar command
+    // If archive already exists for today, append is not supported with gzip,
+    // so use a unique suffix
+    let finalArchivePath = archivePath;
+    if (fs.existsSync(archivePath)) {
+      const suffix = Date.now().toString(36);
+      finalArchivePath = path.join(archiveDir, `archive-${dateStr}-${suffix}.tar.gz`);
+    }
+    const finalRelativePath = path.relative(path.join(ORACLE_DATA_DIR, 'uploads'), finalArchivePath);
+
+    // Create a file list for tar
+    const fileListPath = path.join(archiveDir, `.archive-list-${Date.now()}.txt`);
+    fs.writeFileSync(fileListPath, existingFiles.map(f => f.filename).join('\n'));
+
+    const { execSync } = require('child_process');
+    execSync(`tar -czf "${finalArchivePath}" -C "${UPLOADS_DIR}" -T "${fileListPath}"`, {
+      timeout: 120_000, // 2 min timeout
+    });
+
+    // Clean up file list
+    fs.unlinkSync(fileListPath);
+
+    // Verify archive was created
+    if (!fs.existsSync(finalArchivePath)) {
+      console.error(`[File Archive] Failed to create archive: ${finalArchivePath}`);
+      return;
+    }
+
+    const archiveSize = fs.statSync(finalArchivePath).size;
+
+    // Update DB: mark files as archived, remove originals
+    const archiveTimestamp = Date.now();
+    const updateStmt = sqlite.prepare('UPDATE files SET archived_at = ?, archive_path = ? WHERE id = ?');
+    let totalFreed = 0;
+
+    for (const f of existingFiles) {
+      updateStmt.run(archiveTimestamp, finalRelativePath, f.id);
+      const filePath = path.join(UPLOADS_DIR, f.filename);
+      try {
+        fs.unlinkSync(filePath);
+        totalFreed += f.size_bytes;
+      } catch (err) {
+        console.error(`[File Archive] Failed to remove original: ${f.filename}`, err);
+      }
+    }
+
+    console.log(`[File Archive] Archived ${existingFiles.length} files → ${finalRelativePath} (${(archiveSize / 1024).toFixed(1)}KB archive, ${(totalFreed / 1024 / 1024).toFixed(1)}MB freed)`);
+  } catch (err) {
+    console.error(`[File Archive] Error:`, err);
+  }
+}
+
+// GET /api/files/archive/stats — archive statistics
+app.get('/api/files/archive/stats', (c) => {
+  const archived = sqlite.prepare(
+    `SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as original_size FROM files WHERE archived_at IS NOT NULL`
+  ).get() as any;
+
+  const pending = sqlite.prepare(
+    `SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as total_size FROM files
+     WHERE deleted_at IS NOT NULL AND archived_at IS NULL`
+  ).get() as any;
+
+  // List archive bundles on disk
+  const bundles: { path: string; size: number; created: string }[] = [];
+  if (fs.existsSync(ARCHIVE_DIR)) {
+    for (const month of fs.readdirSync(ARCHIVE_DIR)) {
+      const monthPath = path.join(ARCHIVE_DIR, month);
+      if (!fs.statSync(monthPath).isDirectory()) continue;
+      for (const file of fs.readdirSync(monthPath)) {
+        if (!file.endsWith('.tar.gz')) continue;
+        const stat = fs.statSync(path.join(monthPath, file));
+        bundles.push({
+          path: `archive/${month}/${file}`,
+          size: stat.size,
+          created: stat.mtime.toISOString(),
+        });
+      }
+    }
+  }
+
+  return c.json({
+    archived_files: archived.count,
+    original_size_bytes: archived.original_size,
+    pending_archive: pending.count,
+    pending_size_bytes: pending.total_size,
+    grace_days: FILE_ARCHIVE_GRACE_DAYS,
+    bundles,
+  });
+});
+
+// POST /api/files/archive/run — manual trigger
+app.post('/api/files/archive/run', (c) => {
+  runFileArchive();
+  return c.json({ status: 'ok', message: 'Archive cycle completed' });
+});
+
+// POST /api/files/:id/restore — restore an archived file
+app.post('/api/files/:id/restore', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const file = sqlite.prepare('SELECT * FROM files WHERE id = ?').get(id) as any;
+  if (!file) return c.json({ error: 'File not found' }, 404);
+  if (!file.deleted_at) return c.json({ error: 'File is not deleted' }, 400);
+
+  if (file.archived_at && file.archive_path) {
+    // Extract from archive
+    const archiveFullPath = path.join(UPLOADS_DIR, file.archive_path);
+    if (!fs.existsSync(archiveFullPath)) {
+      return c.json({ error: 'Archive bundle not found on disk' }, 500);
+    }
+
+    try {
+      const { execSync } = require('child_process');
+      execSync(`tar -xzf "${archiveFullPath}" -C "${UPLOADS_DIR}" "${file.filename}"`, {
+        timeout: 30_000,
+      });
+    } catch (err) {
+      return c.json({ error: 'Failed to extract file from archive', details: String(err) }, 500);
+    }
+
+    if (!fs.existsSync(path.join(UPLOADS_DIR, file.filename))) {
+      return c.json({ error: 'File not found in archive bundle' }, 500);
+    }
+  } else {
+    // File was only soft-deleted, not archived — check it still exists
+    if (!fs.existsSync(path.join(UPLOADS_DIR, file.filename))) {
+      return c.json({ error: 'File not found on disk' }, 500);
+    }
+  }
+
+  // Clear deleted_at and archived_at
+  sqlite.prepare('UPDATE files SET deleted_at = NULL, archived_at = NULL, archive_path = NULL WHERE id = ?').run(id);
+  return c.json({ restored: true, id, filename: file.filename, original_name: file.original_name });
+});
+
+// Run file archive on boot (after 60s) and every 6 hours
+setTimeout(runFileArchive, 60_000);
+setInterval(runFileArchive, FILE_ARCHIVE_INTERVAL);
+console.log(`[File Archive] Grace: ${FILE_ARCHIVE_GRACE_DAYS} days, interval: 6h`);
 
 // Withings daily auto-sync (T#523) — sync every 24h, first run 60s after boot
 const WITHINGS_SYNC_INTERVAL = 60 * 60 * 1000; // 1 hour

@@ -96,6 +96,8 @@ export function Files() {
   const [contextFilter, setContextFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [lightbox, setLightbox] = useState<FileRecord | null>(null);
+  const [lightboxDims, setLightboxDims] = useState<{ w: number; h: number } | null>(null);
 
   const fetchFiles = useCallback(async () => {
     setLoading(true);
@@ -213,6 +215,14 @@ export function Files() {
                           src={f.url || `${API_BASE}/files/${f.id}/download`}
                           alt={f.original_name}
                           className={styles.previewThumb}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => {
+                            setLightbox(f);
+                            setLightboxDims(null);
+                            const img = new Image();
+                            img.onload = () => setLightboxDims({ w: img.naturalWidth, h: img.naturalHeight });
+                            img.src = f.url || `${API_BASE}/files/${f.id}/download`;
+                          }}
                         />
                       ) : (
                         <span className={styles.previewIcon}>{getFileTypeIcon(f.mime_type, f.original_name)}</span>
@@ -297,6 +307,28 @@ export function Files() {
             </div>
           )}
         </>
+      )}
+
+      {lightbox && (
+        <div className={styles.lightbox} onClick={() => setLightbox(null)}>
+          <div className={styles.lightboxContent} onClick={(e) => e.stopPropagation()}>
+            <img
+              src={lightbox.url || `${API_BASE}/files/${lightbox.id}/download`}
+              alt={lightbox.original_name}
+              className={styles.lightboxImg}
+            />
+            <div className={styles.lightboxMeta}>
+              <div className={styles.lightboxFilename}>{lightbox.original_name}</div>
+              <div className={styles.lightboxDetails}>
+                {formatFileSize(lightbox.size_bytes)}
+                {lightboxDims && ` \u00b7 ${lightboxDims.w}\u00d7${lightboxDims.h}`}
+                {' \u00b7 '}{new Date(lightbox.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                {lightbox.uploaded_by && ` \u00b7 ${ANIMAL_EMOJI[lightbox.uploaded_by] || ''} ${lightbox.uploaded_by}`}
+              </div>
+            </div>
+            <button className={styles.lightboxClose} onClick={() => setLightbox(null)}>{'\u2715'}</button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -75,9 +75,8 @@
   padding: 0;
 }
 
-html, body {
-  overflow: hidden;
-  height: 100%;
+html {
+  overflow-x: hidden;
 }
 
 body {
@@ -87,6 +86,7 @@ body {
   min-height: 100vh;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 h1, h2, h3, h4 {
@@ -145,11 +145,6 @@ a {
 }
 
 @media (max-width: 768px) {
-  html, body {
-    overflow: auto;
-    height: auto;
-  }
-
   .app-layout {
     display: block;
     height: auto;

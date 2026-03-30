@@ -22,7 +22,7 @@ const TAB_CONFIG: { id: ForgeTab; label: string; icon: string }[] = [
 ];
 
 const TYPE_ICONS: Record<string, string> = {
-  meal: '🍽️', workout: '💪', weight: '⚖️', note: '📝', photo: '📷', bodyfat: '📊',
+  meal: '🍽️', workout: '💪', weight: '⚖️', note: '📝', photo: '📷', bodyfat: '📊', measurement: '📊',
 };
 
 function parseExerciseName(raw: string): { name: string; equipment: string } {
@@ -793,6 +793,15 @@ export function Forge() {
       case 'bodyfat': return `${Number(d.value).toFixed(2)}% body fat`;
       case 'note': return d.text || 'Note';
       case 'photo': return `${d.tag ? `[${d.tag}] ` : ''}${d.notes || 'Progress photo'}`;
+      case 'measurement': {
+        const parts = [
+          d.body_fat_pct != null ? `${d.body_fat_pct}% fat` : '',
+          d.muscle_mass != null ? `${d.muscle_mass}kg muscle` : '',
+          d.bone_mass != null ? `${d.bone_mass}kg bone` : '',
+          d.hydration != null ? `${d.hydration}kg water` : '',
+        ].filter(Boolean).join(', ');
+        return `Body Composition — ${parts || 'data recorded'}`;
+      }
       default: return JSON.stringify(d);
     }
   }
@@ -1388,68 +1397,149 @@ export function Forge() {
           )}
 
           {/* Body Composition */}
-          {bodyComp?.latest && (
+          {bodyComp?.latest ? (
             <div className={styles.weightSection}>
               <div className={styles.historyHeader}>
                 <h3>Body Composition</h3>
               </div>
-              <div className={styles.summaryCards}>
-                {bodyComp.latest.body_fat_pct != null && (
-                  <div className={styles.summaryCard}>
-                    <span className={styles.summaryValue}>
-                      {bodyComp.latest.body_fat_pct}%
-                      {bodyComp.trends?.body_fat_pct?.direction === 'down' && <span className={styles.trendArrowDown}> ↓</span>}
-                      {bodyComp.trends?.body_fat_pct?.direction === 'up' && <span className={styles.trendArrow}> ↑</span>}
-                    </span>
-                    <span className={styles.summaryLabel}>Body Fat</span>
-                  </div>
-                )}
-                {bodyComp.latest.muscle_mass != null && (
-                  <div className={styles.summaryCard}>
-                    <span className={styles.summaryValue}>
-                      {bodyComp.latest.muscle_mass} kg
-                      {bodyComp.trends?.muscle_mass?.direction === 'up' && <span className={styles.trendArrowDown} style={{color: 'var(--accent)'}}>  ↑</span>}
-                      {bodyComp.trends?.muscle_mass?.direction === 'down' && <span className={styles.trendArrow}> ↓</span>}
-                    </span>
-                    <span className={styles.summaryLabel}>Muscle Mass</span>
-                  </div>
-                )}
-                {bodyComp.latest.fat_mass != null && (
-                  <div className={styles.summaryCard}>
-                    <span className={styles.summaryValue}>{bodyComp.latest.fat_mass} kg</span>
-                    <span className={styles.summaryLabel}>Fat Mass</span>
-                  </div>
-                )}
-                {bodyComp.latest.bone_mass != null && (
-                  <div className={styles.summaryCard}>
-                    <span className={styles.summaryValue}>{bodyComp.latest.bone_mass} kg</span>
-                    <span className={styles.summaryLabel}>Bone Mass</span>
-                  </div>
-                )}
-                {bodyComp.latest.hydration != null && (
-                  <div className={styles.summaryCard}>
-                    <span className={styles.summaryValue}>{bodyComp.latest.hydration}%</span>
-                    <span className={styles.summaryLabel}>Hydration</span>
-                  </div>
-                )}
-                {bodyComp.latest.visceral_fat != null && (
-                  <div className={styles.summaryCard}>
-                    <span className={styles.summaryValue}>{bodyComp.latest.visceral_fat}</span>
-                    <span className={styles.summaryLabel}>Visceral Fat</span>
-                  </div>
-                )}
-                {bodyComp.latest.fat_free_mass != null && (
-                  <div className={styles.summaryCard}>
-                    <span className={styles.summaryValue}>{bodyComp.latest.fat_free_mass} kg</span>
-                    <span className={styles.summaryLabel}>Fat-Free Mass</span>
-                  </div>
-                )}
+              {/* Metric Cards */}
+              <div className={styles.bodyCompGrid}>
+                {(() => {
+                  const latest = bodyComp.latest;
+                  const trends = bodyComp.trends || {};
+                  const getDelta = (key: string) => {
+                    const t = trends[key];
+                    if (!t || t.current == null || t.previous == null) return null;
+                    const diff = t.current - t.previous;
+                    if (diff === 0) return null;
+                    return diff;
+                  };
+                  const formatDelta = (delta: number | null, unit: string) => {
+                    if (delta == null) return null;
+                    const sign = delta > 0 ? '+' : '';
+                    return `${sign}${delta.toFixed(1)}${unit}`;
+                  };
+                  const bodyFatColor = (v: number) => v < 20 ? '#3fb950' : v <= 30 ? '#d29922' : '#f85149';
+                  const visceralColor = (v: number) => v < 10 ? '#3fb950' : v <= 15 ? '#d29922' : '#f85149';
+
+                  const metrics: { key: string; label: string; value: number | null; unit: string; color?: string; deltaKey: string }[] = [
+                    { key: 'body_fat_pct', label: 'Body Fat', value: latest.body_fat_pct, unit: '%', color: latest.body_fat_pct != null ? bodyFatColor(latest.body_fat_pct) : undefined, deltaKey: 'body_fat_pct' },
+                    { key: 'muscle_mass', label: 'Muscle Mass', value: latest.muscle_mass, unit: ' kg', deltaKey: 'muscle_mass' },
+                    { key: 'bone_mass', label: 'Bone Mass', value: latest.bone_mass, unit: ' kg', deltaKey: 'bone_mass' },
+                    { key: 'hydration', label: 'Hydration', value: latest.hydration, unit: ' kg', deltaKey: 'hydration' },
+                    { key: 'fat_mass', label: 'Fat Mass', value: latest.fat_mass, unit: ' kg', deltaKey: 'fat_mass' },
+                    { key: 'visceral_fat', label: 'Visceral Fat', value: latest.visceral_fat, unit: '', color: latest.visceral_fat != null ? visceralColor(latest.visceral_fat) : undefined, deltaKey: 'visceral_fat' },
+                  ];
+
+                  return metrics.filter(m => m.value != null).map(m => {
+                    const delta = getDelta(m.deltaKey);
+                    const deltaStr = formatDelta(delta, m.unit);
+                    return (
+                      <div key={m.key} className={styles.bodyCompCard} style={m.color ? { borderColor: m.color } : undefined}>
+                        <span className={styles.summaryLabel}>{m.label}</span>
+                        <span className={styles.summaryValue} style={m.color ? { color: m.color } : undefined}>
+                          {m.value}{m.unit}
+                        </span>
+                        {deltaStr && (
+                          <span style={{ fontSize: 12, color: delta! > 0 ? '#f85149' : '#3fb950', marginTop: 2 }}>
+                            {deltaStr} {delta! > 0 ? '↑' : '↓'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
               {bodyComp.previous && (
                 <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
                   vs previous: {new Date(bodyComp.previous.logged_at).toLocaleDateString()}
                 </p>
               )}
+
+              {/* Body Fat % Trend Chart */}
+              {bodyComp.measurements?.length > 1 && bodyComp.measurements.some((m: any) => m.body_fat_pct != null) && (
+                <div style={{ marginTop: 16 }}>
+                  <h4 style={{ margin: '0 0 8px', fontSize: 14, color: 'var(--text-secondary)' }}>Body Fat % Trend</h4>
+                  <div className={styles.trendChart}>
+                    {(() => {
+                      const data = bodyComp.measurements.filter((m: any) => m.body_fat_pct != null);
+                      const W = 600, H = 180, PAD_L = 45, PAD_R = 15, PAD_T = 15, PAD_B = 30;
+
+                      const values = data.map((m: any) => m.body_fat_pct);
+                      const dates = data.map((m: any) => new Date(m.logged_at).getTime());
+                      const allMin = Math.min(...values);
+                      const allMax = Math.max(...values);
+                      const padding = (allMax - allMin) * 0.15 || 1;
+                      const chartMin = allMin - padding;
+                      const chartMax = allMax + padding;
+                      const valRange = chartMax - chartMin || 1;
+                      const minDate = Math.min(...dates);
+                      const maxDate = Math.max(...dates);
+                      const dateRange = maxDate - minDate || 1;
+
+                      function toX(date: number) { return PAD_L + ((date - minDate) / dateRange) * (W - PAD_L - PAD_R); }
+                      function toY(val: number) { return H - PAD_B - ((val - chartMin) / valRange) * (H - PAD_T - PAD_B); }
+
+                      const pts = data.map((m: any) => ({
+                        x: toX(new Date(m.logged_at).getTime()),
+                        y: toY(m.body_fat_pct),
+                        val: m.body_fat_pct,
+                        date: m.logged_at,
+                      }));
+                      const lineD = pts.map((p: any, i: number) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                      const areaD = lineD + ` L ${pts[pts.length - 1].x} ${H - PAD_B} L ${pts[0].x} ${H - PAD_B} Z`;
+
+                      const showYear = ['3y', '10y', 'all'].includes(weightRange);
+                      const xLabels: { x: number; label: string }[] = [];
+                      for (let i = 0; i < 5; i++) {
+                        const t = minDate + (dateRange * i) / 4;
+                        const d = new Date(t);
+                        const fmt: Intl.DateTimeFormatOptions = showYear
+                          ? { month: 'short', year: 'numeric' }
+                          : { month: 'short', day: 'numeric' };
+                        xLabels.push({ x: toX(t), label: d.toLocaleDateString('en-US', fmt) });
+                      }
+
+                      return (
+                        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
+                          <text x={12} y={H / 2} fill="var(--text-muted)" fontSize={10} textAnchor="middle"
+                            transform={`rotate(-90, 12, ${H / 2})`}>%</text>
+                          {[0, 0.25, 0.5, 0.75, 1].map(frac => {
+                            const val = chartMin + valRange * frac;
+                            const y = toY(val);
+                            return (
+                              <g key={frac}>
+                                <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="var(--border)" strokeWidth={0.5} />
+                                <text x={PAD_L - 4} y={y + 3} fill="var(--text-muted)" fontSize={9} textAnchor="end">{val.toFixed(1)}</text>
+                              </g>
+                            );
+                          })}
+                          {xLabels.map((xl, i) => (
+                            <text key={i} x={xl.x} y={H - 6} fill="var(--text-muted)" fontSize={9} textAnchor="middle">{xl.label}</text>
+                          ))}
+                          <line x1={PAD_L} y1={H - PAD_B} x2={W - PAD_R} y2={H - PAD_B} stroke="var(--border)" strokeWidth={0.5} />
+                          <path d={areaD} fill="#d29922" opacity={0.15} />
+                          <path d={lineD} fill="none" stroke="#d29922" strokeWidth={2} />
+                          {pts.map((p: any, i: number) => (
+                            <circle key={i} cx={p.x} cy={p.y} r={3} fill="#d29922" style={{ cursor: 'pointer' }}>
+                              <title>{`${p.val}% — ${new Date(p.date).toLocaleDateString()}`}</title>
+                            </circle>
+                          ))}
+                        </svg>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className={styles.weightSection}>
+              <div className={styles.historyHeader}>
+                <h3>Body Composition</h3>
+              </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>
+                Connect Withings to track body composition metrics.
+              </p>
             </div>
           )}
 

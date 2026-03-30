@@ -1325,6 +1325,36 @@
   }
 }
 
+/* Body Composition Grid */
+.bodyCompGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.bodyCompCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top-width: 3px;
+}
+
+@media (max-width: 480px) {
+  .bodyCompGrid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .bodyCompCard {
+    padding: 10px;
+  }
+}
+
 /* Photo attach button in meal form */
 .photoAttachBtn {
   display: inline-flex;

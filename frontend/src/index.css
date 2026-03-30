@@ -128,7 +128,8 @@ a {
 }
 
 #root {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* App split layout — persistent Remote pane */
@@ -145,6 +146,11 @@ a {
 }
 
 @media (max-width: 768px) {
+  #root {
+    height: auto;
+    overflow: visible;
+  }
+
   .app-layout {
     display: block;
     height: auto;

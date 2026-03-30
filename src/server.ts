@@ -3820,6 +3820,12 @@ app.patch('/api/tasks/:id', async (c) => {
   if (data.priority && !validPriorities.includes(data.priority)) return c.json({ error: `Invalid priority. Valid: ${validPriorities.join(', ')}` }, 400);
   if (data.type && !VALID_TASK_TYPES.includes(data.type)) return c.json({ error: `Invalid type. Valid: ${VALID_TASK_TYPES.join(', ')}` }, 400);
 
+  // Terminal status enforcement (T#529) — Done and Cancelled are final
+  const terminalStatuses = ['done', 'cancelled'];
+  if (data.status && terminalStatuses.includes((existing as any).status)) {
+    return c.json({ error: `Cannot change status: task is ${(existing as any).status}. Done and Cancelled are terminal statuses.` }, 400);
+  }
+
   // SDD enforcement: block forward transitions if approval_required and no approved spec
   if (data.status && ['in_progress', 'in_review', 'done'].includes(data.status)) {
     const gateError = checkApprovalGate(existing);

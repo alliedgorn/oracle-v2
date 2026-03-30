@@ -3,7 +3,7 @@
   bottom: 0;
   right: 16px;
   width: 380px;
-  height: 500px;
+  height: min(500px, calc(100vh - 60px));
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;

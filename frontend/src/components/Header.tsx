@@ -419,11 +419,12 @@ export function Header({ onRemoteToggle }: HeaderProps) {
         </span>
         <span className={styles.dividerSmall} />
         {onRemoteToggle && (
-          <button onClick={onRemoteToggle} className={styles.settingsLink} title="Remote Control">
+          <button onClick={onRemoteToggle} className={styles.settingsLink} title="Remote Control" style={{ position: 'relative' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
               <polyline points="17 2 12 7 7 2" />
             </svg>
+            {badges.dms > 0 && <span className={styles.remoteBadge}>{badges.dms > 99 ? '99+' : badges.dms}</span>}
           </button>
         )}
 <button onClick={() => openChat('sable', 'Sable')} className={styles.settingsLink} title="Chat with Sable">

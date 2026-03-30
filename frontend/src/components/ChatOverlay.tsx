@@ -157,9 +157,11 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
           const newOlder = older.filter((m: Message) => !existingIds.has(m.id));
           return [...newOlder, ...prev];
         });
-        // Restore scroll position after prepending
+        // Restore scroll position after prepending — double rAF to wait for React render + DOM paint
         requestAnimationFrame(() => {
-          if (el) el.scrollTop = el.scrollHeight - prevScrollHeight;
+          requestAnimationFrame(() => {
+            if (el) el.scrollTop = el.scrollHeight - prevScrollHeight;
+          });
         });
       }
     } catch {}

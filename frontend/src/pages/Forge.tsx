@@ -795,10 +795,10 @@ export function Forge() {
       case 'photo': return `${d.tag ? `[${d.tag}] ` : ''}${d.notes || 'Progress photo'}`;
       case 'measurement': {
         const parts = [
-          d.body_fat_pct != null ? `${d.body_fat_pct}% fat` : '',
-          d.muscle_mass != null ? `${d.muscle_mass}kg muscle` : '',
-          d.bone_mass != null ? `${d.bone_mass}kg bone` : '',
-          d.hydration != null ? `${d.hydration}kg water` : '',
+          d.body_fat_pct != null ? `${parseFloat(Number(d.body_fat_pct).toFixed(2))}% fat` : '',
+          d.muscle_mass != null ? `${parseFloat(Number(d.muscle_mass).toFixed(2))}kg muscle` : '',
+          d.bone_mass != null ? `${parseFloat(Number(d.bone_mass).toFixed(2))}kg bone` : '',
+          d.hydration != null ? `${parseFloat(Number(d.hydration).toFixed(2))}kg water` : '',
         ].filter(Boolean).join(', ');
         return `Body Composition — ${parts || 'data recorded'}`;
       }
@@ -1438,7 +1438,7 @@ export function Forge() {
                       <div key={m.key} className={styles.bodyCompCard} style={m.color ? { borderColor: m.color } : undefined}>
                         <span className={styles.summaryLabel}>{m.label}</span>
                         <span className={styles.summaryValue} style={m.color ? { color: m.color } : undefined}>
-                          {m.value}{m.unit}
+                          {typeof m.value === 'number' ? parseFloat(m.value.toFixed(2)) : m.value}{m.unit}
                         </span>
                         {deltaStr && (
                           <span style={{ fontSize: 12, color: delta! > 0 ? '#f85149' : '#3fb950', marginTop: 2 }}>

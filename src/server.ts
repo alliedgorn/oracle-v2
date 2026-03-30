@@ -6632,7 +6632,7 @@ async function syncWithingsMeasurements(startdate: number, enddate: number): Pro
     for (const m of grp.measures || []) {
       const field = WITHINGS_MEASTYPES[m.type];
       if (field) {
-        measurements[field] = m.value * Math.pow(10, m.unit);
+        measurements[field] = Math.round(m.value * Math.pow(10, m.unit) * 100) / 100;
       }
     }
     if (Object.keys(measurements).length === 0) continue;

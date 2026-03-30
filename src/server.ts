@@ -3111,6 +3111,16 @@ app.get('/api/dm/dashboard', (c) => {
   });
 });
 
+// GET /api/dm/unread-count — total DM unread count for Gorn (T#535, menu bar widget)
+app.get('/api/dm/unread-count', (c) => {
+  const data = getDashboard(100);
+  const gornConvos = data.conversations.filter(conv =>
+    conv.participants.some((p: string) => p.toLowerCase() === 'gorn')
+  );
+  const unread = gornConvos.reduce((sum, conv) => sum + conv.unreadCount, 0);
+  return c.json({ unread });
+});
+
 // Send a DM
 app.post('/api/dm', async (c) => {
   try {

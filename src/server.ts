@@ -6724,6 +6724,511 @@ app.post('/api/oauth/withings/sync', async (c) => {
 });
 
 // ============================================================================
+// Google OAuth Integration (T#541, Spec #30)
+// ============================================================================
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'https://denbook.online/api/oauth/google/callback';
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly';
+
+// PKCE state storage (in-memory, short-lived) — stores state → { timestamp, codeVerifier }
+const googleOauthStates = new Map<string, { ts: number; codeVerifier: string }>();
+
+// Google access control — Beast allowlist
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS google_access (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    beast TEXT NOT NULL UNIQUE,
+    scopes TEXT NOT NULL,
+    granted_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )
+`);
+
+// Google audit log
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS google_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    beast TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    query TEXT,
+    message_id TEXT,
+    created_at INTEGER NOT NULL
+  )
+`);
+
+// Rate limiting — per-Beast request tracking (in-memory)
+const googleRateLimits = new Map<string, number[]>();
+const GOOGLE_RATE_LIMIT = 30; // requests per minute per Beast
+
+function checkGoogleRateLimit(beast: string): boolean {
+  const now = Date.now();
+  const oneMinAgo = now - 60000;
+  const timestamps = (googleRateLimits.get(beast) || []).filter(t => t > oneMinAgo);
+  if (timestamps.length >= GOOGLE_RATE_LIMIT) return false;
+  timestamps.push(now);
+  googleRateLimits.set(beast, timestamps);
+  return true;
+}
+
+// PKCE helpers
+function generateCodeVerifier(): string {
+  return require('crypto').randomBytes(32).toString('base64url'); // 43 chars
+}
+
+function generateCodeChallenge(verifier: string): string {
+  return require('crypto').createHash('sha256').update(verifier).digest('base64url');
+}
+
+// Refresh Google tokens if needed
+async function ensureFreshGoogleToken(): Promise<{ accessToken: string; userId: string } | null> {
+  const token = sqlite.prepare("SELECT * FROM oauth_tokens WHERE provider = 'google' LIMIT 1").get() as any;
+  if (!token) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (token.expires_at > now + 600) {
+    return { accessToken: decryptToken(token.access_token_enc, token.access_iv || token.token_iv, token.access_tag || token.token_tag), userId: token.user_id };
+  }
+
+  // Refresh — Google does NOT rotate refresh tokens
+  try {
+    const refreshToken = decryptToken(token.refresh_token_enc, token.refresh_iv || token.token_iv, token.refresh_tag || token.token_tag);
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    });
+    const data = await res.json() as any;
+    if (data.error) throw new Error(`Refresh failed: ${data.error}`);
+
+    const { access_token, expires_in } = data;
+    const enc = encryptToken(access_token);
+    // Google keeps same refresh token — only update access token
+    sqlite.prepare(
+      `UPDATE oauth_tokens SET access_token_enc = ?, access_iv = ?, access_tag = ?,
+       expires_at = ?, updated_at = ? WHERE id = ?`
+    ).run(enc.encrypted, enc.iv, enc.tag, now + expires_in, now, token.id);
+
+    return { accessToken: access_token, userId: token.user_id };
+  } catch (err) {
+    console.error('[Google] Token refresh failed:', err);
+    return null;
+  }
+}
+
+// Google access control middleware
+function checkGoogleAccess(beast: string, requiredScope: string = 'gmail.readonly'): { allowed: boolean; error?: string; status?: number } {
+  const access = sqlite.prepare("SELECT scopes FROM google_access WHERE beast = ?").get(beast) as any;
+  if (!access) return { allowed: false, error: 'Not authorized for Google access', status: 401 };
+  const scopes = access.scopes.split(',').map((s: string) => s.trim());
+  if (!scopes.includes(requiredScope)) return { allowed: false, error: 'Insufficient Google scope', status: 403 };
+  return { allowed: true };
+}
+
+// Log Google API access
+function logGoogleAccess(beast: string, endpoint: string, query?: string, messageId?: string) {
+  const now = Math.floor(Date.now() / 1000);
+  sqlite.prepare("INSERT INTO google_audit_log (beast, endpoint, query, message_id, created_at) VALUES (?, ?, ?, ?, ?)").run(beast, endpoint, query || null, messageId || null, now);
+}
+
+// Wrap email content with untrusted boundary tags (prompt injection defense)
+function tagUntrustedContent(content: string, maxLength: number = 50000): string {
+  const truncated = content.length > maxLength ? content.substring(0, maxLength) + '\n[... truncated at 50KB]' : content;
+  return `--- BEGIN UNTRUSTED EMAIL CONTENT ---\n${truncated}\n--- END UNTRUSTED EMAIL CONTENT ---`;
+}
+
+// Sanitize email metadata fields (prompt injection defense)
+function sanitizeMetadata(value: string | undefined, maxLength: number): string {
+  if (!value) return '';
+  return value.substring(0, maxLength);
+}
+
+// GET /api/oauth/google/authorize — start OAuth flow with PKCE
+app.get('/api/oauth/google/authorize', (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn authentication required' }, 403);
+  if (!GOOGLE_CLIENT_ID) return c.json({ error: 'Google not configured (missing GOOGLE_CLIENT_ID)' }, 500);
+
+  // CSRF state + PKCE code verifier
+  const state = require('crypto').randomBytes(16).toString('hex');
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifier);
+
+  googleOauthStates.set(state, { ts: Date.now(), codeVerifier });
+  // Clean old states (>10 min)
+  for (const [k, v] of googleOauthStates) { if (Date.now() - v.ts > 600000) googleOauthStates.delete(k); }
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    scope: GOOGLE_SCOPES,
+    state,
+    access_type: 'offline',
+    prompt: 'consent', // Ensures refresh token is always returned
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+  });
+
+  console.log('[Google] OAuth flow initiated');
+  return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+// GET /api/oauth/google/callback — handle OAuth callback with PKCE
+app.get('/api/oauth/google/callback', async (c) => {
+  const code = c.req.query('code');
+  const state = c.req.query('state');
+  const error = c.req.query('error');
+
+  if (error) return c.redirect('/settings?oauth_error=' + encodeURIComponent(error));
+  if (!code || !state) return c.json({ error: 'Missing code or state' }, 400);
+
+  const stateData = googleOauthStates.get(state);
+  if (!stateData) return c.json({ error: 'Invalid or expired state (CSRF check failed)' }, 403);
+  googleOauthStates.delete(state);
+
+  try {
+    // Exchange code for tokens with PKCE code_verifier
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        grant_type: 'authorization_code',
+        code_verifier: stateData.codeVerifier,
+      }),
+    });
+    const data = await res.json() as any;
+    if (data.error) return c.redirect('/settings?oauth_error=' + encodeURIComponent(data.error_description || data.error));
+
+    const { access_token, refresh_token, expires_in, scope } = data;
+    if (!refresh_token) return c.redirect('/settings?oauth_error=' + encodeURIComponent('No refresh token returned — try disconnecting from Google and reconnecting'));
+
+    const now = Math.floor(Date.now() / 1000);
+
+    // Get user email from Google userinfo
+    let userEmail = 'unknown';
+    try {
+      const infoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: `Bearer ${access_token}` },
+      });
+      const info = await infoRes.json() as any;
+      userEmail = info.email || 'unknown';
+    } catch { /* non-critical */ }
+
+    // Encrypt tokens
+    const accessEnc = encryptToken(access_token);
+    const refreshEnc = encryptToken(refresh_token);
+
+    // Store (upsert — replace existing Google connection)
+    sqlite.prepare("DELETE FROM oauth_tokens WHERE provider = 'google'").run();
+    sqlite.prepare(
+      `INSERT INTO oauth_tokens (provider, user_id, access_token_enc, refresh_token_enc, access_iv, access_tag, refresh_iv, refresh_tag, expires_at, scopes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run('google', userEmail, accessEnc.encrypted, refreshEnc.encrypted, accessEnc.iv, accessEnc.tag, refreshEnc.iv, refreshEnc.tag, now + expires_in, scope || GOOGLE_SCOPES, now, now);
+
+    console.log(`[Google] OAuth connected: ${userEmail}`);
+    return c.redirect('/settings?google=connected');
+  } catch (err) {
+    console.error('[Google] OAuth callback error:', err);
+    return c.redirect('/settings?oauth_error=callback_failed');
+  }
+});
+
+// GET /api/oauth/google/status — connection status
+app.get('/api/oauth/google/status', (c) => {
+  if (!isForgeAuthorized(c)) return c.json({ error: 'Authentication required' }, 403);
+  const token = sqlite.prepare("SELECT provider, user_id, expires_at, scopes, updated_at FROM oauth_tokens WHERE provider = 'google' LIMIT 1").get() as any;
+  if (!token) return c.json({ connected: false });
+  const now = Math.floor(Date.now() / 1000);
+  return c.json({
+    connected: true,
+    email: token.user_id,
+    tokenExpired: token.expires_at < now,
+    lastUpdated: new Date(token.updated_at * 1000).toISOString(),
+    scopes: token.scopes,
+  });
+});
+
+// DELETE /api/oauth/google/disconnect — revoke and delete
+app.delete('/api/oauth/google/disconnect', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn authentication required' }, 403);
+  // Revoke at Google
+  try {
+    const tokenData = await ensureFreshGoogleToken();
+    if (tokenData) {
+      await fetch('https://oauth2.googleapis.com/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ token: tokenData.accessToken }),
+      });
+      console.log('[Google] Token revoked at Google');
+    }
+  } catch { /* best effort */ }
+  sqlite.prepare("DELETE FROM oauth_tokens WHERE provider = 'google'").run();
+  return c.json({ disconnected: true });
+});
+
+// --- Google Access Management (Gorn-only) ---
+
+// GET /api/google/access — list allowed Beasts
+app.get('/api/google/access', (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn authentication required' }, 403);
+  const rows = sqlite.prepare("SELECT beast, scopes, granted_by, created_at FROM google_access ORDER BY created_at").all();
+  return c.json({ access: rows });
+});
+
+// POST /api/google/access — grant Beast access
+app.post('/api/google/access', async (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn authentication required' }, 403);
+  const body = await c.req.json() as any;
+  const { beast, scopes } = body;
+  if (!beast || !scopes) return c.json({ error: 'Missing beast or scopes' }, 400);
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    sqlite.prepare("INSERT OR REPLACE INTO google_access (beast, scopes, granted_by, created_at) VALUES (?, ?, 'gorn', ?)").run(beast.toLowerCase(), scopes, now);
+    console.log(`[Google] Access granted: ${beast} (${scopes})`);
+    return c.json({ granted: true, beast, scopes });
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to grant access' }, 500);
+  }
+});
+
+// DELETE /api/google/access/:beast — revoke Beast access
+app.delete('/api/google/access/:beast', (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn authentication required' }, 403);
+  const beast = c.req.param('beast').toLowerCase();
+  sqlite.prepare("DELETE FROM google_access WHERE beast = ?").run(beast);
+  console.log(`[Google] Access revoked: ${beast}`);
+  return c.json({ revoked: true, beast });
+});
+
+// GET /api/google/audit — view audit log (Gorn-only)
+app.get('/api/google/audit', (c) => {
+  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn authentication required' }, 403);
+  const limit = Math.min(parseInt(c.req.query('limit') || '50'), 200);
+  const offset = parseInt(c.req.query('offset') || '0');
+  const rows = sqlite.prepare("SELECT * FROM google_audit_log ORDER BY created_at DESC LIMIT ? OFFSET ?").all(limit, offset);
+  const total = (sqlite.prepare("SELECT COUNT(*) as count FROM google_audit_log").get() as any).count;
+  return c.json({ logs: rows, total });
+});
+
+// --- Gmail API Proxy Endpoints ---
+
+// Helper: resolve Beast identity from request
+function getGmailBeast(c: any): string | null {
+  // Browser session = gorn
+  if (hasSessionAuth(c)) return 'gorn';
+  // Beast API access via ?as= param
+  if (isTrustedRequest(c)) {
+    const as = (c.req.query('as') || '').toLowerCase();
+    return as || null;
+  }
+  return null;
+}
+
+// GET /api/google/gmail/profile — email profile
+app.get('/api/google/gmail/profile', async (c) => {
+  const beast = getGmailBeast(c);
+  if (!beast) return c.json({ error: 'Authentication required' }, 401);
+  const access = checkGoogleAccess(beast);
+  if (!access.allowed) return c.json({ error: access.error }, access.status as 401 | 403);
+  if (!checkGoogleRateLimit(beast)) return c.json({ error: 'Rate limit exceeded (30/min)' }, 429);
+
+  try {
+    const tokenData = await ensureFreshGoogleToken();
+    if (!tokenData) return c.json({ error: 'Google not connected' }, 401);
+
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+      headers: { Authorization: `Bearer ${tokenData.accessToken}` },
+    });
+    const data = await res.json() as any;
+    if (!res.ok) return c.json({ error: data.error?.message || `Gmail API error: ${res.status}` }, 502);
+
+    logGoogleAccess(beast, '/api/google/gmail/profile');
+    return c.json(data);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to fetch profile' }, 500);
+  }
+});
+
+// GET /api/google/gmail/labels — list labels
+app.get('/api/google/gmail/labels', async (c) => {
+  const beast = getGmailBeast(c);
+  if (!beast) return c.json({ error: 'Authentication required' }, 401);
+  const access = checkGoogleAccess(beast);
+  if (!access.allowed) return c.json({ error: access.error }, access.status as 401 | 403);
+  if (!checkGoogleRateLimit(beast)) return c.json({ error: 'Rate limit exceeded (30/min)' }, 429);
+
+  try {
+    const tokenData = await ensureFreshGoogleToken();
+    if (!tokenData) return c.json({ error: 'Google not connected' }, 401);
+
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
+      headers: { Authorization: `Bearer ${tokenData.accessToken}` },
+    });
+    const data = await res.json() as any;
+    if (!res.ok) return c.json({ error: data.error?.message || `Gmail API error: ${res.status}` }, 502);
+
+    logGoogleAccess(beast, '/api/google/gmail/labels');
+    return c.json(data);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to fetch labels' }, 500);
+  }
+});
+
+// GET /api/google/gmail/messages — list messages
+app.get('/api/google/gmail/messages', async (c) => {
+  const beast = getGmailBeast(c);
+  if (!beast) return c.json({ error: 'Authentication required' }, 401);
+  const access = checkGoogleAccess(beast);
+  if (!access.allowed) return c.json({ error: access.error }, access.status as 401 | 403);
+  if (!checkGoogleRateLimit(beast)) return c.json({ error: 'Rate limit exceeded (30/min)' }, 429);
+
+  try {
+    const tokenData = await ensureFreshGoogleToken();
+    if (!tokenData) return c.json({ error: 'Google not connected' }, 401);
+
+    const q = c.req.query('q') || '';
+    const maxResults = Math.min(parseInt(c.req.query('maxResults') || '20'), 100);
+    const pageToken = c.req.query('pageToken') || '';
+    const labelIds = c.req.query('labelIds') || '';
+
+    const params = new URLSearchParams({ maxResults: String(maxResults) });
+    if (q) params.set('q', q);
+    if (pageToken) params.set('pageToken', pageToken);
+    if (labelIds) labelIds.split(',').forEach(id => params.append('labelIds', id.trim()));
+
+    const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`, {
+      headers: { Authorization: `Bearer ${tokenData.accessToken}` },
+    });
+    const data = await res.json() as any;
+    if (!res.ok) return c.json({ error: data.error?.message || `Gmail API error: ${res.status}` }, 502);
+
+    logGoogleAccess(beast, '/api/google/gmail/messages', q || undefined);
+    return c.json(data);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to fetch messages' }, 500);
+  }
+});
+
+// GET /api/google/gmail/messages/:id — read a single message
+app.get('/api/google/gmail/messages/:id', async (c) => {
+  const beast = getGmailBeast(c);
+  if (!beast) return c.json({ error: 'Authentication required' }, 401);
+  const access = checkGoogleAccess(beast);
+  if (!access.allowed) return c.json({ error: access.error }, access.status as 401 | 403);
+  if (!checkGoogleRateLimit(beast)) return c.json({ error: 'Rate limit exceeded (30/min)' }, 429);
+
+  const messageId = c.req.param('id');
+
+  try {
+    const tokenData = await ensureFreshGoogleToken();
+    if (!tokenData) return c.json({ error: 'Google not connected' }, 401);
+
+    const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`, {
+      headers: { Authorization: `Bearer ${tokenData.accessToken}` },
+    });
+    const data = await res.json() as any;
+    if (!res.ok) return c.json({ error: data.error?.message || `Gmail API error: ${res.status}` }, 502);
+
+    // Parse message into clean format — text only, no HTML (XSS prevention per Bertus)
+    const headers = data.payload?.headers || [];
+    const getHeader = (name: string) => headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+
+    // Extract plain text body from MIME parts
+    let textBody = '';
+    function extractText(part: any) {
+      if (part.mimeType === 'text/plain' && part.body?.data) {
+        textBody += Buffer.from(part.body.data, 'base64url').toString('utf8');
+      }
+      if (part.parts) part.parts.forEach(extractText);
+    }
+    if (data.payload) extractText(data.payload);
+
+    const formatted = {
+      id: data.id,
+      threadId: data.threadId,
+      snippet: sanitizeMetadata(data.snippet, 500),
+      from: sanitizeMetadata(getHeader('From'), 200),
+      to: sanitizeMetadata(getHeader('To'), 200),
+      subject: sanitizeMetadata(getHeader('Subject'), 500),
+      date: getHeader('Date'),
+      labels: data.labelIds || [],
+      body: {
+        text: tagUntrustedContent(textBody),
+      },
+    };
+
+    logGoogleAccess(beast, '/api/google/gmail/messages/:id', undefined, messageId);
+    return c.json(formatted);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to fetch message' }, 500);
+  }
+});
+
+// GET /api/google/gmail/threads/:id — read a thread
+app.get('/api/google/gmail/threads/:id', async (c) => {
+  const beast = getGmailBeast(c);
+  if (!beast) return c.json({ error: 'Authentication required' }, 401);
+  const access = checkGoogleAccess(beast);
+  if (!access.allowed) return c.json({ error: access.error }, access.status as 401 | 403);
+  if (!checkGoogleRateLimit(beast)) return c.json({ error: 'Rate limit exceeded (30/min)' }, 429);
+
+  const threadId = c.req.param('id');
+
+  try {
+    const tokenData = await ensureFreshGoogleToken();
+    if (!tokenData) return c.json({ error: 'Google not connected' }, 401);
+
+    const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=full`, {
+      headers: { Authorization: `Bearer ${tokenData.accessToken}` },
+    });
+    const data = await res.json() as any;
+    if (!res.ok) return c.json({ error: data.error?.message || `Gmail API error: ${res.status}` }, 502);
+
+    // Format each message in thread — text only, no HTML
+    const messages = (data.messages || []).map((msg: any) => {
+      const headers = msg.payload?.headers || [];
+      const getHeader = (name: string) => headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+
+      let textBody = '';
+      function extractText(part: any) {
+        if (part.mimeType === 'text/plain' && part.body?.data) {
+          textBody += Buffer.from(part.body.data, 'base64url').toString('utf8');
+        }
+        if (part.parts) part.parts.forEach(extractText);
+      }
+      if (msg.payload) extractText(msg.payload);
+
+      return {
+        id: msg.id,
+        snippet: sanitizeMetadata(msg.snippet, 500),
+        from: sanitizeMetadata(getHeader('From'), 200),
+        to: sanitizeMetadata(getHeader('To'), 200),
+        subject: sanitizeMetadata(getHeader('Subject'), 500),
+        date: getHeader('Date'),
+        labels: msg.labelIds || [],
+        body: { text: tagUntrustedContent(textBody) },
+      };
+    });
+
+    logGoogleAccess(beast, '/api/google/gmail/threads/:id', undefined, threadId);
+    return c.json({ id: data.id, messages });
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Failed to fetch thread' }, 500);
+  }
+});
+
+// ============================================================================
 // Forge — Personal Routine Tracker for Gorn (T#372)
 // ============================================================================
 

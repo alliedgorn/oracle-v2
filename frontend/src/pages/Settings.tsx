@@ -18,11 +18,29 @@ export function Settings() {
   const [reindexing, setReindexing] = useState(false);
   const [indexStatus, setIndexStatus] = useState<{ total_indexed: number; drift: boolean; indexed: Record<string, number> } | null>(null);
 
+  // Google OAuth state
+  const [googleStatus, setGoogleStatus] = useState<any>(null);
+  const [googleAccess, setGoogleAccess] = useState<any[]>([]);
+  const [newBeast, setNewBeast] = useState('');
+  const [disconnecting, setDisconnecting] = useState(false);
+
   const { checkAuth, isLocal } = useAuth();
 
   useEffect(() => {
     loadSettings();
     loadIndexStatus();
+    loadGoogleStatus();
+    loadGoogleAccess();
+
+    // Check for OAuth callback query params
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google') === 'connected') {
+      setMessage({ type: 'success', text: 'Google account connected successfully' });
+      window.history.replaceState({}, '', '/settings');
+    } else if (params.get('oauth_error')) {
+      setMessage({ type: 'error', text: `Google OAuth error: ${params.get('oauth_error')}` });
+      window.history.replaceState({}, '', '/settings');
+    }
   }, []);
 
   async function loadIndexStatus() {
@@ -50,6 +68,76 @@ export function Settings() {
       setMessage({ type: 'error', text: 'Reindex failed' });
     }
     setReindexing(false);
+  }
+
+  async function loadGoogleStatus() {
+    try {
+      const res = await fetch('/api/oauth/google/status');
+      if (res.ok) setGoogleStatus(await res.json());
+      else setGoogleStatus({ connected: false });
+    } catch { setGoogleStatus({ connected: false }); }
+  }
+
+  async function loadGoogleAccess() {
+    try {
+      const res = await fetch('/api/google/access');
+      if (res.ok) {
+        const data = await res.json();
+        setGoogleAccess(data.access || []);
+      }
+    } catch {}
+  }
+
+  async function handleGoogleDisconnect() {
+    if (!confirm('Disconnect Google account? This will revoke access at Google.')) return;
+    setDisconnecting(true);
+    try {
+      const res = await fetch('/api/oauth/google/disconnect', { method: 'DELETE' });
+      if (res.ok) {
+        setGoogleStatus({ connected: false });
+        setMessage({ type: 'success', text: 'Google account disconnected' });
+      } else {
+        setMessage({ type: 'error', text: 'Failed to disconnect' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to disconnect' });
+    }
+    setDisconnecting(false);
+  }
+
+  async function handleGrantAccess(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newBeast.trim()) return;
+    try {
+      const res = await fetch('/api/google/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ beast: newBeast.trim(), scopes: 'gmail.readonly' }),
+      });
+      if (res.ok) {
+        setNewBeast('');
+        loadGoogleAccess();
+        setMessage({ type: 'success', text: `Access granted to ${newBeast.trim()}` });
+      } else {
+        const data = await res.json();
+        setMessage({ type: 'error', text: data.error || 'Failed to grant access' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to grant access' });
+    }
+  }
+
+  async function handleRevokeAccess(beast: string) {
+    if (!confirm(`Revoke Gmail access for ${beast}?`)) return;
+    try {
+      const res = await fetch(`/api/google/access/${beast}`, { method: 'DELETE' });
+      if (res.ok) {
+        loadGoogleAccess();
+        setMessage({ type: 'success', text: `Access revoked for ${beast}` });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to revoke access' });
+    }
   }
 
   async function loadSettings() {
@@ -309,6 +397,72 @@ export function Settings() {
             {isLocal ? 'Local Network' : 'Remote'}
           </span>
         </div>
+      </div>
+
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}>Google</h2>
+        <p className={styles.sectionDesc}>
+          Connect your Google account to enable Gmail access for authorized Beasts.
+        </p>
+
+        {googleStatus && !googleStatus.connected && (
+          <div className={styles.actions}>
+            <a href="/api/oauth/google/authorize" className={styles.button} style={{ textDecoration: 'none' }}>
+              Connect Google
+            </a>
+          </div>
+        )}
+
+        {googleStatus?.connected && (
+          <>
+            <div className={styles.info}>
+              <span className={styles.infoLabel}>Connected:</span>
+              <span className={`${styles.infoBadge} ${styles.local}`}>{googleStatus.email}</span>
+              {googleStatus.tokenExpired && (
+                <span className={`${styles.infoBadge} ${styles.remote}`}>Token expired</span>
+              )}
+            </div>
+
+            <div style={{ marginTop: 20 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 12 }}>Beast Access</h3>
+              {googleAccess.length === 0 && (
+                <p className={styles.hint}>No Beasts have Gmail access yet.</p>
+              )}
+              {googleAccess.map((a: any) => (
+                <div key={a.beast} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ flex: 1, color: 'var(--text-primary)', fontSize: 14 }}>{a.beast}</span>
+                  <span className={styles.infoBadge} style={{ background: 'var(--bg-secondary)' }}>{a.scopes}</span>
+                  <button onClick={() => handleRevokeAccess(a.beast)} className={styles.dangerButton} style={{ padding: '6px 12px', fontSize: 12 }}>
+                    Revoke
+                  </button>
+                </div>
+              ))}
+              <form onSubmit={handleGrantAccess} style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <input
+                  type="text"
+                  value={newBeast}
+                  onChange={e => setNewBeast(e.target.value)}
+                  placeholder="Beast name"
+                  className={styles.input}
+                  style={{ flex: 1, padding: '8px 12px', fontSize: 13 }}
+                />
+                <button type="submit" className={styles.button} style={{ padding: '8px 16px', fontSize: 13 }}>
+                  Grant Access
+                </button>
+              </form>
+            </div>
+
+            <div className={styles.actions} style={{ marginTop: 16 }}>
+              <button
+                onClick={handleGoogleDisconnect}
+                disabled={disconnecting}
+                className={styles.dangerButton}
+              >
+                {disconnecting ? 'Disconnecting...' : 'Disconnect Google'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <div className={styles.section}>

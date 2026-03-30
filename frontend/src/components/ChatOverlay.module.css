@@ -1,6 +1,6 @@
 .overlay {
   position: fixed;
-  bottom: 16px;
+  bottom: 0;
   right: 16px;
   width: 380px;
   height: 500px;

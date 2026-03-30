@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { autolinkIds } from '../utils/autolink';
@@ -273,7 +274,7 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
     } finally { setLoading(false); }
   }
 
-  return (
+  return createPortal(
     <div className={`${styles.overlay} ${collapsed ? styles.overlayCollapsed : ''}`}>
       <div className={styles.header} onMouseDown={(e) => {
         if ((e.target as HTMLElement).closest('button')) return;
@@ -362,6 +363,7 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
           <button className={styles.lightboxClose} onClick={() => setLightboxSrc(null)}>✕</button>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -26,7 +26,7 @@ interface DashboardConversation {
 interface DmMessage {
   id: number;
   sender: string;
-  content: string;
+  message: string;
   read_at: string | null;
   created_at: string;
 }
@@ -366,7 +366,28 @@ export function DirectMessages() {
   }
 
   function formatFullTime(iso: string) {
-    return new Date(iso).toLocaleString();
+    const date = new Date(iso);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+    const weekAgoStart = new Date(todayStart.getTime() - 6 * 86400000);
+    const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+    if (date >= todayStart) return time;
+    if (date >= yesterdayStart) return `Yesterday, ${time}`;
+    if (date >= weekAgoStart) return `${date.toLocaleDateString([], { weekday: 'short' })}, ${time}`;
+    return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
+  }
+
+  function getDateLabel(iso: string) {
+    const date = new Date(iso);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+
+    if (date >= todayStart) return 'Today';
+    if (date >= yesterdayStart) return 'Yesterday';
+    return date.toLocaleDateString([], { month: 'long', day: 'numeric' });
   }
 
   return (
@@ -483,20 +504,31 @@ export function DirectMessages() {
               {hasMore && !isLoadingMore && (
                 <div style={{ textAlign: 'center', padding: '8px', opacity: 0.4, fontSize: '0.8em' }}>↑ Scroll up for older messages</div>
               )}
-              {messages.messages.map(msg => (
-                <div key={msg.id} className={styles.message}>
-                  <div className={styles.messageHeader}>
-                    <span className={styles.sender}>{msg.sender}</span>
-                    <span className={styles.time}>{formatFullTime(msg.created_at)}</span>
+              {messages.messages.map((msg, idx) => {
+                const prevMsg = messages.messages[idx - 1];
+                const showDivider = !prevMsg || getDateLabel(msg.created_at) !== getDateLabel(prevMsg.created_at);
+                return (
+                  <div key={msg.id}>
+                    {showDivider && (
+                      <div className={styles.dateDivider}>
+                        <span>{getDateLabel(msg.created_at)}</span>
+                      </div>
+                    )}
+                    <div className={styles.message}>
+                      <div className={styles.messageHeader}>
+                        <span className={styles.sender}>{msg.sender}</span>
+                        <span className={styles.time}>{formatFullTime(msg.created_at)}</span>
+                      </div>
+                      <div className={styles.messageContent}>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={markdownComponents}
+                        >{autolinkIds(msg.message)}</ReactMarkdown>
+                      </div>
+                    </div>
                   </div>
-                  <div className={styles.messageContent}>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={markdownComponents}
-                    >{autolinkIds(msg.content)}</ReactMarkdown>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
 

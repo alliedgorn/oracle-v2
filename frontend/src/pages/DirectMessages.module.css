@@ -277,6 +277,30 @@
   padding: 20px;
 }
 
+.dateDivider {
+  display: flex;
+  align-items: center;
+  margin: 20px 0 12px;
+  gap: 12px;
+}
+
+.dateDivider::before,
+.dateDivider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.dateDivider span {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
 .message {
   margin-bottom: 16px;
   padding: 14px 16px;

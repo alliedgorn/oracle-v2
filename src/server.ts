@@ -3180,7 +3180,7 @@ app.get('/api/dm/:name/:other', (c) => {
     messages: data.messages.map(m => ({
       id: m.id,
       sender: m.sender,
-      content: m.content,
+      message: m.content,
       read_at: m.readAt ? new Date(m.readAt).toISOString() : null,
       created_at: new Date(m.createdAt).toISOString(),
     })),

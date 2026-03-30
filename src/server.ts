@@ -4934,6 +4934,29 @@ setTimeout(runDbMaintenance, 30_000);
 setInterval(runDbMaintenance, DB_MAINTENANCE_INTERVAL);
 console.log(`[DB Maintenance] Retention: ${DB_RETENTION_DAYS} days, interval: 6h`);
 
+// Withings daily auto-sync (T#523) — sync every 24h, first run 60s after boot
+const WITHINGS_SYNC_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+async function runWithingsAutoSync() {
+  try {
+    const token = sqlite.prepare("SELECT * FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
+    if (!token) return; // Not connected, skip silently
+    const lastLog = sqlite.prepare(
+      "SELECT logged_at FROM routine_logs WHERE source = 'withings' AND deleted_at IS NULL ORDER BY logged_at DESC LIMIT 1"
+    ).get() as any;
+    const now = Math.floor(Date.now() / 1000);
+    const startdate = lastLog
+      ? Math.floor(new Date(lastLog.logged_at).getTime() / 1000)
+      : now - 30 * 86400;
+    const result = await syncWithingsMeasurements(startdate, now);
+    if (result.synced > 0) console.log(`[Withings] Auto-sync: ${result.synced} new, ${result.skipped} skipped`);
+  } catch (err) {
+    console.error('[Withings] Auto-sync failed:', err instanceof Error ? err.message : err);
+  }
+}
+setTimeout(runWithingsAutoSync, 60_000);
+setInterval(runWithingsAutoSync, WITHINGS_SYNC_INTERVAL);
+console.log('[Withings] Auto-sync enabled (24h interval, first run in 60s)');
+
 // ============================================================================
 // Supersede Log Routes (Issue #18, #19)
 // ============================================================================
@@ -6295,11 +6318,16 @@ app.get('/api/oauth/withings/status', (c) => {
   const token = sqlite.prepare("SELECT provider, user_id, expires_at, scopes, updated_at FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
   if (!token) return c.json({ connected: false });
   const now = Math.floor(Date.now() / 1000);
+  // Last actual data sync time (T#524)
+  const lastSyncRow = sqlite.prepare(
+    "SELECT MAX(created_at) as sync_time FROM routine_logs WHERE source = 'withings' AND deleted_at IS NULL"
+  ).get() as any;
   return c.json({
     connected: true,
     userId: token.user_id,
     tokenExpired: token.expires_at < now,
     lastUpdated: new Date(token.updated_at * 1000).toISOString(),
+    lastSync: lastSyncRow?.sync_time || null,
     scopes: token.scopes,
   });
 });

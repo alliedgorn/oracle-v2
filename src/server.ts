@@ -4264,13 +4264,15 @@ app.get('/api/audit/stats', (c) => {
 // Security Events API (T#545 — Security event logging)
 // ============================================================================
 
-const SECURITY_READ_ALLOWLIST = ['bertus', 'talon'];
+// Security events access: session auth only until T#546 (API tokens) ships.
+// Bertus review: ?as= is spoofable (Risk #12), so no allowlist fallback for security logs.
+const SECURITY_READ_ALLOWLIST = ['bertus', 'talon']; // Reserved for T#546 API token auth
 
 // GET /api/security/events — query security events
 app.get('/api/security/events', (c) => {
-  const requester = (c.req.query('as') || '').toLowerCase();
-  if (!hasSessionAuth(c) && !SECURITY_READ_ALLOWLIST.includes(requester)) {
-    return c.json({ error: 'Security events are restricted to Gorn and security team' }, 403);
+  // Session auth only — no ?as= until T#546 ships (Bertus review finding)
+  if (!hasSessionAuth(c)) {
+    return c.json({ error: 'Security events require Gorn session authentication' }, 403);
   }
 
   const eventType = c.req.query('event_type');
@@ -4311,9 +4313,9 @@ app.get('/api/security/events', (c) => {
 
 // GET /api/security/events/stats — summary counts
 app.get('/api/security/events/stats', (c) => {
-  const requester = (c.req.query('as') || '').toLowerCase();
-  if (!hasSessionAuth(c) && !SECURITY_READ_ALLOWLIST.includes(requester)) {
-    return c.json({ error: 'Security event stats are restricted to Gorn and security team' }, 403);
+  // Session auth only — no ?as= until T#546 ships (Bertus review finding)
+  if (!hasSessionAuth(c)) {
+    return c.json({ error: 'Security event stats require Gorn session authentication' }, 403);
   }
 
   const total = (sqlite.prepare('SELECT COUNT(*) as count FROM security_events').get() as any)?.count || 0;

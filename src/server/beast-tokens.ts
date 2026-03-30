@@ -30,6 +30,9 @@ const LAST_USED_UPDATE_INTERVAL_MS = 60_000; // Once per minute per token
 
 // HMAC secret — reuse session secret from env, or generate per-run
 const TOKEN_HMAC_SECRET = process.env.ORACLE_SESSION_SECRET || process.env.ORACLE_TOKEN_SECRET || crypto.randomUUID();
+if (!process.env.ORACLE_SESSION_SECRET && !process.env.ORACLE_TOKEN_SECRET) {
+  console.warn('[BeastTokens] WARNING: No ORACLE_SESSION_SECRET or ORACLE_TOKEN_SECRET set — tokens will not survive server restart');
+}
 
 // Track last_used_at update timestamps to avoid excessive writes
 const lastUsedUpdateCache = new Map<number, number>(); // token_id -> last update timestamp
@@ -166,17 +169,20 @@ type TokenValidationResult = {
  * Uses timing-safe comparison per Bertus/Gnarl review.
  */
 export function validateToken(token: string): TokenValidationResult {
-  // Parse token format: den_{beast}_{random}
+  // Parse token format: den_{beast}_{32 hex chars}
+  // Beast names must not contain underscores (documented constraint)
   if (!token.startsWith('den_')) {
     return { valid: false, reason: 'invalid_format' };
   }
 
-  const parts = token.split('_');
-  if (parts.length !== 3 || !parts[1] || !parts[2]) {
+  // Extract beast name: everything between first "den_" and last "_" + 32-char hex suffix
+  const lastUnderscore = token.lastIndexOf('_');
+  const suffix = token.slice(lastUnderscore + 1);
+  if (lastUnderscore <= 3 || suffix.length !== 32 || !/^[0-9a-f]{32}$/.test(suffix)) {
     return { valid: false, reason: 'invalid_format' };
   }
 
-  const beast = parts[1];
+  const beast = token.slice(4, lastUnderscore);
   const incomingHash = hmacHash(token);
 
   // Look up all active tokens for this beast (Bertus: lookup by beast, compare in app code)

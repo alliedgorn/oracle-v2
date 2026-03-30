@@ -31,7 +31,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [attachedBeast, setAttachedBeast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { chatTarget, openChat } = useChat();
+  const { openChat } = useChat();
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   const loadStatus = useCallback(async () => {
@@ -73,8 +73,9 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
     return () => clearInterval(interval);
   }, [collapsed, loadStatus]);
 
-  // WebSocket: refresh unread counts on new DM (slight delay so ChatOverlay's markAsRead completes first)
+  // WebSocket: refresh unread counts on new DM or read event
   useWebSocket('new_dm', useCallback(() => { setTimeout(() => loadUnread(), 500); }, [loadUnread]));
+  useWebSocket('dm_read', useCallback(() => { setTimeout(() => loadUnread(), 300); }, [loadUnread]));
 
   async function handleClick(beast: Beast) {
     if (beast.status === 'offline') return;
@@ -140,8 +141,8 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
                 selected={isAttached}
                 badge={isAttached ? 'ATTACHED' : beast.contextPct != null ? `${beast.contextPct}%` : undefined}
                 onClick={() => !loading && handleClick(beast)}
-                onProfileClick={(e) => { e.stopPropagation(); onClose(); navigate(`/?beast=${beast.name}`); }}
-                unreadCount={chatTarget?.beastName === beast.name ? 0 : (unreadCounts[beast.name] || 0)}
+                onTerminalClick={(e) => { e.stopPropagation(); onClose(); navigate(`/?beast=${beast.name}`); }}
+                unreadCount={unreadCounts[beast.name] || 0}
                 onDmClick={(e) => { e.stopPropagation(); openChat(beast.name, beast.displayName); }}
               />
             );

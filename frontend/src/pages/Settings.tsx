@@ -685,14 +685,17 @@ function GuestManagement() {
                   autoComplete="off"
                 />
               </div>
-              <input
-                type="date"
-                value={form.expires_at}
-                onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
-                className={styles.input}
-                style={{ padding: '8px 12px', fontSize: 13 }}
-                title="Account expiry date (optional)"
-              />
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Expiry Date (optional)</label>
+                <input
+                  type="date"
+                  value={form.expires_at}
+                  onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
+                  className={styles.input}
+                  style={{ padding: '8px 12px', fontSize: 13 }}
+                  title="Account automatically deactivates after this date"
+                />
+              </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button type="submit" disabled={creating || !form.username.trim() || !form.password.trim()} className={styles.button} style={{ padding: '8px 16px', fontSize: 13 }}>
                   {creating ? 'Creating...' : 'Create Guest'}

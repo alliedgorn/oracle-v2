@@ -15,6 +15,7 @@ interface BeastCardProps {
   badge?: string;
   onClick?: () => void;
 
+  onTerminalClick?: (e: React.MouseEvent) => void;
   onDmClick?: (e: React.MouseEvent) => void;
   onProfileClick?: (e: React.MouseEvent) => void;
   unreadCount?: number;

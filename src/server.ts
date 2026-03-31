@@ -86,6 +86,8 @@ import {
 
 
 import { enqueueNotification } from './notify.ts';
+import { rbacMiddleware } from './server/rbac.ts';
+import type { Role } from './server/rbac.ts';
 
 import {
   logSecurityEvent,
@@ -350,6 +352,7 @@ app.use('/api/*', async (c, next) => {
       c.set('actorType' as any, 'beast');
       c.set('authMethod' as any, 'token');
       c.set('tokenId' as any, result.tokenId);
+      c.set('role' as any, 'beast' as Role);
       return next();
     } else {
       // Invalid/expired token — log and reject
@@ -372,8 +375,22 @@ app.use('/api/*', async (c, next) => {
     return c.json({ error: 'Unauthorized', requiresAuth: true }, 401);
   }
 
+  // Set role for session/local-bypass auth (owner by default — guest role set in PR2)
+  if (!(c.get as any)('role')) {
+    c.set('role' as any, 'owner' as Role);
+  }
+
   return next();
 });
+
+// ============================================================================
+// RBAC Authorization Middleware (Spec #32, T#553)
+// Runs AFTER auth — checks role against endpoint allowlist.
+// Guest role: default-deny, only allowlisted endpoints pass.
+// Owner/beast: full access.
+// ============================================================================
+
+app.use('/api/*', rbacMiddleware());
 
 // ============================================================================
 // Audit Logging Middleware (Task #72 — logs all mutating API requests)

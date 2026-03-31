@@ -3019,16 +3019,20 @@ app.get('/api/threads', (c) => {
   const category = c.req.query('category');
   const limit = parseInt(c.req.query('limit') || '50');
   const offset = parseInt(c.req.query('offset') || '0');
+  const role = (c.get as any)('role') as Role | undefined;
 
   let query = 'SELECT *, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE 1=1';
   const params: any[] = [];
   if (status) { query += ' AND status = ?'; params.push(status); }
   if (category) { query += ' AND category = ?'; params.push(category); }
+  // Guests only see public threads
+  if (role === 'guest') { query += " AND visibility = 'public'"; }
   query += ' ORDER BY COALESCE(pinned, 0) DESC, updated_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const rows = sqlite.prepare(query).all(...params) as any[];
-  const countQuery = 'SELECT COUNT(*) as total FROM forum_threads';
+  let countQuery = 'SELECT COUNT(*) as total FROM forum_threads';
+  if (role === 'guest') { countQuery += " WHERE visibility = 'public'"; }
   const total = (sqlite.prepare(countQuery).get() as any)?.total || 0;
 
   return c.json({
@@ -3041,6 +3045,7 @@ app.get('/api/threads', (c) => {
       message_count: t.msg_count || 0,
       created_at: new Date(t.created_at).toISOString(),
       issue_url: t.issue_url,
+      visibility: t.visibility || 'internal',
     })),
     total,
   });
@@ -3056,6 +3061,21 @@ app.post('/api/thread', async (c) => {
     if (!data.author) {
       return c.json({ error: 'Missing required field: author' }, 400);
     }
+
+    // Guest restrictions: can only post in existing public threads, cannot create new threads
+    const role = (c.get as any)('role') as Role | undefined;
+    if (role === 'guest') {
+      if (!data.thread_id) {
+        return c.json({ error: 'Guests cannot create new threads' }, 403);
+      }
+      const threadRow = sqlite.prepare('SELECT visibility FROM forum_threads WHERE id = ?').get(data.thread_id) as any;
+      if (!threadRow || threadRow.visibility !== 'public') {
+        return c.json({ error: 'Guests can only post in public threads' }, 403);
+      }
+      // Tag guest author with [Guest] prefix for display
+      data.author = `[Guest] ${(c.get as any)('guestUsername') || data.author}`;
+    }
+
     const result = await withRetry(() => handleThreadMessage({
       message: data.message,
       threadId: data.thread_id,
@@ -3111,6 +3131,15 @@ app.get('/api/thread/:id', (c) => {
   const threadData = getFullThread(threadId, limit, offset, order);
   if (!threadData) {
     return c.json({ error: 'Thread not found' }, 404);
+  }
+
+  // Guests can only view public threads
+  const role = (c.get as any)('role') as Role | undefined;
+  if (role === 'guest') {
+    const threadRow = sqlite.prepare('SELECT visibility FROM forum_threads WHERE id = ?').get(threadId) as any;
+    if (!threadRow || threadRow.visibility !== 'public') {
+      return c.json({ error: 'Thread not found' }, 404);
+    }
   }
 
   return c.json({
@@ -3514,6 +3543,24 @@ app.patch('/api/thread/:id/title', async (c) => {
     sqlite.prepare('UPDATE forum_threads SET title = ? WHERE id = ?').run(title, threadId);
     return c.json({ success: true, thread_id: threadId, title });
   } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+});
+
+// Update thread visibility (Spec #32 — guest mode)
+app.patch('/api/thread/:id/visibility', async (c) => {
+  const role = (c.get as any)('role') as Role | undefined;
+  if (role === 'guest') return c.json({ error: 'Forbidden' }, 403);
+
+  const threadId = parseInt(c.req.param('id'), 10);
+  try {
+    const data = await c.req.json();
+    if (data.visibility !== 'public' && data.visibility !== 'internal') {
+      return c.json({ error: "visibility must be 'public' or 'internal'" }, 400);
+    }
+    sqlite.prepare('UPDATE forum_threads SET visibility = ? WHERE id = ?').run(data.visibility, threadId);
+    return c.json({ success: true, thread_id: threadId, visibility: data.visibility });
+  } catch (e) {
+    return c.json({ error: 'Invalid JSON' }, 400);
+  }
 });
 
 // Update thread status

@@ -40,7 +40,7 @@ const RESERVED_NAMES = new Set([
 ]);
 
 /**
- * Initialize guest tables if they don't exist.
+ * Initialize guest tables and migrations if they don't exist.
  */
 export function initGuestTables(sqlite: Database): void {
   sqlite.exec(`
@@ -66,6 +66,13 @@ export function initGuestTables(sqlite: Database): void {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // Add visibility column to forum_threads if not present (PR3)
+  try {
+    sqlite.exec("ALTER TABLE forum_threads ADD COLUMN visibility TEXT NOT NULL DEFAULT 'internal'");
+  } catch {
+    // Column already exists
+  }
 }
 
 /**

@@ -111,6 +111,129 @@
   font-style: italic;
 }
 
+/* Tab bar */
+.tabBar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+}
+
+.tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tabActive {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tabBadge {
+  font-size: 10px;
+  font-weight: 700;
+  background: #22c55e;
+  color: white;
+  padding: 1px 5px;
+  border-radius: 8px;
+}
+
+/* Guest cards */
+.guestCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  transition: background 0.15s;
+}
+
+.guestCard:hover {
+  background: var(--bg-card);
+}
+
+.guestAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.guestInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.guestName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.guestDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.guestDotOnline {
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
+}
+
+.guestDotOffline {
+  background: #4b5563;
+}
+
+.guestMeta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.guestDmBtn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+  padding: 4px;
+}
+
+.guestCard:hover .guestDmBtn {
+  opacity: 0.8;
+}
+
+.guestDmBtn:hover {
+  opacity: 1 !important;
+}
+
 /* Beast list */
 .beastList {
   flex: 1;

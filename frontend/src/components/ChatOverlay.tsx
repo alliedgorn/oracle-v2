@@ -219,10 +219,11 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
   }, [messages, initialLoad]);
 
   // WebSocket: append new messages when DM arrives (no full reload)
+  // Skip for guests — use polling instead to avoid rapid refetch loops
   const appendNewMessages = useCallback(async () => {
+    if (isGuest) return;
     try {
       wasNearBottomRef.current = isNearBottom();
-      // Mark as read immediately so badge clears fast
       markAsRead();
       const res = await fetch(`${dmReadUrl}?limit=5&order=desc`);
       const data = await res.json();
@@ -234,15 +235,26 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
         return [...prev, ...newMsgs];
       });
     } catch {}
-  }, [beastName, markAsRead]);
+  }, [beastName, markAsRead, isGuest, dmReadUrl]);
 
   useWebSocket('new_dm', appendNewMessages);
 
   // Refetch on WS reconnect (T#534 — stale overlay after long break)
   const handleReconnect = useCallback(() => {
+    if (isGuest) return;
     loadMessages().then(() => markAsRead());
-  }, [loadMessages, markAsRead]);
+  }, [loadMessages, markAsRead, isGuest]);
   useWebSocket('ws_reconnect', handleReconnect);
+
+  // Guest polling — check for new messages every 3s (replaces WS for guests)
+  useEffect(() => {
+    if (!isGuest || collapsed) return;
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      loadMessages();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isGuest, collapsed, loadMessages]);
 
   // Refetch on tab visibility change (T#534 — covers cases where WS didn't drop)
   useEffect(() => {

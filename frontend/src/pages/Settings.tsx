@@ -686,14 +686,14 @@ function GuestManagement() {
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Expiry Date (optional)</label>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Expiry Date & Time (optional)</label>
                 <input
-                  type="date"
+                  type="datetime-local"
                   value={form.expires_at}
                   onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
                   className={styles.input}
                   style={{ padding: '8px 12px', fontSize: 13 }}
-                  title="Account automatically deactivates after this date"
+                  title="Account automatically deactivates after this date and time"
                 />
               </div>
               <div style={{ display: 'flex', gap: 8 }}>

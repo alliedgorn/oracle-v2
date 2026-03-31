@@ -2055,7 +2055,7 @@ app.get('/api/guest/pack', (c) => {
         role: b.role,
         bio: b.bio,
         themeColor: b.theme_color,
-        avatarUrl: b.avatar_url,
+        avatarUrl: normalizeAvatarUrl(b.avatar_url),
         interests: b.interests,
         sex: b.sex,
         birthdate: b.birthdate,
@@ -2268,6 +2268,20 @@ function getSpinnerVerbs(): Set<string> {
   return cachedSpinnerVerbs;
 }
 
+// Rewrite legacy avatar URLs to /api/f/ format
+function normalizeAvatarUrl(url: string | null): string | null {
+  if (!url) return null;
+  // /api/forum/file/xxx.jpg -> /api/f/xxx.jpg
+  if (url.startsWith('/api/forum/file/')) return '/api/f/' + url.slice('/api/forum/file/'.length);
+  // /api/files/ID/download -> look up filename from files table, rewrite to /api/f/
+  const filesMatch = url.match(/^\/api\/files\/(\d+)\/download$/);
+  if (filesMatch) {
+    const file = sqlite.prepare('SELECT filename FROM files WHERE id = ?').get(parseInt(filesMatch[1])) as any;
+    if (file) return '/api/f/' + file.filename;
+  }
+  return url;
+}
+
 // Shared tmux status detection — used by both /api/pack and /api/guest/pack
 function getTmuxStatus(): { tmuxStatus: Map<string, 'processing' | 'idle' | 'waiting' | 'shell' | 'offline'>; contextPctMap: Map<string, number | null> } {
   const tmuxStatus: Map<string, 'processing' | 'idle' | 'waiting' | 'shell' | 'offline'> = new Map();
@@ -2391,6 +2405,7 @@ app.get('/api/pack', (c) => {
     const rawStatus = tmuxStatus.get(sessionName.toLowerCase()) || tmuxStatus.get(p.name) || 'offline';
     return {
       ...p,
+      avatarUrl: normalizeAvatarUrl(p.avatarUrl),
       online: rawStatus === 'processing' || rawStatus === 'idle' || rawStatus === 'waiting',
       status: rawStatus, // 'processing' | 'idle' | 'waiting' | 'shell' | 'offline'
       contextPct: contextPctMap.get(sessionName.toLowerCase()) ?? contextPctMap.get(p.name) ?? null,
@@ -3164,16 +3179,18 @@ app.get('/api/f/:hash', (c) => {
   }
 
   const hash = c.req.param('hash');
-  // Validate hash format: UUID with extension (e.g. abc123-def456.jpg)
-  if (!/^[0-9a-f-]+\.\w+$/.test(hash)) return c.json({ error: 'Invalid file hash' }, 400);
+  // Validate: alphanumeric, hyphens, dots — no path traversal
+  if (hash.includes('..') || hash.includes('/')) return c.json({ error: 'Invalid file hash' }, 400);
+  if (!/^[\w.-]+$/.test(hash)) return c.json({ error: 'Invalid file hash' }, 400);
 
+  // Try files table first, then fall back to disk (legacy avatar files)
   const file = sqlite.prepare('SELECT * FROM files WHERE filename = ? AND deleted_at IS NULL').get(hash) as any;
-  if (!file) return c.json({ error: 'File not found' }, 404);
+  const filePath = path.join(UPLOADS_DIR, hash);
 
-  const filePath = path.join(UPLOADS_DIR, file.filename);
-  if (!fs.existsSync(filePath)) return c.json({ error: 'File not found on disk' }, 404);
+  if (!file && !fs.existsSync(filePath)) return c.json({ error: 'File not found' }, 404);
+  if (file && !fs.existsSync(filePath)) return c.json({ error: 'File not found on disk' }, 404);
 
-  const etag = `"${file.filename}"`;
+  const etag = `"${hash}"`;
   const ifNoneMatch = c.req.header('if-none-match');
   if (ifNoneMatch === etag) {
     return new Response(null, { status: 304 });
@@ -3181,10 +3198,16 @@ app.get('/api/f/:hash', (c) => {
 
   const content = fs.readFileSync(filePath);
   const safeImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
-  const isImage = safeImageTypes.has(file.mime_type);
 
-  c.header('Content-Type', isImage ? file.mime_type : 'application/octet-stream');
-  c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${file.original_name.replace(/"/g, '_')}"`);
+  // Determine mime type from files table or extension
+  const ext = hash.split('.').pop()?.toLowerCase() || '';
+  const extMimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
+  const mimeType = file?.mime_type || extMimeMap[ext] || 'application/octet-stream';
+  const isImage = safeImageTypes.has(mimeType);
+  const originalName = file?.original_name || hash;
+
+  c.header('Content-Type', isImage ? mimeType : 'application/octet-stream');
+  c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${originalName.replace(/"/g, '_')}"`);
   if (!isImage) c.header('Content-Security-Policy', 'sandbox');
   // private — browser can cache, but CDN/reverse proxy (Caddy) must not
   c.header('Cache-Control', 'private, max-age=86400');

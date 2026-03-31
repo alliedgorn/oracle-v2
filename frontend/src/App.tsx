@@ -25,6 +25,7 @@ import { Playbook } from './pages/Playbook';
 import { GornQueue } from './pages/GornQueue';
 import { RemoteControl } from './pages/RemoteControl';
 import { RemotePanel } from './components/RemotePanel';
+import { GuestDmPanel } from './components/GuestDmPanel';
 import { Prowl } from './pages/Prowl';
 import { Risk } from './pages/Risk';
 import { Rules } from './pages/Rules';
@@ -146,6 +147,14 @@ function AppContent() {
       </div>
       {!isLoginPage && !authLoading && !isGuest && (
         <RemotePanel
+          isOpen={remoteMobileOpen}
+          onClose={() => setRemoteMobileOpen(false)}
+          collapsed={remoteCollapsed}
+          onToggleCollapse={() => setRemoteCollapsed(prev => !prev)}
+        />
+      )}
+      {!isLoginPage && !authLoading && isGuest && (
+        <GuestDmPanel
           isOpen={remoteMobileOpen}
           onClose={() => setRemoteMobileOpen(false)}
           collapsed={remoteCollapsed}

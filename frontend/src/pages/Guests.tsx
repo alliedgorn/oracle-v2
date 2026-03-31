@@ -21,6 +21,7 @@ export function Guests() {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<'online' | 'active' | 'name' | 'created'>('online');
 
   const loadGuests = useCallback(async () => {
     try {
@@ -50,9 +51,25 @@ export function Guests() {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return g.username.includes(q) || (g.display_name || '').toLowerCase().includes(q);
+  }).sort((a, b) => {
+    if (sort === 'online') {
+      if (a.online !== b.online) return a.online ? -1 : 1;
+      const aTime = a.last_active_at ? new Date(a.last_active_at).getTime() : 0;
+      const bTime = b.last_active_at ? new Date(b.last_active_at).getTime() : 0;
+      return bTime - aTime;
+    }
+    if (sort === 'active') {
+      const aTime = a.last_active_at ? new Date(a.last_active_at).getTime() : 0;
+      const bTime = b.last_active_at ? new Date(b.last_active_at).getTime() : 0;
+      return bTime - aTime;
+    }
+    if (sort === 'name') return a.username.localeCompare(b.username);
+    if (sort === 'created') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    return 0;
   });
 
   const onlineCount = guests.filter(g => g.online).length;
+  const isNew = (g: Guest) => Date.now() - new Date(g.created_at).getTime() < 86400000;
 
   function formatTime(iso: string | null) {
     if (!iso) return 'Never';
@@ -73,13 +90,25 @@ export function Guests() {
             {guests.length} guest{guests.length !== 1 ? 's' : ''} &middot; {onlineCount} online
           </p>
         </div>
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search guests..."
-          className={styles.search}
-        />
+        <div className={styles.controls}>
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search guests..."
+            className={styles.search}
+          />
+          <select
+            value={sort}
+            onChange={e => setSort(e.target.value as typeof sort)}
+            className={styles.sortSelect}
+          >
+            <option value="online">Online first</option>
+            <option value="active">Last active</option>
+            <option value="name">Name</option>
+            <option value="created">Newest</option>
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -96,6 +125,7 @@ export function Guests() {
                   <span className={styles.username}>{guest.username}</span>
                 </div>
                 {guest.online && <span className={styles.onlineBadge}>Online</span>}
+                {isNew(guest) && <span className={styles.newBadge}>New</span>}
                 {guest.disabled_at && <span className={styles.disabledBadge}>Disabled</span>}
               </div>
 

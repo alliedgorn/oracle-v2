@@ -2039,18 +2039,31 @@ app.post('/api/guest/thread', async (c) => {
 // Guest pack — Beast profiles (T#559)
 app.get('/api/guest/pack', (c) => {
   const beasts = sqlite.prepare(
-    "SELECT name, display_name, animal, role, bio, theme_color FROM beast_profiles ORDER BY name"
+    "SELECT name, display_name, animal, role, bio, theme_color, avatar_url, interests, sex, birthdate FROM beast_profiles ORDER BY name"
   ).all() as any[];
 
+  const { tmuxStatus } = getTmuxStatus();
+
   return c.json({
-    beasts: beasts.map(b => ({
-      name: b.name,
-      displayName: b.display_name,
-      animal: b.animal,
-      role: b.role,
-      bio: b.bio,
-      themeColor: b.theme_color,
-    })),
+    beasts: beasts.map(b => {
+      const sessionName = b.name.charAt(0).toUpperCase() + b.name.slice(1);
+      const rawStatus = tmuxStatus.get(sessionName.toLowerCase()) || tmuxStatus.get(b.name) || 'offline';
+      return {
+        name: b.name,
+        displayName: b.display_name,
+        animal: b.animal,
+        role: b.role,
+        bio: b.bio,
+        themeColor: b.theme_color,
+        avatarUrl: b.avatar_url,
+        interests: b.interests,
+        sex: b.sex,
+        birthdate: b.birthdate,
+        online: rawStatus === 'processing' || rawStatus === 'idle' || rawStatus === 'waiting',
+        status: rawStatus,
+        sessionName,
+      };
+    }),
   });
 });
 
@@ -2255,11 +2268,8 @@ function getSpinnerVerbs(): Set<string> {
   return cachedSpinnerVerbs;
 }
 
-// Get all beasts with status (processing/idle/offline)
-app.get('/api/pack', (c) => {
-  const profiles = getAllBeastProfiles();
-
-  // Get active tmux sessions, detect Claude state from pane content
+// Shared tmux status detection — used by both /api/pack and /api/guest/pack
+function getTmuxStatus(): { tmuxStatus: Map<string, 'processing' | 'idle' | 'waiting' | 'shell' | 'offline'>; contextPctMap: Map<string, number | null> } {
   const tmuxStatus: Map<string, 'processing' | 'idle' | 'waiting' | 'shell' | 'offline'> = new Map();
   const contextPctMap: Map<string, number | null> = new Map();
   try {
@@ -2367,6 +2377,14 @@ app.get('/api/pack', (c) => {
       }
     }
   } catch { /* tmux not running */ }
+
+  return { tmuxStatus, contextPctMap };
+}
+
+// Get all beasts with status (processing/idle/offline)
+app.get('/api/pack', (c) => {
+  const profiles = getAllBeastProfiles();
+  const { tmuxStatus, contextPctMap } = getTmuxStatus();
 
   const beasts = profiles.map(p => {
     const sessionName = p.name.charAt(0).toUpperCase() + p.name.slice(1);

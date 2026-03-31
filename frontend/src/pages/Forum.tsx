@@ -215,7 +215,7 @@ export function Forum() {
   }).current;
   const initialScrollDone = useRef(false);
 
-  const PAGE_SIZE = 50;
+  const PAGE_SIZE = 20;
   const threadIdParam = searchParams.get('thread');
   const showNewThread = searchParams.get('new') === 'true';
 
@@ -336,13 +336,13 @@ export function Forum() {
     };
   }, [selectedThread?.thread.id]);
 
-  // Auto-scroll to top on initial thread load (oldest first, chronological)
+  // Auto-scroll to bottom on initial thread load (show latest messages first)
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
     if (!initialScrollDone.current) {
-      container.scrollTop = 0;
+      container.scrollTop = container.scrollHeight;
       initialScrollDone.current = true;
     }
   }, [selectedThread?.messages.length]);
@@ -388,15 +388,24 @@ export function Forum() {
   const loadOlderMessages = useCallback(async () => {
     if (!selectedThread || isLoadingMore) return;
     setIsLoadingMore(true);
+    const container = messagesContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight || 0;
     try {
       const currentCount = selectedThread.messages.length;
-      const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'asc');
+      const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'desc');
+      data.messages.reverse();
       if (data.messages.length > 0) {
         setSelectedThread(prev => prev ? {
           ...prev,
-          messages: [...prev.messages, ...data.messages],
+          messages: [...data.messages, ...prev.messages],
         } : prev);
         loadReactionsForThread(data.messages);
+        // Preserve scroll position after prepending older messages
+        requestAnimationFrame(() => {
+          if (container) {
+            container.scrollTop = container.scrollHeight - prevScrollHeight;
+          }
+        });
       }
     } finally {
       setIsLoadingMore(false);
@@ -411,8 +420,9 @@ export function Forum() {
 
   async function selectThread(id: number) {
     initialScrollDone.current = false;
-    // Load messages chronologically (asc) — oldest first
-    const data = await fetchThread(id, PAGE_SIZE, 0, 'asc');
+    // Load latest messages (desc) then reverse for chronological display
+    const data = await fetchThread(id, PAGE_SIZE, 0, 'desc');
+    data.messages.reverse();
     setSelectedThread(data);
     setTotalMessages(data.total);
     setSearchParams({ thread: id.toString() });
@@ -423,7 +433,7 @@ export function Forum() {
     }
     setReactions(inlineReactions);
     loadReactionsForThread(data.messages);
-    // Mark as read for gorn (last message is newest in asc order)
+    // Mark as read for gorn (last message is newest after reverse)
     if (data.messages.length > 0) {
       markThreadRead(id, data.messages[data.messages.length - 1].id);
     }
@@ -716,6 +726,17 @@ export function Forum() {
             </div>
 
             <div className={styles.messages} ref={messagesContainerRef}>
+              {hasMore && (
+                <div style={{ textAlign: 'center', padding: '8px' }}>
+                  <button
+                    onClick={loadOlderMessages}
+                    disabled={isLoadingMore}
+                    className={styles.loadMoreBtn}
+                  >
+                    {isLoadingMore ? 'Loading...' : `Load older (${totalMessages - (selectedThread?.messages.length || 0)} remaining)`}
+                  </button>
+                </div>
+              )}
               {selectedThread.messages.map(msg => {
                 const identity = resolveAuthor(msg.role, msg.author, beastProfiles);
                 return (
@@ -800,17 +821,6 @@ export function Forum() {
                 </div>
                 );
               })}
-              {hasMore && (
-                <div style={{ textAlign: 'center', padding: '8px' }}>
-                  <button
-                    onClick={loadOlderMessages}
-                    disabled={isLoadingMore}
-                    className={styles.loadMoreBtn}
-                  >
-                    {isLoadingMore ? 'Loading...' : `Load more (${totalMessages - (selectedThread?.messages.length || 0)} remaining)`}
-                  </button>
-                </div>
-              )}
               <div ref={messagesEndRef} />
             </div>
 

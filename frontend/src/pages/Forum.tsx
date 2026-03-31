@@ -278,7 +278,7 @@ export function Forum() {
 
   // Load beast profiles
   useEffect(() => {
-    fetch(`${API_BASE}/beasts`)
+    fetch(isGuest ? '/api/guest/pack' : `${API_BASE}/beasts`)
       .then(res => res.json())
       .then(data => {
         const map = new Map<string, BeastProfile>();
@@ -488,7 +488,7 @@ export function Forum() {
         // Create new thread
         const result = await sendMessage(messageText, undefined, newTitle || undefined, undefined, isGuest);
         // Set category if not default
-        if (newCategory && newCategory !== 'discussion' && result.thread_id) {
+        if (!isGuest && newCategory && newCategory !== 'discussion' && result.thread_id) {
           await fetch(`${API_BASE}/thread/${result.thread_id}/category`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -541,6 +541,7 @@ export function Forum() {
   }
 
   async function toggleReaction(messageId: number, emoji: string) {
+    if (isGuest) return; // Guests cannot toggle reactions
     const existing = reactions[messageId] || [];
     const myReaction = existing.find(r => r.emoji === emoji && r.beasts.includes('gorn'));
     if (myReaction) {

@@ -3741,6 +3741,14 @@ app.post('/api/dm', async (c) => {
       }
     }
     const result = await withRetry(() => sendDm(data.from, data.to, data.message));
+    // Set author_role on DM message (Spec #32, T#557 — Talon review fix)
+    if (result.messageId) {
+      const authorRole = role === 'guest' ? 'guest' : (role === 'owner' ? 'owner' : 'beast');
+      try {
+        sqlite.prepare('UPDATE dm_messages SET author_role = ? WHERE id = ?')
+          .run(authorRole, result.messageId);
+      } catch { /* column may not exist yet */ }
+    }
     wsBroadcast('new_dm', { conversation_id: result.conversationId });
     return c.json({
       conversation_id: result.conversationId,

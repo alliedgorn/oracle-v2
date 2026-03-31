@@ -40,6 +40,10 @@ const GUEST_ALLOWLIST: AllowlistEntry[] = [
   { method: 'POST', pattern: /^\/api\/message\/\d+\/react$/ },
   { method: 'DELETE', pattern: /^\/api\/message\/\d+\/react$/ },
   { method: 'GET', pattern: /^\/api\/message\/\d+\/reactions$/ },
+
+  // File uploads and downloads — guests can attach and view files
+  { method: 'POST', pattern: /^\/api\/upload$/ },
+  { method: 'GET', pattern: /^\/api\/files\/\d+\/download$/ },
 ];
 
 /**

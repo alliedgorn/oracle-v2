@@ -202,6 +202,8 @@ export interface AuthStatus {
   hasPassword: boolean;
   localBypass: boolean;
   isLocal: boolean;
+  role?: 'owner' | 'guest';
+  guestName?: string;
 }
 
 export interface Settings {
@@ -217,12 +219,14 @@ export async function getAuthStatus(): Promise<AuthStatus> {
   return res.json();
 }
 
-// Login
-export async function login(password: string): Promise<{ success: boolean; error?: string }> {
+// Login (owner: password only, guest: username + password)
+export async function login(password: string, username?: string): Promise<{ success: boolean; error?: string; role?: string; display_name?: string }> {
+  const body: Record<string, string> = { password };
+  if (username) body.username = username;
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password })
+    body: JSON.stringify(body)
   });
   return res.json();
 }

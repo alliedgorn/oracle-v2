@@ -9,6 +9,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { autolinkIds } from '../utils/autolink';
 import styles from './Forum.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
+import { useAuth } from '../contexts/AuthContext';
 import { FileUpload } from '../components/FileUpload';
 import { EmojiButton } from '../components/EmojiButton';
 import { VoiceInput } from '../components/VoiceInput';
@@ -85,6 +86,7 @@ interface Thread {
   message_count: number;
   created_at: string;
   issue_url: string | null;
+  visibility?: 'public' | 'internal';
 }
 
 interface Message {
@@ -92,6 +94,7 @@ interface Message {
   role: 'human' | 'oracle' | 'claude';
   content: string;
   author: string | null;
+  author_role?: 'owner' | 'beast' | 'guest';
   reply_to_id: number | null;
   principles_found: number | null;
   patterns_found: number | null;
@@ -138,6 +141,7 @@ async function sendMessage(message: string, threadId?: number, title?: string, r
 
 
 export function Forum() {
+  const { isGuest } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedThread, setSelectedThread] = useState<ThreadDetail | null>(null);
@@ -573,12 +577,14 @@ export function Forum() {
       <div className={`${styles.sidebar} ${selectedThread || showNewThread ? styles.hidden : ''}`}>
         <div className={styles.sidebarHeader}>
           <h2>Threads</h2>
-          <button
-            className={styles.newButton}
-            onClick={openNewThread}
-          >
-            + New
-          </button>
+          {!isGuest && (
+            <button
+              className={styles.newButton}
+              onClick={openNewThread}
+            >
+              + New
+            </button>
+          )}
         </div>
 
         <SearchInput
@@ -652,6 +658,11 @@ export function Forum() {
               </div>
               <div className={styles.threadMeta}>
                 <span className={styles.categoryBadge}>{thread.category || 'discussion'}</span>
+                {!isGuest && thread.visibility && (
+                  <span className={thread.visibility === 'public' ? styles.visibilityPublic : styles.visibilityInternal}>
+                    {thread.visibility === 'public' ? 'Public' : 'Internal'}
+                  </span>
+                )}
                 <span className={styles.count}>{thread.message_count} msgs</span>
               </div>
             </div>
@@ -753,6 +764,7 @@ export function Forum() {
                         <span className={styles.avatarEmoji}>{identity.emoji}</span>
                       )}
                       {identity.name}
+                      {msg.author_role === 'guest' && <span className={styles.guestBadge}>Guest</span>}
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span className={styles.messageId}>#{msg.id}</span>

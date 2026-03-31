@@ -503,6 +503,202 @@ export function Settings() {
           </button>
         </div>
       </div>
+
+      <GuestManagement />
+    </div>
+  );
+}
+
+// ============================================================================
+// Guest Account Management
+// ============================================================================
+
+interface Guest {
+  id: number;
+  username: string;
+  display_name: string | null;
+  expires_at: string | null;
+  disabled_at: string | null;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+function GuestManagement() {
+  const [guests, setGuests] = useState<Guest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ username: '', password: '', display_name: '', expires_at: '' });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  async function loadGuests() {
+    try {
+      const res = await fetch('/api/guests');
+      if (res.ok) {
+        const data = await res.json();
+        setGuests(data.guests || []);
+      }
+    } catch {}
+    setLoading(false);
+  }
+
+  useEffect(() => { loadGuests(); }, []);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.username.trim() || !form.password.trim()) return;
+    setCreating(true);
+    setError('');
+    setSuccess('');
+    try {
+      const body: Record<string, string> = {
+        username: form.username.trim(),
+        password: form.password,
+      };
+      if (form.display_name.trim()) body.display_name = form.display_name.trim();
+      if (form.expires_at) body.expires_at = form.expires_at;
+
+      const res = await fetch('/api/guests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(`Guest "${form.username}" created`);
+        setForm({ username: '', password: '', display_name: '', expires_at: '' });
+        setShowForm(false);
+        loadGuests();
+      } else {
+        setError(data.error || 'Failed to create guest');
+      }
+    } catch {
+      setError('Connection error');
+    }
+    setCreating(false);
+  }
+
+  async function handleDelete(id: number, username: string) {
+    if (!confirm(`Delete guest "${username}"?`)) return;
+    try {
+      await fetch(`/api/guests/${id}`, { method: 'DELETE' });
+      loadGuests();
+    } catch {}
+  }
+
+  async function handleToggleDisable(guest: Guest) {
+    try {
+      await fetch(`/api/guests/${guest.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          disabled_at: guest.disabled_at ? null : new Date().toISOString(),
+        }),
+      });
+      loadGuests();
+    } catch {}
+  }
+
+  return (
+    <div className={styles.section}>
+      <h2 className={styles.sectionTitle}>Guest Accounts</h2>
+      <p className={styles.sectionDesc}>
+        Manage guest access to The Den. Guests can view the pack, chat on public forum threads, and send DMs.
+      </p>
+
+      {error && <div className={styles.message} style={{ background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}>{error}</div>}
+      {success && <div className={`${styles.message} ${styles.success}`}>{success}</div>}
+
+      {loading ? (
+        <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Loading...</p>
+      ) : (
+        <>
+          {guests.length === 0 && !showForm && (
+            <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>No guest accounts yet.</p>
+          )}
+
+          {guests.map(guest => (
+            <div key={guest.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ flex: 1, color: 'var(--text-primary)', fontSize: 14 }}>
+                {guest.display_name || guest.username}
+                <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: 12 }}>@{guest.username}</span>
+                {guest.disabled_at && <span style={{ color: '#ef4444', marginLeft: 8, fontSize: 11 }}>Disabled</span>}
+                {guest.expires_at && !guest.disabled_at && (
+                  <span style={{ color: 'var(--text-muted)', marginLeft: 8, fontSize: 11 }}>
+                    Expires {new Date(guest.expires_at).toLocaleDateString()}
+                  </span>
+                )}
+              </span>
+              <button
+                onClick={() => handleToggleDisable(guest)}
+                className={styles.button}
+                style={{ padding: '4px 10px', fontSize: 12 }}
+              >
+                {guest.disabled_at ? 'Enable' : 'Disable'}
+              </button>
+              <button
+                onClick={() => handleDelete(guest.id, guest.username)}
+                className={styles.dangerButton}
+                style={{ padding: '4px 10px', fontSize: 12 }}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+
+          {showForm ? (
+            <form onSubmit={handleCreate} style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <input
+                type="text"
+                value={form.username}
+                onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                placeholder="Username (lowercase, 3+ chars)"
+                className={styles.input}
+                style={{ padding: '8px 12px', fontSize: 13 }}
+              />
+              <input
+                type="password"
+                value={form.password}
+                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                placeholder="Password (8+ chars)"
+                className={styles.input}
+                style={{ padding: '8px 12px', fontSize: 13 }}
+              />
+              <input
+                type="text"
+                value={form.display_name}
+                onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))}
+                placeholder="Display name (optional)"
+                className={styles.input}
+                style={{ padding: '8px 12px', fontSize: 13 }}
+              />
+              <input
+                type="date"
+                value={form.expires_at}
+                onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
+                className={styles.input}
+                style={{ padding: '8px 12px', fontSize: 13 }}
+                title="Account expiry date (optional)"
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="submit" disabled={creating || !form.username.trim() || !form.password.trim()} className={styles.button} style={{ padding: '8px 16px', fontSize: 13 }}>
+                  {creating ? 'Creating...' : 'Create Guest'}
+                </button>
+                <button type="button" onClick={() => setShowForm(false)} className={styles.button} style={{ padding: '8px 16px', fontSize: 13, background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className={styles.actions}>
+              <button onClick={() => setShowForm(true)} className={styles.button}>
+                + Add Guest
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

@@ -41,9 +41,18 @@ import { ChatOverlay } from './components/ChatOverlay';
 import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
 
-// Protected route wrapper
+// Guest-accessible routes (no redirect for guests)
+const GUEST_ROUTES = new Set(['/', '/pack', '/forum', '/dms', '/beast']);
+
+function isGuestRoute(pathname: string): boolean {
+  if (GUEST_ROUTES.has(pathname)) return true;
+  if (pathname.startsWith('/beast/')) return true;
+  return false;
+}
+
+// Protected route wrapper with guest role awareness
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, authEnabled, isLoading } = useAuth();
+  const { isAuthenticated, authEnabled, isLoading, isGuest } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -52,6 +61,11 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
   if (authEnabled && !isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Guests can only access whitelisted routes — redirect others to /
+  if (isGuest && !isGuestRoute(location.pathname)) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;

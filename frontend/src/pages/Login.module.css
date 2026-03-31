@@ -28,6 +28,37 @@
   margin-right: 8px;
 }
 
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tab {
+  flex: 1;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.tab:hover:not(.tabActive) {
+  background: var(--bg-secondary);
+}
+
+.tabActive {
+  background: var(--accent);
+  color: white;
+}
+
 .title {
   font-size: 24px;
   font-weight: 600;
@@ -107,4 +138,11 @@
   border-radius: 8px;
   font-size: 14px;
   margin-bottom: 20px;
+}
+
+.guestNote {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 16px;
 }

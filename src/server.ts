@@ -839,7 +839,11 @@ app.get('/api/guests', (c) => {
     return c.json({ error: 'Guest account management requires owner session' }, 403);
   }
 
-  const guests = listGuests(sqlite);
+  const GUEST_ONLINE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+  const guests = listGuests(sqlite).map(g => ({
+    ...g,
+    online: g.last_active_at ? (Date.now() - new Date(g.last_active_at + 'Z').getTime()) < GUEST_ONLINE_THRESHOLD_MS : false,
+  }));
   return c.json({ guests });
 });
 

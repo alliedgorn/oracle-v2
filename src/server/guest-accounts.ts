@@ -231,4 +231,6 @@ export function recordSuccessfulLogin(sqlite: Database, guestId: number): void {
 export function logGuestAction(sqlite: Database, guestId: number, endpoint: string, method: string): void {
   sqlite.prepare('INSERT INTO guest_audit_log (guest_id, endpoint, method) VALUES (?, ?, ?)')
     .run(guestId, endpoint, method);
+  sqlite.prepare('UPDATE guest_accounts SET last_active_at = datetime(\'now\') WHERE id = ?')
+    .run(guestId);
 }

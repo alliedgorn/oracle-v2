@@ -522,6 +522,7 @@ interface Guest {
   disabled_at: string | null;
   created_at: string;
   last_login_at: string | null;
+  online: boolean;
 }
 
 function GuestManagement() {
@@ -622,8 +623,10 @@ function GuestManagement() {
           {guests.map(guest => (
             <div key={guest.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
               <span style={{ flex: 1, color: 'var(--text-primary)', fontSize: 14 }}>
+                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: guest.online ? '#22c55e' : '#6b7280', marginRight: 6 }} />
                 {guest.username}
                 {guest.display_name && <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: 12 }}>({guest.display_name})</span>}
+                {guest.online && <span style={{ color: '#22c55e', marginLeft: 8, fontSize: 11 }}>Online</span>}
                 {guest.disabled_at && <span style={{ color: '#ef4444', marginLeft: 8, fontSize: 11 }}>Disabled</span>}
                 {guest.expires_at && !guest.disabled_at && (
                   <span style={{ color: 'var(--text-muted)', marginLeft: 8, fontSize: 11 }}>

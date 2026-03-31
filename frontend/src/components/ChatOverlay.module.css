@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   bottom: 0;
-  right: 16px;
+  right: 340px;
   width: 380px;
   height: min(500px, calc(100vh - 60px));
   background: var(--bg-card);

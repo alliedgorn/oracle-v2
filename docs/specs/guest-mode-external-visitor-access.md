@@ -31,10 +31,13 @@ Three roles:
 
 ### Auth Flow
 
+Unified login for all users — username + password. One login page, one flow.
+
 1. Gorn creates guest account via POST /api/guests — sets username, password, optional expiry
-2. Guest logs in via POST /api/auth/login — server checks guest_accounts after owner auth fails
-3. Server creates session cookie with role: guest
-4. Expired or disabled accounts return 401
+2. All users (Gorn and guests) log in via POST /api/auth/login with username + password
+3. Server checks credentials, creates session cookie with role: owner or role: guest
+4. Expired or disabled guest accounts return 401
+5. Gorn's existing password-only login migrates to username + password
 
 ## Database Changes
 
@@ -156,9 +159,10 @@ Note: Gorn directed Bertus to begin implementing prompt injection resistance imm
 
 ## Frontend Changes
 
-### Guest login page
-- Username + password form, clean minimal
-- Account expiry warning
+### Login page (unified)
+- Username + password form for all users (Gorn and guests)
+- Single login page, single flow
+- Account expiry warning for guest accounts
 
 ### Guest welcome page
 - Welcome to The Den header with kingdom branding

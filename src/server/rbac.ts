@@ -44,6 +44,7 @@ const GUEST_ALLOWLIST: AllowlistEntry[] = [
   // File uploads and downloads — guests can attach and view files
   { method: 'POST', pattern: /^\/api\/upload$/ },
   { method: 'GET', pattern: /^\/api\/f\/[0-9a-f-]+\.\w+$/ },
+  { method: 'GET', pattern: /^\/api\/forum\/file\/.+$/ },  // legacy file URLs (pre-hash migration)
 ];
 
 /**

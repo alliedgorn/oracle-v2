@@ -129,7 +129,7 @@ New middleware layer inserted after auth, before route handlers:
 
 ### Guest isolation
 - Guest DMs: guest-to-Beast and guest-to-guest allowed
-- Guest DMs readable by Gorn (disclosed on welcome page)
+- Guest DMs are private — Gorn cannot read them
 - No guest access to: tmux/Pack View, file uploads (initially), reactions (initially)
 - Guest name validation: block Beast names to prevent impersonation
 - Rate limiting: stricter limits for guests than Beasts

@@ -18,7 +18,8 @@ import { Login } from './pages/Login';
 import { Settings } from './pages/Settings';
 import { Playground } from './pages/Playground';
 import { Map } from './pages/Map';
-import { PackView } from './pages/PackView';
+import { PackPage } from './pages/PackPage';
+import { TerminalView } from './pages/TerminalView';
 import { BeastProfile } from './pages/BeastProfile';
 import { Playbook } from './pages/Playbook';
 import { GornQueue } from './pages/GornQueue';
@@ -43,7 +44,7 @@ import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
 
 // Guest-accessible routes (no redirect for guests)
-const GUEST_ROUTES = new Set(['/', '/pack', '/forum', '/dms', '/beast', '/welcome']);
+const GUEST_ROUTES = new Set(['/', '/pack', '/forum', '/dms', '/beast', '/welcome', '/terminal']);
 
 function isGuestRoute(pathname: string): boolean {
   if (GUEST_ROUTES.has(pathname)) return true;
@@ -104,7 +105,7 @@ function AppContent() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/welcome" element={<RequireAuth><GuestWelcome /></RequireAuth>} />
-        <Route path="/" element={<RequireAuth><PackView /></RequireAuth>} />
+        <Route path="/" element={<RequireAuth><PackPage /></RequireAuth>} />
         <Route path="/overview" element={<RequireAuth><Overview /></RequireAuth>} />
         <Route path="/feed" element={<RequireAuth><Feed /></RequireAuth>} />
         <Route path="/doc/:id" element={<RequireAuth><DocDetail /></RequireAuth>} />
@@ -115,7 +116,8 @@ function AppContent() {
         <Route path="/graph3d" element={<Navigate to="/graph" replace />} />
         <Route path="/handoff" element={<RequireAuth><Handoff /></RequireAuth>} />
         <Route path="/activity" element={<RequireAuth><Activity /></RequireAuth>} />
-        <Route path="/pack" element={<RequireAuth><PackView /></RequireAuth>} />
+        <Route path="/pack" element={<RequireAuth><PackPage /></RequireAuth>} />
+        <Route path="/terminal" element={<RequireAuth><TerminalView /></RequireAuth>} />
         <Route path="/beast/:name" element={<RequireAuth><BeastProfile /></RequireAuth>} />
         <Route path="/playbook" element={<RequireAuth><Playbook /></RequireAuth>} />
         <Route path="/queue" element={<RequireAuth><GornQueue /></RequireAuth>} />

@@ -2141,7 +2141,7 @@ app.post('/api/guest/dm', async (c) => {
 
   const guestDisplayName = getGuestDisplayName(guestUsername);
   const guestTag = `[Guest] ${guestDisplayName}`;
-  const result = await withRetry(() => sendDm(guestTag, data.to, data.message, guestUsername));
+  const result = await withRetry(() => sendDm(guestTag, data.to, data.message, `[Guest] ${guestUsername}`));
 
   if (result.messageId) {
     try {

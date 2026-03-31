@@ -42,7 +42,7 @@ export function PackView() {
   // Load beast list with online status — only update state if data changed
   const loadPack = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/pack`);
+      const res = await fetch(isGuest ? '/api/guest/pack' : `${API_BASE}/pack`);
       const data = await res.json();
       const beastList = data.beasts || [];
       // Only update state if beast data actually changed (avoids unnecessary re-renders)

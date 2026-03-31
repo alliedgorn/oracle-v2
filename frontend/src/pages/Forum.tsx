@@ -115,26 +115,33 @@ interface ThreadDetail {
 
 const API_BASE = '/api';
 
-async function fetchThreads(): Promise<{ threads: Thread[]; total: number }> {
-  const res = await fetch(`${API_BASE}/threads`);
+async function fetchThreads(isGuest = false): Promise<{ threads: Thread[]; total: number }> {
+  const res = await fetch(isGuest ? '/api/guest/threads' : `${API_BASE}/threads`);
   return res.json();
 }
 
-async function fetchThread(id: number, limit?: number, offset = 0, order: 'asc' | 'desc' = 'desc'): Promise<ThreadDetail & { total: number }> {
+async function fetchThread(id: number, limit?: number, offset = 0, order: 'asc' | 'desc' = 'desc', isGuest = false): Promise<ThreadDetail & { total: number }> {
   const params = new URLSearchParams();
   if (limit !== undefined) params.set('limit', limit.toString());
   if (offset) params.set('offset', offset.toString());
   if (order === 'asc') params.set('order', 'asc');
   const qs = params.toString();
-  const res = await fetch(`${API_BASE}/thread/${id}${qs ? '?' + qs : ''}`);
+  const base = isGuest ? '/api/guest' : API_BASE;
+  const res = await fetch(`${base}/thread/${id}${qs ? '?' + qs : ''}`);
   return res.json();
 }
 
-async function sendMessage(message: string, threadId?: number, title?: string, replyToId?: number): Promise<any> {
-  const res = await fetch(`${API_BASE}/thread`, {
+async function sendMessage(message: string, threadId?: number, title?: string, replyToId?: number, isGuest = false): Promise<any> {
+  const base = isGuest ? '/api/guest' : API_BASE;
+  const body: Record<string, any> = { message, thread_id: threadId, title, reply_to_id: replyToId };
+  if (!isGuest) {
+    body.author = 'gorn';
+    body.role = 'human';
+  }
+  const res = await fetch(`${base}/thread`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, thread_id: threadId, title, reply_to_id: replyToId, author: 'gorn', role: 'human' })
+    body: JSON.stringify(body)
   });
   return res.json();
 }
@@ -238,8 +245,9 @@ export function Forum() {
     return () => window.removeEventListener('scroll', handler);
   }, []);
 
-  // Load unread counts for gorn
+  // Load unread counts for gorn (skip for guests)
   async function loadUnreadCounts() {
+    if (isGuest) return;
     try {
       const res = await fetch(`${API_BASE}/forum/unread/gorn`);
       const data = await res.json();
@@ -251,8 +259,9 @@ export function Forum() {
     } catch { /* ignore */ }
   }
 
-  // Mark thread as read for gorn
+  // Mark thread as read for gorn (skip for guests)
   async function markThreadRead(threadId: number, lastMessageId: number) {
+    if (isGuest) return;
     try {
       await fetch(`${API_BASE}/forum/read`, {
         method: 'POST',
@@ -313,7 +322,7 @@ export function Forum() {
       // Pause polling while user is typing to prevent re-renders
       if (document.activeElement?.tagName === 'TEXTAREA') return;
       if (selectedThread) {
-        fetchThread(selectedThread.thread.id, 5, 0, 'desc').then(data => {
+        fetchThread(selectedThread.thread.id, 5, 0, 'desc', isGuest).then(data => {
           setSelectedThread(prev => {
             if (!prev) return prev;
             const existingIds = new Set(prev.messages.map(m => m.id));
@@ -366,7 +375,7 @@ export function Forum() {
         setTotalMessages(d.total);
       }).catch(() => {});
     }
-    fetchThreads().then(d => setThreads(d.threads)).catch(() => {});
+    fetchThreads(isGuest).then(d => setThreads(d.threads)).catch(() => {});
   }, [selectedThread?.thread.id]);
 
   useWebSocket('new_message', handleWsMessage);
@@ -396,7 +405,7 @@ export function Forum() {
     const prevScrollHeight = container?.scrollHeight || 0;
     try {
       const currentCount = selectedThread.messages.length;
-      const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'desc');
+      const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'desc', isGuest);
       data.messages.reverse();
       if (data.messages.length > 0) {
         setSelectedThread(prev => prev ? {
@@ -418,14 +427,14 @@ export function Forum() {
 
 
   async function loadThreads() {
-    const data = await fetchThreads();
+    const data = await fetchThreads(isGuest);
     setThreads(data.threads);
   }
 
   async function selectThread(id: number) {
     initialScrollDone.current = false;
     // Load latest messages (desc) then reverse for chronological display
-    const data = await fetchThread(id, PAGE_SIZE, 0, 'desc');
+    const data = await fetchThread(id, PAGE_SIZE, 0, 'desc', isGuest);
     data.messages.reverse();
     setSelectedThread(data);
     setTotalMessages(data.total);
@@ -456,7 +465,7 @@ export function Forum() {
     setLoading(true);
     try {
       if (selectedThread) {
-        const result = await sendMessage(messageText, selectedThread.thread.id, undefined, replyTo?.id);
+        const result = await sendMessage(messageText, selectedThread.thread.id, undefined, replyTo?.id, isGuest);
         // Append the new message locally instead of re-fetching (avoids WebSocket duplicate)
         if (result.message_id) {
           const newMsg = {
@@ -477,7 +486,7 @@ export function Forum() {
         }
       } else if (showNewThread) {
         // Create new thread
-        const result = await sendMessage(messageText, undefined, newTitle || undefined);
+        const result = await sendMessage(messageText, undefined, newTitle || undefined, undefined, isGuest);
         // Set category if not default
         if (newCategory && newCategory !== 'discussion' && result.thread_id) {
           await fetch(`${API_BASE}/thread/${result.thread_id}/category`, {
@@ -561,6 +570,7 @@ export function Forum() {
       setSearchResults(null);
       return;
     }
+    if (isGuest) return; // Search not available for guests
     const res = await fetch(`${API_BASE}/forum/search?q=${encodeURIComponent(searchQuery)}`);
     const data = await res.json();
     setSearchResults({ messages: data.messages, threads: data.threads });

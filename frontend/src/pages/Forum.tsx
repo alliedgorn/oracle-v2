@@ -45,6 +45,12 @@ function resolveAuthor(
 ): { name: string; emoji: string; avatarUrl: string | null; themeColor: string | null } {
   // Check author field first — role alone is unreliable (Beasts post with role: human)
   if (author) {
+    // Guest authors: "[Guest] username" — display as guest, don't match beast profiles
+    if (author.startsWith('[Guest]')) {
+      const guestName = author.replace('[Guest] ', '').replace('[Guest]', '') || 'Guest';
+      return { name: guestName, emoji: '👤', avatarUrl: null, themeColor: null };
+    }
+
     const authorLower = author.toLowerCase();
 
     // Match against beast profiles from DB
@@ -308,7 +314,9 @@ export function Forum() {
   useEffect(() => {
     loadThreads();
     loadUnreadCounts();
-    fetch('/api/reactions/supported').then(r => r.json()).then(d => setSupportedEmoji(d.emoji || [])).catch(() => {});
+    if (!isGuest) {
+      fetch('/api/reactions/supported').then(r => r.json()).then(d => setSupportedEmoji(d.emoji || [])).catch(() => {});
+    }
   }, []);
 
   // Load thread from URL param or auto-select first

@@ -336,7 +336,7 @@ export function Forum() {
     };
   }, [selectedThread?.thread.id]);
 
-  // Auto-scroll to top on initial thread load (newest first)
+  // Auto-scroll to top on initial thread load (oldest first, chronological)
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -357,7 +357,7 @@ export function Forum() {
           const newMsgs = d.messages.filter(m => !existingIds.has(m.id));
           if (newMsgs.length === 0) return prev;
           loadReactionsForThread(newMsgs);
-          return { ...prev, messages: [...newMsgs, ...prev.messages] };
+          return { ...prev, messages: [...prev.messages, ...newMsgs] };
         });
         setTotalMessages(d.total);
       }).catch(() => {});
@@ -390,7 +390,7 @@ export function Forum() {
     setIsLoadingMore(true);
     try {
       const currentCount = selectedThread.messages.length;
-      const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'desc');
+      const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'asc');
       if (data.messages.length > 0) {
         setSelectedThread(prev => prev ? {
           ...prev,
@@ -411,8 +411,8 @@ export function Forum() {
 
   async function selectThread(id: number) {
     initialScrollDone.current = false;
-    // Load latest messages (desc) — newest first
-    const data = await fetchThread(id, PAGE_SIZE, 0, 'desc');
+    // Load messages chronologically (asc) — oldest first
+    const data = await fetchThread(id, PAGE_SIZE, 0, 'asc');
     setSelectedThread(data);
     setTotalMessages(data.total);
     setSearchParams({ thread: id.toString() });
@@ -423,9 +423,9 @@ export function Forum() {
     }
     setReactions(inlineReactions);
     loadReactionsForThread(data.messages);
-    // Mark as read for gorn (first message is newest in desc order)
+    // Mark as read for gorn (last message is newest in asc order)
     if (data.messages.length > 0) {
-      markThreadRead(id, data.messages[0].id);
+      markThreadRead(id, data.messages[data.messages.length - 1].id);
     }
   }
 
@@ -807,7 +807,7 @@ export function Forum() {
                     disabled={isLoadingMore}
                     className={styles.loadMoreBtn}
                   >
-                    {isLoadingMore ? 'Loading...' : `Load more (${totalMessages - (selectedThread?.messages.length || 0)} older)`}
+                    {isLoadingMore ? 'Loading...' : `Load more (${totalMessages - (selectedThread?.messages.length || 0)} remaining)`}
                   </button>
                 </div>
               )}

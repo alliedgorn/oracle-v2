@@ -1889,13 +1889,23 @@ app.get('/api/guest/thread/:id', (c) => {
       status: threadData.thread.status,
       created_at: new Date(threadData.thread.createdAt).toISOString(),
     },
-    messages: threadData.messages.map(m => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      author: m.author,
-      created_at: new Date(m.createdAt).toISOString(),
-    })),
+    messages: threadData.messages.map(m => {
+      const raw = sqlite.prepare('SELECT reply_to_id FROM forum_messages WHERE id = ?').get(m.id) as any;
+      const reactionRows = sqlite.prepare(
+        'SELECT emoji, GROUP_CONCAT(beast_name) as beasts, COUNT(*) as count FROM forum_reactions WHERE message_id = ? GROUP BY emoji'
+      ).all(m.id) as any[];
+      return {
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        author: m.author,
+        reply_to_id: raw?.reply_to_id || null,
+        principles_found: m.principlesFound,
+        patterns_found: m.patternsFound,
+        created_at: new Date(m.createdAt).toISOString(),
+        reactions: reactionRows.map(r => ({ emoji: r.emoji, beasts: r.beasts.split(','), count: r.count })),
+      };
+    }),
     total: threadData.total,
   });
 });

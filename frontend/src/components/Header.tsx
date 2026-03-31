@@ -32,7 +32,6 @@ const guestTopNavItems = [
   { path: '/welcome', label: 'Welcome' },
   { path: '/pack', label: 'Pack' },
   { path: '/forum', label: 'Forum' },
-  { path: '/dms', label: 'DM' },
 ];
 
 // Grouped navigation (dropdowns for secondary items)

@@ -34,6 +34,7 @@ export const BeastCard = memo(function BeastCard({
   badge,
   onClick,
 
+  onTerminalClick,
   onDmClick,
   onProfileClick,
   unreadCount = 0,
@@ -62,10 +63,13 @@ export const BeastCard = memo(function BeastCard({
         <div className={styles.role}>{role || animal}</div>
       </div>
       {badge && <span className={styles.badge}>{badge}</span>}
-      {(onProfileClick || onDmClick) && (
+      {(onProfileClick || onTerminalClick || onDmClick) && (
         <div className={styles.actions}>
           {onProfileClick && (
             <a href={`/beast/${name}`} className={styles.dmButton} title={`View ${displayName}'s profile`} onClick={onProfileClick}>👤</a>
+          )}
+          {onTerminalClick && (
+            <button className={`${styles.dmButton} ${styles.terminalBtn}`} title={`Open ${displayName}'s terminal`} onClick={onTerminalClick}>&#9002;</button>
           )}
           {onDmClick && (
             <button className={styles.dmButton} title={`DM ${displayName}`} onClick={onDmClick}>

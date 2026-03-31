@@ -141,7 +141,7 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
                 selected={isAttached}
                 badge={isAttached ? 'ATTACHED' : beast.contextPct != null ? `${beast.contextPct}%` : undefined}
                 onClick={() => !loading && handleClick(beast)}
-                onTerminalClick={(e) => { e.stopPropagation(); onClose(); navigate(`/?beast=${beast.name}`); }}
+                onTerminalClick={(e) => { e.stopPropagation(); onClose(); navigate(`/terminal?beast=${beast.name}`); }}
                 unreadCount={unreadCounts[beast.name] || 0}
                 onDmClick={(e) => { e.stopPropagation(); openChat(beast.name, beast.displayName); }}
               />

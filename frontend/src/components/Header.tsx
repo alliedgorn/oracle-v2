@@ -30,7 +30,7 @@ const topNavItems = [
 // Guest top nav — flat, no dropdown
 const guestTopNavItems = [
   { path: '/welcome', label: 'Welcome' },
-  { path: '/', label: 'Pack' },
+  { path: '/pack', label: 'Pack' },
   { path: '/forum', label: 'Forum' },
   { path: '/dms', label: 'DM' },
 ];
@@ -44,7 +44,8 @@ const navGroups = [
       {
         label: 'Pack',
         items: [
-          { path: '/', label: 'Pack' },
+          { path: '/pack', label: 'Pack' },
+          { path: '/terminal', label: 'Terminal' },
           { path: '/teams', label: 'Teams' },
           { path: '/dms', label: 'DMs' },
           { path: '/risk', label: 'Risk' },

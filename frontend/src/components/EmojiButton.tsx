@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import styles from './EmojiButton.module.css';
 
 const FALLBACK_GROUPS = [
@@ -35,6 +36,7 @@ interface EmojiButtonProps {
 }
 
 export function EmojiButton({ onSelect }: EmojiButtonProps) {
+  const { isGuest } = useAuth();
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState(cachedGroups || FALLBACK_GROUPS);
   const ref = useRef<HTMLDivElement>(null);
@@ -42,7 +44,7 @@ export function EmojiButton({ onSelect }: EmojiButtonProps) {
   const [pickerStyle, setPickerStyle] = useState<React.CSSProperties>({});
 
   useEffect(() => {
-    if (cachedGroups) return;
+    if (cachedGroups || isGuest) return;
     fetch('/api/reactions/supported')
       .then(r => r.json())
       .then((data: any) => {
@@ -54,7 +56,7 @@ export function EmojiButton({ onSelect }: EmojiButtonProps) {
         }
       })
       .catch(() => { /* use fallback */ });
-  }, []);
+  }, [isGuest]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

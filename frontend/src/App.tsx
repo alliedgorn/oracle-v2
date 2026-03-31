@@ -73,7 +73,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 function AppContent() {
   const location = useLocation();
-  const { isGuest } = useAuth();
+  const { isGuest, isLoading: authLoading } = useAuth();
   const isLoginPage = location.pathname === '/login';
   const [remoteCollapsed, setRemoteCollapsed] = useState(false);
   const [remoteMobileOpen, setRemoteMobileOpen] = useState(false);
@@ -138,9 +138,9 @@ function AppContent() {
         <Route path="/files" element={<RequireAuth><Files /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       </Routes>
-      {!isLoginPage && !isGuest && <QuickLearn />}
+      {!isLoginPage && !authLoading && !isGuest && <QuickLearn />}
       </div>
-      {!isLoginPage && !isGuest && (
+      {!isLoginPage && !authLoading && !isGuest && (
         <RemotePanel
           isOpen={remoteMobileOpen}
           onClose={() => setRemoteMobileOpen(false)}
@@ -149,7 +149,7 @@ function AppContent() {
         />
       )}
       </div>
-      {!isLoginPage && <GlobalChatOverlay />}
+      {!isLoginPage && !authLoading && !isGuest && <GlobalChatOverlay />}
     </>
   );
 }

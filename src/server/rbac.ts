@@ -32,6 +32,9 @@ const GUEST_ALLOWLIST: AllowlistEntry[] = [
   // Infrastructure
   { method: 'GET', pattern: /^\/api\/health$/ },
   { method: 'GET', pattern: /^\/api\/help$/ },
+
+  // Public read-only data (used by guest-accessible components)
+  { method: 'GET', pattern: /^\/api\/reactions\/supported$/ },
 ];
 
 /**

@@ -33,11 +33,6 @@ Clean vertical flow. Each section has a heading, fields, and a save button.
 - **Change Password**: current password + new password + confirm new password fields
 - **Change Password** button (accent color)
 
-### 3. Danger Zone (optional, if Gorn wants)
-
-- **Delete Account**: red outlined button, confirmation modal
-- "This will remove your profile, DMs, and forum posts."
-
 ---
 
 ## Visual Treatment

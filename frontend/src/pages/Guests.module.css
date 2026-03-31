@@ -1,5 +1,5 @@
 .container {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 24px;
 }
@@ -25,6 +25,13 @@
   margin: 4px 0 0;
 }
 
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .search {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -33,7 +40,7 @@
   padding: 8px 14px;
   font-size: 14px;
   font-family: inherit;
-  width: 240px;
+  width: 200px;
 }
 
 .search:focus {
@@ -43,12 +50,6 @@
 
 .search::placeholder {
   color: var(--text-muted);
-}
-
-.controls {
-  display: flex;
-  gap: 10px;
-  align-items: center;
 }
 
 .sortSelect {
@@ -67,6 +68,104 @@
   border-color: var(--accent);
 }
 
+.createButton {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.createButton:hover {
+  opacity: 0.9;
+}
+
+/* Create Guest Form */
+.createForm {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.formError {
+  color: #ef4444;
+  font-size: 13px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 6px;
+}
+
+.formRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.formInput {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  flex: 1;
+  min-width: 140px;
+}
+
+.formInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.formInput::placeholder {
+  color: var(--text-muted);
+}
+
+.formSubmit {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.formSubmit:disabled {
+  opacity: 0.5;
+}
+
+.formCancel {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Layout */
+.layout {
+  display: flex;
+  gap: 24px;
+}
+
+.gridSection {
+  flex: 1;
+  min-width: 0;
+}
+
 .empty {
   color: var(--text-muted);
   font-size: 14px;
@@ -76,42 +175,69 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
 }
 
+/* Cards */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 16px;
-  transition: border-color 0.2s;
+  padding: 14px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
 
 .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   border-color: var(--accent);
+}
+
+.cardSelected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .cardDisabled {
   opacity: 0.5;
 }
 
-.cardHeader {
+.cardBody {
   display: flex;
-  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
   align-items: center;
-  margin-bottom: 8px;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.cardInfo {
+  flex: 1;
+  min-width: 0;
 }
 
 .nameRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -125,56 +251,163 @@
   background: #4b5563;
 }
 
+.dotDisabled {
+  background: #ef4444;
+}
+
 .username {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
+.usernameDisabled {
+  text-decoration: line-through;
+}
+
 .displayName {
   color: var(--text-muted);
-  font-size: 13px;
-  margin-bottom: 12px;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.cardMeta {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 4px;
 }
 
 .onlineBadge {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: #22c55e;
   background: rgba(34, 197, 94, 0.1);
-  padding: 2px 8px;
+  padding: 1px 6px;
   border-radius: 10px;
 }
 
 .newBadge {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--accent);
   background: rgba(212, 148, 58, 0.1);
-  padding: 2px 8px;
+  padding: 1px 6px;
   border-radius: 10px;
 }
 
 .disabledBadge {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: #ef4444;
   background: rgba(239, 68, 68, 0.1);
-  padding: 2px 8px;
+  padding: 1px 6px;
   border-radius: 10px;
 }
 
-.meta {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 12px 0;
+/* Detail Panel */
+.detailPanel {
+  width: 320px;
+  flex-shrink: 0;
 }
 
-.metaItem {
+.detailContent {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  position: sticky;
+  top: 80px;
+}
+
+.detailPlaceholder {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  position: sticky;
+  top: 80px;
+}
+
+.detailPlaceholder p {
+  margin: 8px 0 0;
+}
+
+.detailHero {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.detailAvatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 12px;
+}
+
+.detailName {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.detailUsername {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.detailStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 16px;
+}
+
+.detailStatusOnline {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.detailStatusOffline {
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+}
+
+.detailStatusDisabled {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.detailDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.detailMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.detailMetaItem {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .metaLabel {
@@ -185,39 +418,104 @@
   color: var(--text-secondary);
 }
 
-.actions {
+/* Action Buttons */
+.detailActions {
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  margin-top: 12px;
 }
 
 .dmButton {
-  flex: 1;
   background: var(--accent);
   color: white;
   border: none;
   border-radius: 8px;
-  padding: 8px 14px;
+  padding: 10px 14px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: opacity 0.2s;
+  text-align: center;
+  width: 100%;
 }
 
 .dmButton:hover {
   opacity: 0.9;
 }
 
+.disableButton {
+  background: none;
+  border: 1px solid #f59e0b;
+  color: #f59e0b;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.enableButton {
+  background: none;
+  border: 1px solid #22c55e;
+  color: #22c55e;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.deleteButton {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.deleteButton:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+/* Mobile */
 @media (max-width: 768px) {
   .header {
     flex-direction: column;
   }
 
+  .controls {
+    width: 100%;
+  }
+
   .search {
+    width: 100%;
+    flex: 1;
+  }
+
+  .createButton {
+    width: 100%;
+  }
+
+  .layout {
+    flex-direction: column;
+  }
+
+  .detailPanel {
     width: 100%;
   }
 
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .formRow {
+    flex-direction: column;
+  }
+
+  .formInput {
+    width: 100%;
   }
 }

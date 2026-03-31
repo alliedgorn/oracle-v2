@@ -102,13 +102,29 @@
   margin-bottom: 4px;
 }
 
+.filterSelect {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.filterSelect:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .sortSelect {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 8px;
   color: var(--text-muted);
-  padding: 5px 10px;
-  font-size: 11px;
+  padding: 6px 10px;
+  font-size: 12px;
   font-family: inherit;
   cursor: pointer;
   flex-shrink: 0;
@@ -432,6 +448,42 @@
   background: var(--accent);
   color: white;
   border-color: var(--accent);
+}
+
+.newThreadOptions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.visibilityToggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.visibilityBtn {
+  padding: 4px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.visibilityBtn:first-child {
+  border-right: 1px solid var(--border);
+}
+
+.visibilityBtnActive {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .form .textarea {

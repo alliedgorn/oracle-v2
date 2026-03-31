@@ -13,8 +13,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { FileUpload } from '../components/FileUpload';
 import { EmojiButton } from '../components/EmojiButton';
 import { VoiceInput } from '../components/VoiceInput';
-import { SearchInput } from '../components/SearchInput';
-import { FilterTabs } from '../components/FilterTabs';
 
 interface BeastProfile {
   name: string;
@@ -189,14 +187,13 @@ export function Forum() {
   const [newTitle, setNewTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [beastProfiles, setBeastProfiles] = useState<Map<string, BeastProfile>>(new Map());
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<{ messages: any[]; threads: any[] } | null>(null);
   const [reactions, setReactions] = useState<Record<number, { emoji: string; beasts: string[]; count: number }[]>>({});
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
   const [supportedEmoji, setSupportedEmoji] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<'recent' | 'active' | 'most-msgs'>('recent');
   const [newCategory, setNewCategory] = useState<string>('discussion');
+  const [newVisibility, setNewVisibility] = useState<'internal' | 'public'>('internal');
   const [replyTo, setReplyTo] = useState<{ id: number; author: string | null; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [totalMessages, setTotalMessages] = useState(0);
@@ -525,6 +522,14 @@ export function Forum() {
             body: JSON.stringify({ category: newCategory }),
           });
         }
+        // Set visibility if public
+        if (!isGuest && newVisibility === 'public' && result.thread_id) {
+          await fetch(`${API_BASE}/thread/${result.thread_id}/visibility`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ visibility: 'public' }),
+          });
+        }
         await loadThreads();
         setSearchParams({ thread: result.thread_id.toString() });
       }
@@ -595,26 +600,6 @@ export function Forum() {
     } catch { /* ignore */ }
   }
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!searchQuery.trim()) {
-      setSearchResults(null);
-      return;
-    }
-    if (isGuest) return;
-    // Use global search filtered to forum scope
-    const res = await fetch(`${API_BASE}/search?q=forum:${encodeURIComponent(searchQuery)}&limit=20`);
-    const data = await res.json();
-    const results = data.results || [];
-    const threadResults = results.filter((r: any) => r.type === 'thread');
-    const msgResults = results.filter((r: any) => r.type === 'message' || r.type === 'forum_message');
-    setSearchResults({ messages: msgResults, threads: threadResults });
-  }
-
-  function clearSearch() {
-    setSearchQuery('');
-    setSearchResults(null);
-  }
 
   return (
     <div className={styles.container}>
@@ -631,18 +616,18 @@ export function Forum() {
         </div>
 
         <div className={styles.filterRow}>
-          <FilterTabs
-            items={[
-              { id: 'all', label: 'All' },
-              { id: 'announcement', label: 'Announcement' },
-              { id: 'task', label: 'Task' },
-              { id: 'discussion', label: 'Discussion' },
-              { id: 'decision', label: 'Decision' },
-              { id: 'question', label: 'Question' },
-            ]}
-            activeId={categoryFilter}
-            onChange={setCategoryFilter}
-          />
+          <select
+            value={categoryFilter}
+            onChange={e => setCategoryFilter(e.target.value)}
+            className={styles.filterSelect}
+          >
+            <option value="all">All categories</option>
+            <option value="announcement">Announcement</option>
+            <option value="task">Task</option>
+            <option value="discussion">Discussion</option>
+            <option value="decision">Decision</option>
+            <option value="question">Question</option>
+          </select>
           <select
             value={sortOrder}
             onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
@@ -653,43 +638,6 @@ export function Forum() {
             <option value="most-msgs">Most messages</option>
           </select>
         </div>
-
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search forum..."
-          onSubmit={handleSearch}
-          onClear={clearSearch}
-          showClear={!!searchResults}
-        />
-
-        {searchResults && (
-          <div className={styles.searchResults}>
-            <div className={styles.searchCount}>
-              {searchResults.threads.length} threads, {searchResults.messages.length} messages
-            </div>
-            {searchResults.threads.map((t: any) => (
-              <div
-                key={`t-${t.id || t.url}`}
-                className={styles.searchItem}
-                onClick={() => { const tid = t.id || t.url?.match(/thread=(\d+)/)?.[1]; if (tid) setSearchParams({ thread: tid.toString() }); clearSearch(); }}
-              >
-                <span className={styles.searchLabel}>Thread</span>
-                <span className={styles.searchTitle}>{t.title || t.label}</span>
-              </div>
-            ))}
-            {searchResults.messages.map((m: any) => (
-              <div
-                key={`m-${m.id || m.url}`}
-                className={styles.searchItem}
-                onClick={() => { const tid = m.thread_id || m.url?.match(/thread=(\d+)/)?.[1]; if (tid) setSearchParams({ thread: tid.toString() }); clearSearch(); }}
-              >
-                <span className={styles.searchLabel}>Msg</span>
-                <span className={styles.searchTitle}>{(m.content || m.snippet || m.label || '').slice(0, 80)}</span>
-              </div>
-            ))}
-          </div>
-        )}
 
         <div className={styles.threadList}>
           {threads
@@ -747,17 +695,37 @@ export function Forum() {
                 onChange={e => setNewTitle(e.target.value)}
                 className={styles.titleInput}
               />
-              <div className={styles.categoryPills}>
-                {['discussion', 'announcement', 'task', 'decision', 'question'].map(cat => (
-                  <button
-                    key={cat}
-                    type="button"
-                    className={`${styles.categoryPill} ${newCategory === cat ? styles.categoryPillActive : ''}`}
-                    onClick={() => setNewCategory(cat)}
-                  >
-                    {cat}
-                  </button>
-                ))}
+              <div className={styles.newThreadOptions}>
+                <div className={styles.categoryPills}>
+                  {['discussion', 'announcement', 'task', 'decision', 'question'].map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      className={`${styles.categoryPill} ${newCategory === cat ? styles.categoryPillActive : ''}`}
+                      onClick={() => setNewCategory(cat)}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                {!isGuest && (
+                  <div className={styles.visibilityToggle}>
+                    <button
+                      type="button"
+                      className={`${styles.visibilityBtn} ${newVisibility === 'internal' ? styles.visibilityBtnActive : ''}`}
+                      onClick={() => setNewVisibility('internal')}
+                    >
+                      Internal
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.visibilityBtn} ${newVisibility === 'public' ? styles.visibilityBtnActive : ''}`}
+                      onClick={() => setNewVisibility('public')}
+                    >
+                      Public
+                    </button>
+                  </div>
+                )}
               </div>
               <textarea
                 placeholder="What's on your mind? (⌘+Enter to send)"

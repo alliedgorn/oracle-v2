@@ -204,6 +204,7 @@ export interface AuthStatus {
   isLocal: boolean;
   role?: 'owner' | 'guest';
   guestName?: string;
+  guestUsername?: string;
 }
 
 export interface Settings {

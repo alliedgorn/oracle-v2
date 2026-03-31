@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       role,
       isGuest: role === 'guest',
-      guestName: authState.guestName || null,
+      guestName: authState.guestName || authState.guestUsername || null,
       login,
       logout,
       checkAuth

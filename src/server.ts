@@ -608,11 +608,17 @@ app.get('/api/auth/status', (c) => {
 
   // Strip internal auth details from guest responses (Bertus security review)
   if (role === 'guest') {
+    // Look up display name from DB for the welcome banner
+    let guestDisplayName = guestUsername;
+    if (guestUsername) {
+      const guest = sqlite.query('SELECT display_name FROM guest_accounts WHERE username = ?').get(guestUsername) as any;
+      if (guest?.display_name) guestDisplayName = guest.display_name;
+    }
     return c.json({
       authenticated,
       authEnabled,
       role,
-      guestName: guestUsername,
+      guestName: guestDisplayName,
     });
   }
 

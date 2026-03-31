@@ -846,7 +846,8 @@ app.get('/api/guests', (c) => {
     ...g,
     online: g.last_active_at ? (Date.now() - new Date(g.last_active_at + 'Z').getTime()) < GUEST_ONLINE_THRESHOLD_MS : false,
   }));
-  return c.json({ guests });
+  const onlineCount = guests.filter(g => g.online).length;
+  return c.json({ guests, total: guests.length, online_count: onlineCount });
 });
 
 // Get single guest account
@@ -860,7 +861,23 @@ app.get('/api/guests/:id', (c) => {
   if (!guest) return c.json({ error: 'Guest not found' }, 404);
 
   const { password_hash, ...safe } = guest;
-  return c.json(safe);
+
+  // Activity summary: count DMs sent and forum threads participated (T#570)
+  const guestTag = `[Guest] ${guest.display_name || guest.username}`;
+  const guestTagAlt = `[Guest] ${guest.username}`;
+  const dmCount = (sqlite.prepare(
+    `SELECT COUNT(*) as count FROM dm_messages WHERE sender = ? OR sender = ?`
+  ).get(guestTag, guestTagAlt) as any)?.count || 0;
+  const threadCount = (sqlite.prepare(
+    `SELECT COUNT(DISTINCT thread_id) as count FROM forum_messages WHERE author = ? OR author = ?`
+  ).get(guestTag, guestTagAlt) as any)?.count || 0;
+
+  const GUEST_ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
+  const online = guest.last_active_at
+    ? (Date.now() - new Date(guest.last_active_at + 'Z').getTime()) < GUEST_ONLINE_THRESHOLD_MS
+    : false;
+
+  return c.json({ ...safe, online, message_count: dmCount, threads_participated: threadCount });
 });
 
 // Update guest account (expiry, disable, display name)
@@ -904,15 +921,23 @@ app.patch('/api/guests/:id/password', async (c) => {
   }
 });
 
-// Delete guest account
+// Delete guest account (T#570 — with cascade notification)
 app.delete('/api/guests/:id', (c) => {
   if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
     return c.json({ error: 'Guest account management requires owner session' }, 403);
   }
 
   const id = parseInt(c.req.param('id'), 10);
+  const guest = getGuest(sqlite, id);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
   const deleted = deleteGuest(sqlite, id);
-  if (!deleted) return c.json({ error: 'Guest not found' }, 404);
+  if (!deleted) return c.json({ error: 'Failed to delete guest' }, 500);
+
+  // Broadcast session invalidation — connected clients will see this and redirect to login
+  // Note: HMAC-signed cookies cannot be server-side revoked, but guest login check
+  // will fail since the account no longer exists in the DB
+  wsBroadcast('guest_deleted', { username: guest.username });
 
   return c.json({ success: true });
 });

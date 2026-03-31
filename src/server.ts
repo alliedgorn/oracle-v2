@@ -2120,6 +2120,13 @@ app.post('/api/guest/dm', async (c) => {
   const data = await c.req.json();
   if (!data.to || !data.message) return c.json({ error: 'to and message required' }, 400);
 
+  // Validate recipient exists — guests can only DM beasts or gorn
+  const recipientBeast = getBeastProfile(data.to);
+  const isOwner = data.to.toLowerCase() === 'gorn';
+  if (!recipientBeast && !isOwner) {
+    return c.json({ error: `Recipient "${data.to}" not found. Must be a valid beast name.` }, 404);
+  }
+
   // Rate limiting
   const rateCheck = checkGuestDmRate(guestUsername);
   if (!rateCheck.allowed) return c.json({ error: rateCheck.error }, 429);
@@ -4221,13 +4228,22 @@ app.post('/api/dm', async (c) => {
         return c.json({ error: 'Sender impersonation blocked. as must match from.' }, 403);
       }
     }
+    // Validate recipient exists — must be a beast, guest username, or "gorn"
+    const rawTo = data.to.replace(/^\[Guest\]\s*/, ''); // Strip [Guest] prefix if present
+    const recipientBeast = getBeastProfile(rawTo);
+    const recipientGuest = getGuestByUsername(sqlite, rawTo);
+    const isOwner = rawTo.toLowerCase() === 'gorn';
+    if (!recipientBeast && !recipientGuest && !isOwner) {
+      return c.json({ error: `Recipient "${data.to}" not found. Must be a valid beast name or guest username.` }, 404);
+    }
+
     // Resolve guest usernames to [Guest] tags so messages land in the same conversation
     let dmFrom = data.from;
     let dmTo = data.to;
     const guestFrom = getGuestByUsername(sqlite, data.from);
     if (guestFrom) dmFrom = `[Guest] ${guestFrom.display_name || data.from}`;
-    const guestTo = getGuestByUsername(sqlite, data.to);
-    if (guestTo) dmTo = `[Guest] ${guestTo.display_name || data.to}`;
+    if (recipientGuest) dmTo = `[Guest] ${recipientGuest.display_name || rawTo}`;
+    else if (data.to !== rawTo) dmTo = rawTo; // Strip [Guest] prefix for beast recipients
 
     const result = await withRetry(() => sendDm(dmFrom, dmTo, data.message));
     // Set author_role on DM message (Spec #32, T#557 — Talon review fix)

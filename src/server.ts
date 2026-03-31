@@ -2222,6 +2222,11 @@ app.post('/api/guest/dm', async (c) => {
 });
 
 // Guest self-service password change (T#566, Spec #35 alias)
+// Password change rate limiting: max 5 attempts per guest per 15 minutes (T#581, Talon finding)
+const passwordChangeAttempts = new Map<string, { count: number; firstAttempt: number }>();
+const PASSWORD_CHANGE_RATE_LIMIT = 5;
+const PASSWORD_CHANGE_RATE_WINDOW_MS = 15 * 60 * 1000;
+
 app.post('/api/guest/change-password', async (c) => {
   const guestUsername = (c.get as any)('guestUsername');
   if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
@@ -2229,6 +2234,28 @@ app.post('/api/guest/change-password', async (c) => {
   const guest = getGuestByUsername(sqlite, guestUsername);
   if (!guest) return c.json({ error: 'Guest account not found' }, 404);
 
+  // Rate limit by guest username
+  const now = Date.now();
+  const attempts = passwordChangeAttempts.get(guestUsername);
+  if (attempts) {
+    if (now - attempts.firstAttempt > PASSWORD_CHANGE_RATE_WINDOW_MS) {
+      passwordChangeAttempts.delete(guestUsername);
+    } else if (attempts.count >= PASSWORD_CHANGE_RATE_LIMIT) {
+      const retryAfter = Math.ceil((attempts.firstAttempt + PASSWORD_CHANGE_RATE_WINDOW_MS - now) / 1000);
+      logSecurityEvent({
+        eventType: 'rate_limited',
+        severity: 'warning',
+        actor: guestUsername,
+        actorType: 'guest',
+        target: '/api/guest/change-password',
+        details: { attempts: attempts.count, window_ms: PASSWORD_CHANGE_RATE_WINDOW_MS },
+        ipSource: c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1',
+        requestId: (c.get as any)('requestId'),
+      });
+      return c.json({ error: `Too many password change attempts. Try again in ${Math.ceil(retryAfter / 60)} minutes.` }, 429);
+    }
+  }
+
   const body = await c.req.json();
   if (!body.current_password || !body.new_password) {
     return c.json({ error: 'current_password and new_password required' }, 400);
@@ -2236,13 +2263,22 @@ app.post('/api/guest/change-password', async (c) => {
 
   const result = await changeGuestPassword(sqlite, guest, body.current_password, body.new_password);
   if (!result.success) {
+    // Track failed attempts
+    const existing = passwordChangeAttempts.get(guestUsername);
+    if (existing) {
+      existing.count++;
+    } else {
+      passwordChangeAttempts.set(guestUsername, { count: 1, firstAttempt: now });
+    }
     return c.json({ error: result.error }, 400);
   }
 
+  // Success clears rate limit
+  passwordChangeAttempts.delete(guestUsername);
   return c.json({ success: true });
 });
 
-// Legacy alias (T#566)
+// Legacy alias (T#566) — same rate limiting as /api/guest/change-password (T#581)
 app.post('/api/guest/reset-password', async (c) => {
   const guestUsername = (c.get as any)('guestUsername');
   if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
@@ -2250,6 +2286,17 @@ app.post('/api/guest/reset-password', async (c) => {
   const guest = getGuestByUsername(sqlite, guestUsername);
   if (!guest) return c.json({ error: 'Guest account not found' }, 404);
 
+  const now = Date.now();
+  const attempts = passwordChangeAttempts.get(guestUsername);
+  if (attempts) {
+    if (now - attempts.firstAttempt > PASSWORD_CHANGE_RATE_WINDOW_MS) {
+      passwordChangeAttempts.delete(guestUsername);
+    } else if (attempts.count >= PASSWORD_CHANGE_RATE_LIMIT) {
+      const retryAfter = Math.ceil((attempts.firstAttempt + PASSWORD_CHANGE_RATE_WINDOW_MS - now) / 1000);
+      return c.json({ error: `Too many password change attempts. Try again in ${Math.ceil(retryAfter / 60)} minutes.` }, 429);
+    }
+  }
+
   const body = await c.req.json();
   if (!body.current_password || !body.new_password) {
     return c.json({ error: 'current_password and new_password required' }, 400);
@@ -2257,9 +2304,12 @@ app.post('/api/guest/reset-password', async (c) => {
 
   const result = await changeGuestPassword(sqlite, guest, body.current_password, body.new_password);
   if (!result.success) {
+    const existing = passwordChangeAttempts.get(guestUsername);
+    if (existing) { existing.count++; } else { passwordChangeAttempts.set(guestUsername, { count: 1, firstAttempt: now }); }
     return c.json({ error: result.error }, 400);
   }
 
+  passwordChangeAttempts.delete(guestUsername);
   return c.json({ success: true });
 });
 
@@ -2305,11 +2355,11 @@ app.patch('/api/guest/profile', async (c) => {
     return c.json({ error: 'Interests must be under 300 characters' }, 400);
   }
 
+  // avatar_url is only set via /api/guest/avatar upload — never from PATCH body (T#580, Talon finding)
   const updated = updateGuestProfile(sqlite, guest.id, {
     display_name: body.display_name,
     bio: body.bio,
     interests: body.interests,
-    avatar_url: body.avatar_url,
   });
 
   if (!updated) return c.json({ error: 'Update failed' }, 500);
@@ -2335,7 +2385,7 @@ app.post('/api/guest/avatar', async (c) => {
   const file = formData.get('file') as File | null;
   if (!file) return c.json({ error: 'No file provided' }, 400);
 
-  // Validate file type
+  // Validate file type by MIME
   const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
   if (!allowedTypes.includes(file.type)) {
     return c.json({ error: 'File must be jpg, png, or webp' }, 400);
@@ -2346,11 +2396,21 @@ app.post('/api/guest/avatar', async (c) => {
     return c.json({ error: 'File must be under 2MB' }, 400);
   }
 
+  // Validate magic bytes — don't trust MIME alone (T#582, Talon finding)
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const isJpeg = bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF;
+  const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47;
+  const isWebp = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  if (!isJpeg && !isPng && !isWebp) {
+    return c.json({ error: 'File content does not match an allowed image type' }, 400);
+  }
+
   // Save file
   const ext = file.type.split('/')[1] === 'jpeg' ? 'jpg' : file.type.split('/')[1];
   const filename = `guest-${guestUsername}-avatar.${ext}`;
   const filePath = `${process.cwd()}/data/uploads/${filename}`;
-  const buffer = await file.arrayBuffer();
   await Bun.write(filePath, buffer);
 
   const avatarUrl = `/api/f/${filename}`;

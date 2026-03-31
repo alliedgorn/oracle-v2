@@ -251,15 +251,17 @@ export function BeastProfile() {
 
           {/* Actions */}
           <div className={styles.actions}>
-            <button className={styles.editButton} onClick={() => {
-              setEditBio(beast.bio || '');
-              setEditInterests(interests.join(', '));
-              setEditRole(beast.role || '');
-              setEditSex(beast.sex || '');
-              setEditing(true);
-            }}>
-              Edit Profile
-            </button>
+            {!isGuest && (
+              <button className={styles.editButton} onClick={() => {
+                setEditBio(beast.bio || '');
+                setEditInterests(interests.join(', '));
+                setEditRole(beast.role || '');
+                setEditSex(beast.sex || '');
+                setEditing(true);
+              }}>
+                Edit Profile
+              </button>
+            )}
             <Link to={`/pack`} className={styles.actionButton}>
               View in Pack
             </Link>

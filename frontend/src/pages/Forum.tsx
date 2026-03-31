@@ -395,9 +395,9 @@ export function Forum() {
 
   useWebSocket('new_message', handleWsMessage);
 
-  // Real-time reaction updates
+  // Real-time reaction updates (skip private API for guests)
   const handleWsReaction = useCallback((data: any) => {
-    if (!data.message_id) return;
+    if (!data.message_id || isGuest) return;
     // Refresh reactions for the affected message
     fetch(`${API_BASE}/message/${data.message_id}/reactions`)
       .then(r => r.json())
@@ -405,7 +405,7 @@ export function Forum() {
         setReactions(prev => ({ ...prev, [data.message_id]: d.reactions || [] }));
       })
       .catch(() => {});
-  }, []);
+  }, [isGuest]);
 
   useWebSocket('reaction', handleWsReaction);
 
@@ -542,14 +542,16 @@ export function Forum() {
       }
     }
 
-    // Fetch individually only for messages without inline reactions
-    await Promise.all(needsFetch.map(async (m) => {
-      try {
-        const res = await fetch(`${API_BASE}/message/${m.id}/reactions`);
-        const data = await res.json();
-        map[m.id] = data.reactions || [];
-      } catch { /* ignore */ }
-    }));
+    // Fetch individually only for messages without inline reactions (skip for guests)
+    if (!isGuest) {
+      await Promise.all(needsFetch.map(async (m) => {
+        try {
+          const res = await fetch(`${API_BASE}/message/${m.id}/reactions`);
+          const data = await res.json();
+          map[m.id] = data.reactions || [];
+        } catch { /* ignore */ }
+      }));
+    }
 
     // Merge with existing reactions
     setReactions(prev => ({ ...prev, ...map }));

@@ -409,10 +409,6 @@ app.use('/api/*', async (c, next) => {
   if (publicPaths.some(p => path === p)) {
     return next();
   }
-  // Hash-based file downloads are public (UUID is unguessable)
-  if (path.startsWith('/api/f/')) {
-    return next();
-  }
 
   // Bearer token auth (T#546 — Beast API tokens)
   const authHeader = c.req.header('Authorization');
@@ -3183,10 +3179,17 @@ app.get('/api/f/:hash', (c) => {
 });
 
 // DELETE /api/files/:id — soft delete (Nothing is Deleted)
+// Only file uploader or owner can delete
 app.delete('/api/files/:id', (c) => {
   const id = parseInt(c.req.param('id'), 10);
   const file = sqlite.prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL').get(id) as any;
   if (!file) return c.json({ error: 'File not found' }, 404);
+
+  const role = (c.get as any)('role');
+  const actor = (c.get as any)('actor');
+  if (role !== 'owner' && file.uploaded_by && actor !== file.uploaded_by) {
+    return c.json({ error: 'Only the uploader or owner can delete files' }, 403);
+  }
 
   const now = Date.now();
   sqlite.prepare('UPDATE files SET deleted_at = ? WHERE id = ?').run(now, id);

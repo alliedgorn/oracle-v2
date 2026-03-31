@@ -507,10 +507,6 @@ export function Settings() {
         </div>
       </div>
 
-      <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>Guest Accounts</h2>
-        <p className={styles.sectionDesc}>Guest management has moved to the dedicated <a href="/guests" style={{ color: 'var(--accent)' }}>Guests page</a>.</p>
-      </div>
       <TokenManagement />
     </div>
   );

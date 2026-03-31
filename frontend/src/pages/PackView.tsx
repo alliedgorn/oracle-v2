@@ -7,6 +7,7 @@ import styles from './PackView.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
 import { BeastCard } from '../components/BeastCard';
 import { useAuth } from '../contexts/AuthContext';
+import { getGuestPack } from '../api/guest';
 
 interface Beast {
   name: string;
@@ -42,8 +43,9 @@ export function PackView() {
   // Load beast list with online status — only update state if data changed
   const loadPack = useCallback(async () => {
     try {
-      const res = await fetch(isGuest ? '/api/guest/pack' : `${API_BASE}/pack`);
-      const data = await res.json();
+      const data = isGuest
+        ? await getGuestPack()
+        : await fetch(`${API_BASE}/pack`).then(r => r.json());
       const beastList = data.beasts || [];
       // Only update state if beast data actually changed (avoids unnecessary re-renders)
       const json = JSON.stringify(beastList.map((b: Beast) => `${b.name}:${b.status}:${b.online}`));

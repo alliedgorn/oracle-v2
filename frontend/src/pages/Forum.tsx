@@ -10,6 +10,7 @@ import { autolinkIds } from '../utils/autolink';
 import styles from './Forum.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
 import { useAuth } from '../contexts/AuthContext';
+import { getGuestThreads, getGuestThread, postGuestThreadReply, createGuestThread, getGuestPack } from '../api/guest';
 import { FileUpload } from '../components/FileUpload';
 import { EmojiButton } from '../components/EmojiButton';
 import { VoiceInput } from '../components/VoiceInput';
@@ -121,41 +122,28 @@ interface ThreadDetail {
 const API_BASE = '/api';
 
 async function fetchThreads(isGuest = false): Promise<{ threads: Thread[]; total: number }> {
-  const res = await fetch(isGuest ? '/api/guest/threads' : `${API_BASE}/threads`);
+  if (isGuest) return getGuestThreads() as any;
+  const res = await fetch(`${API_BASE}/threads`);
   return res.json();
 }
 
 async function fetchThread(id: number, limit?: number, offset = 0, order: 'asc' | 'desc' = 'desc', isGuest = false): Promise<ThreadDetail & { total: number }> {
+  if (isGuest) return getGuestThread(id, limit, offset);
   const params = new URLSearchParams();
   if (limit !== undefined) params.set('limit', limit.toString());
   if (offset) params.set('offset', offset.toString());
   if (order === 'asc') params.set('order', 'asc');
   const qs = params.toString();
-  const base = isGuest ? '/api/guest' : API_BASE;
-  const res = await fetch(`${base}/thread/${id}${qs ? '?' + qs : ''}`);
+  const res = await fetch(`${API_BASE}/thread/${id}${qs ? '?' + qs : ''}`);
   return res.json();
 }
 
 async function sendMessage(message: string, threadId?: number, title?: string, replyToId?: number, isGuest = false): Promise<any> {
   if (isGuest) {
     if (threadId) {
-      // Reply to existing thread
-      const body: Record<string, any> = { message };
-      if (replyToId) body.reply_to_id = replyToId;
-      const res = await fetch(`/api/guest/thread/${threadId}/message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      return res.json();
+      return postGuestThreadReply(threadId, message, replyToId);
     } else {
-      // Create new thread
-      const res = await fetch('/api/guest/thread', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, title }),
-      });
-      return res.json();
+      return createGuestThread(message, title);
     }
   }
   const res = await fetch(`${API_BASE}/thread`, {
@@ -298,8 +286,7 @@ export function Forum() {
 
   // Load beast profiles
   useEffect(() => {
-    fetch(isGuest ? '/api/guest/pack' : `${API_BASE}/beasts`)
-      .then(res => res.json())
+    (isGuest ? getGuestPack() : fetch(`${API_BASE}/beasts`).then(res => res.json()))
       .then(data => {
         const map = new Map<string, BeastProfile>();
         for (const b of data.beasts || []) {

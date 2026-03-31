@@ -1,15 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { getGuestProfile, updateGuestProfile, uploadGuestAvatar, changeGuestPassword, type GuestProfile } from '../api/guest';
 import styles from './GuestSettings.module.css';
-
-interface GuestProfile {
-  username: string;
-  display_name: string | null;
-  bio: string | null;
-  interests: string | null;
-  avatar_url: string | null;
-  created_at: string;
-  expires_at: string | null;
-}
 
 export function GuestSettings() {
   const [profile, setProfile] = useState<GuestProfile | null>(null);
@@ -38,14 +29,11 @@ export function GuestSettings() {
 
   async function loadProfile() {
     try {
-      const res = await fetch('/api/guest/profile');
-      if (res.ok) {
-        const data = await res.json();
-        setProfile(data);
-        setDisplayName(data.display_name || '');
-        setBio(data.bio || '');
-        setInterests(data.interests || '');
-      }
+      const data = await getGuestProfile();
+      setProfile(data);
+      setDisplayName(data.display_name || '');
+      setBio(data.bio || '');
+      setInterests(data.interests || '');
     } catch {}
     setLoading(false);
   }
@@ -54,17 +42,12 @@ export function GuestSettings() {
     setSavingProfile(true);
     setMessage(null);
     try {
-      const res = await fetch('/api/guest/profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: displayName, bio, interests }),
-      });
-      const data = await res.json();
-      if (res.ok) {
+      const data = await updateGuestProfile({ display_name: displayName, bio, interests });
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
         setProfile(prev => prev ? { ...prev, ...data } : prev);
         setMessage({ type: 'success', text: 'Profile updated' });
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to update profile' });
       }
     } catch {
       setMessage({ type: 'error', text: 'Network error' });
@@ -78,15 +61,12 @@ export function GuestSettings() {
     setUploadingAvatar(true);
     setMessage(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/guest/avatar', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (res.ok) {
+      const data = await uploadGuestAvatar(file);
+      if ((data as any).error) {
+        setMessage({ type: 'error', text: (data as any).error });
+      } else {
         setProfile(prev => prev ? { ...prev, avatar_url: data.avatar_url } : prev);
         setMessage({ type: 'success', text: 'Avatar updated' });
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Upload failed' });
       }
     } catch {
       setMessage({ type: 'error', text: 'Upload failed' });
@@ -103,19 +83,14 @@ export function GuestSettings() {
     setSavingPassword(true);
     setMessage(null);
     try {
-      const res = await fetch('/api/guest/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-      });
-      const data = await res.json();
-      if (res.ok) {
+      const data = await changeGuestPassword(currentPassword, newPassword);
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
         setMessage({ type: 'success', text: 'Password changed' });
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
-      } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to change password' });
       }
     } catch {
       setMessage({ type: 'error', text: 'Network error' });

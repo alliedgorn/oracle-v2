@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { getGuestPack, getGuestDmConversation, sendGuestDm } from '../api/guest';
 import { ANIMAL_EMOJI } from '../utils/animals';
 import styles from './ChatOverlay.module.css';
 
@@ -32,7 +33,7 @@ export function GuestChatOverlay({ beastName, displayName, collapsed, onToggleCo
 
   // Fetch beast avatar
   useEffect(() => {
-    fetch('/api/guest/pack').then(r => r.json()).then(d => {
+    getGuestPack().then(d => {
       const beast = (d.beasts || []).find((b: any) => b.name === beastName);
       if (beast?.avatarUrl) setAvatarUrl(beast.avatarUrl);
     }).catch(() => {});
@@ -41,8 +42,7 @@ export function GuestChatOverlay({ beastName, displayName, collapsed, onToggleCo
   const loadMessages = useCallback(async () => {
     if (!guestName) return;
     try {
-      const res = await fetch(`/api/guest/dm/${encodeURIComponent(guestName)}/${beastName}?limit=${PAGE_SIZE}&order=desc`);
-      const data = await res.json();
+      const data = await getGuestDmConversation(guestName, beastName, PAGE_SIZE);
       const msgs = (data.messages || []).reverse();
       setMessages(msgs);
     } catch {}
@@ -76,11 +76,7 @@ export function GuestChatOverlay({ beastName, displayName, collapsed, onToggleCo
     setLoading(true);
     userSentRef.current = true;
     try {
-      await fetch('/api/guest/dm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: beastName, message: newMessage }),
-      });
+      await sendGuestDm(beastName, newMessage);
       setNewMessage('');
       await loadMessages();
     } finally { setLoading(false); }

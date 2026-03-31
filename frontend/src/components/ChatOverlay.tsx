@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { autolinkIds } from '../utils/autolink';
 import { FileUpload } from './FileUpload';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { getGuestPack, getGuestDmConversation, sendGuestDm } from '../api/guest';
 import styles from './ChatOverlay.module.css';
 
 const API_BASE = '/api';
@@ -75,14 +76,6 @@ const EMOJI_GROUPS = [
 
 export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollapse, onClose, isGuest = false, guestName = null }: ChatOverlayProps) {
   const sender = isGuest ? (guestName || 'guest') : 'gorn';
-  const packUrl = isGuest ? '/api/guest/pack' : `${API_BASE}/pack`;
-  const dmReadUrl = isGuest
-    ? `${API_BASE}/guest/dm/${encodeURIComponent(sender)}/${beastName}`
-    : `${API_BASE}/dm/gorn/${beastName}`;
-  const dmSendUrl = isGuest ? `${API_BASE}/guest/dm` : `${API_BASE}/dm`;
-  const dmSendBody = isGuest
-    ? (msg: string) => JSON.stringify({ to: beastName, message: msg })
-    : (msg: string) => JSON.stringify({ from: 'gorn', to: beastName, message: msg });
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -113,7 +106,10 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
 
   // Fetch beast avatar
   useEffect(() => {
-    fetch(packUrl).then(r => r.json()).then(data => {
+    const promise = isGuest
+      ? getGuestPack()
+      : fetch(`${API_BASE}/pack`).then(r => r.json());
+    promise.then(data => {
       const beasts = Array.isArray(data) ? data : (data.beasts || data.pack || []);
       const beast = beasts.find((b: any) => b.name === beastName);
       if (beast?.avatarUrl) setAvatarUrl(beast.avatarUrl);
@@ -143,13 +139,14 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
   // Load latest messages (for initial load + polling)
   const loadMessages = useCallback(async () => {
     try {
-      const res = await fetch(`${dmReadUrl}?limit=${PAGE_SIZE}&order=desc`);
-      const data = await res.json();
+      const data = isGuest
+        ? await getGuestDmConversation(sender, beastName, PAGE_SIZE, 0, 'desc')
+        : await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&order=desc`).then(r => r.json());
       const msgs = (data.messages || []).reverse();
       setMessages(msgs);
       setHasMore((data.total || msgs.length) > msgs.length);
     } catch {}
-  }, [dmReadUrl]);
+  }, [beastName, sender, isGuest]);
 
   // Load older messages when scrolling to top
   const offsetRef = useRef(PAGE_SIZE);
@@ -159,8 +156,9 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
     const el = messagesContainerRef.current;
     const prevScrollHeight = el?.scrollHeight || 0;
     try {
-      const res = await fetch(`${dmReadUrl}?limit=${PAGE_SIZE}&offset=${offsetRef.current}&order=desc`);
-      const data = await res.json();
+      const data = isGuest
+        ? await getGuestDmConversation(sender, beastName, PAGE_SIZE, offsetRef.current, 'desc')
+        : await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&offset=${offsetRef.current}&order=desc`).then(r => r.json());
       const older = (data.messages || []).reverse();
       if (older.length === 0) {
         setHasMore(false);
@@ -225,8 +223,7 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
     try {
       wasNearBottomRef.current = isNearBottom();
       markAsRead();
-      const res = await fetch(`${dmReadUrl}?limit=5&order=desc`);
-      const data = await res.json();
+      const data = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=5&order=desc`).then(r => r.json());
       const latest = (data.messages || []).reverse();
       setMessages(prev => {
         const existingIds = new Set(prev.map(m => m.id));
@@ -235,7 +232,7 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
         return [...prev, ...newMsgs];
       });
     } catch {}
-  }, [beastName, markAsRead, isGuest, dmReadUrl]);
+  }, [beastName, markAsRead, isGuest]);
 
   useWebSocket('new_dm', appendNewMessages);
 
@@ -306,11 +303,15 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
     setLoading(true);
     userSentRef.current = true;
     try {
-      await fetch(dmSendUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: dmSendBody(newMessage),
-      });
+      if (isGuest) {
+        await sendGuestDm(beastName, newMessage);
+      } else {
+        await fetch(`${API_BASE}/dm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: 'gorn', to: beastName, message: newMessage }),
+        });
+      }
       setNewMessage('');
       await loadMessages();
     } finally { setLoading(false); }

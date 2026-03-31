@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BeastCard } from './BeastCard';
 import { useChat } from '../contexts/ChatContext';
+import { getGuestPack } from '../api/guest';
 import styles from './GuestDmPanel.module.css';
 
 interface Beast {
@@ -27,9 +28,8 @@ export function GuestDmPanel({ isOpen, onClose, collapsed = false, onToggleColla
 
   const loadPack = useCallback(async () => {
     try {
-      const res = await fetch('/api/guest/pack');
-      const data = await res.json();
-      setBeasts(data.beasts || []);
+      const data = await getGuestPack();
+      setBeasts((data.beasts || []) as Beast[]);
     } catch {}
   }, []);
 

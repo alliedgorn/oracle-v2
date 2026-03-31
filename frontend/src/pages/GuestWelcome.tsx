@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { getGuestPack, getGuestDashboard } from '../api/guest';
 import { ANIMAL_EMOJI } from '../utils/animals';
 import styles from './GuestWelcome.module.css';
 
@@ -19,13 +20,13 @@ export function GuestWelcome() {
   const [activity, setActivity] = useState({ messages: 0, onlineBeasts: 0 });
 
   useEffect(() => {
-    fetch('/api/guest/pack').then(r => r.json()).then(data => {
-      const b = data.beasts || [];
+    getGuestPack().then(data => {
+      const b = (data.beasts || []) as Beast[];
       setBeasts(b);
       setActivity(prev => ({ ...prev, onlineBeasts: b.filter((x: Beast) => x.online).length }));
     }).catch(() => {});
 
-    fetch('/api/guest/dashboard').then(r => r.json()).then(data => {
+    getGuestDashboard().then(data => {
       const threadMsgCount = (data.publicThreads || []).reduce((sum: number, t: any) => sum + (t.message_count || 0), 0);
       setActivity(prev => ({ ...prev, messages: threadMsgCount }));
     }).catch(() => {});

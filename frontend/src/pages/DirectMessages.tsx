@@ -12,6 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { autolinkIds } from '../utils/autolink';
 import { useAuth } from '../contexts/AuthContext';
+import { getGuestDashboard, getGuestDmConversation, sendGuestDm } from '../api/guest';
 
 interface DashboardConversation {
   id: number;
@@ -49,9 +50,7 @@ const API_BASE = '/api';
 
 async function fetchDashboard(isGuest = false): Promise<Dashboard> {
   if (isGuest) {
-    // Guest dashboard doesn't have a DM-specific dashboard — use guest dashboard's dmSummary
-    const res = await fetch('/api/guest/dashboard');
-    const data = await res.json();
+    const data = await getGuestDashboard();
     return {
       conversations: (data.dmSummary || []).map((d: any, i: number) => ({
         id: i,
@@ -72,12 +71,12 @@ async function fetchDashboard(isGuest = false): Promise<Dashboard> {
 }
 
 async function fetchMessages(name1: string, name2: string, limit = 50, offset = 0, order: 'asc' | 'desc' = 'desc', isGuest = false): Promise<ConversationDetail> {
+  if (isGuest) return getGuestDmConversation(name1, name2, limit, offset, order);
   const params = new URLSearchParams();
   params.set('limit', limit.toString());
   if (offset) params.set('offset', offset.toString());
   if (order === 'asc') params.set('order', 'asc');
-  const base = isGuest ? '/api/guest' : API_BASE;
-  const res = await fetch(`${base}/dm/${name1}/${name2}?${params}`);
+  const res = await fetch(`${API_BASE}/dm/${name1}/${name2}?${params}`);
   return res.json();
 }
 
@@ -88,8 +87,8 @@ async function markAllRead(name1: string, name2: string, isGuest = false): Promi
 }
 
 async function sendDm(from: string, to: string, message: string, isGuest = false): Promise<any> {
-  const base = isGuest ? '/api/guest' : API_BASE;
-  const res = await fetch(`${base}/dm`, {
+  if (isGuest) return sendGuestDm(to, message);
+  const res = await fetch(`${API_BASE}/dm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ from, to, message }),

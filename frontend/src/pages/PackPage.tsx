@@ -4,6 +4,7 @@ import styles from './PackPage.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
 import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
+import { getGuestPack } from '../api/guest';
 
 interface Beast {
   name: string;
@@ -33,8 +34,9 @@ export function PackPage() {
 
   const loadPack = useCallback(async () => {
     try {
-      const res = await fetch(isGuest ? '/api/guest/pack' : `${API_BASE}/pack`);
-      const data = await res.json();
+      const data = isGuest
+        ? await getGuestPack()
+        : await fetch(`${API_BASE}/pack`).then(r => r.json());
       setBeasts(data.beasts || []);
     } catch { /* ignore */ }
   }, [isGuest]);

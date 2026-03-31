@@ -34,7 +34,7 @@ export interface GuestBeast {
   role: string | null;
   bio: string | null;
   themeColor: string | null;
-  avatarUrl?: string | null;
+  avatarUrl: string | null;
   online?: boolean;
   status?: string;
 }
@@ -95,9 +95,9 @@ export async function sendGuestDm(to: string, message: string): Promise<any> {
   return res.json();
 }
 
-export async function getGuestDmConversation(guestName: string, beastName: string, limit = 30, offset = 0): Promise<any> {
-  const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-  const res = await fetch(`${API_BASE}/dm/${guestName}/${beastName}?${params}`);
+export async function getGuestDmConversation(guestName: string, beastName: string, limit = 30, offset = 0, order: 'asc' | 'desc' = 'desc'): Promise<any> {
+  const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString(), order });
+  const res = await fetch(`${API_BASE}/dm/${encodeURIComponent(guestName)}/${beastName}?${params}`);
   return res.json();
 }
 
@@ -116,5 +116,73 @@ export async function addGuestReaction(messageId: number, emoji: string): Promis
 
 export async function getGuestReactions(messageId: number): Promise<any> {
   const res = await fetch(`${API_BASE}/reactions/${messageId}`);
+  return res.json();
+}
+
+// ============================================================================
+// Profile
+// ============================================================================
+
+export interface GuestProfile {
+  username: string;
+  display_name: string | null;
+  bio: string | null;
+  interests: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export async function getGuestProfile(): Promise<GuestProfile> {
+  const res = await fetch(`${API_BASE}/profile`);
+  return res.json();
+}
+
+export async function updateGuestProfile(data: { display_name?: string; bio?: string; interests?: string }): Promise<any> {
+  const res = await fetch(`${API_BASE}/profile`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function uploadGuestAvatar(file: File): Promise<{ avatar_url: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}/avatar`, { method: 'POST', body: formData });
+  return res.json();
+}
+
+export async function changeGuestPassword(currentPassword: string, newPassword: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  return res.json();
+}
+
+// ============================================================================
+// Thread messages (reply + create)
+// ============================================================================
+
+export async function postGuestThreadReply(threadId: number, message: string, replyToId?: number): Promise<any> {
+  const body: Record<string, any> = { message };
+  if (replyToId) body.reply_to_id = replyToId;
+  const res = await fetch(`${API_BASE}/thread/${threadId}/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+export async function createGuestThread(message: string, title?: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/thread`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, title }),
+  });
   return res.json();
 }

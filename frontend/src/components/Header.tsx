@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { getGuestDashboard } from '../api/guest';
 import styles from './Header.module.css';
 
 interface QuickResult {
@@ -167,8 +168,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
     if (isGuest) {
       // Guest badge: count DM conversations
       try {
-        const res = await fetch('/api/guest/dashboard');
-        const data = await res.json();
+        const data = await getGuestDashboard();
         const dmCount = (data.dmSummary || []).length;
         setBadges({ specs: 0, prowl: 0, dms: dmCount, rules: 0 });
       } catch {}

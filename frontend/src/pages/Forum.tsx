@@ -467,7 +467,7 @@ export function Forum() {
           };
           setSelectedThread(prev => prev ? {
             ...prev,
-            messages: [newMsg, ...prev.messages],
+            messages: [...prev.messages, newMsg],
           } : prev);
           setTotalMessages(prev => prev + 1);
         }

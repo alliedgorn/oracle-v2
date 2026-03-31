@@ -3,6 +3,7 @@
  * Converts various ID patterns to clickable markdown links.
  */
 export function autolinkIds(content: string): string {
+  if (!content) return '';
   return content
     // FT#80 → link to forum thread
     .replace(/\bFT#(\d+)\b/g, '[FT#$1](/forum?thread=$1)')

@@ -2088,8 +2088,19 @@ app.get('/api/guest/dm/:from/:to', (c) => {
   const limit = parseInt(c.req.query('limit') || '50');
   const offset = parseInt(c.req.query('offset') || '0');
   const order = c.req.query('order') || 'asc';
-  const messages = getDmMessages(from, to, limit, offset, order as 'asc' | 'desc');
-  return c.json(messages);
+  const data = getDmMessages(from, to, limit, offset, order as 'asc' | 'desc');
+  return c.json({
+    conversation_id: data.conversationId,
+    participants: data.participants,
+    messages: data.messages.map(m => ({
+      id: m.id,
+      sender: m.sender,
+      message: m.content,
+      read_at: m.readAt ? new Date(m.readAt).toISOString() : null,
+      created_at: new Date(m.createdAt).toISOString(),
+    })),
+    total: data.total,
+  });
 });
 
 // Guest DM — send message (T#559)

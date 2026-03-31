@@ -502,7 +502,7 @@ export function Forum() {
             id: result.message_id,
             role: 'human' as const,
             content: messageText,
-            author: 'gorn',
+            author: isGuest ? `[Guest] ${guestName || 'Guest'}` : 'gorn',
             reply_to_id: replyTo?.id || null,
             principles_found: null,
             patterns_found: null,

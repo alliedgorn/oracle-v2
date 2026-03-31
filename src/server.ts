@@ -1838,6 +1838,218 @@ app.get('/api/guest/dashboard', (c) => {
   });
 });
 
+// Guest threads — public only (T#559)
+app.get('/api/guest/threads', (c) => {
+  const limit = parseInt(c.req.query('limit') || '50');
+  const offset = parseInt(c.req.query('offset') || '0');
+
+  const rows = sqlite.prepare(
+    "SELECT *, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE visibility = 'public' ORDER BY COALESCE(pinned, 0) DESC, updated_at DESC LIMIT ? OFFSET ?"
+  ).all(limit, offset) as any[];
+
+  const total = (sqlite.prepare("SELECT COUNT(*) as total FROM forum_threads WHERE visibility = 'public'").get() as any)?.total || 0;
+
+  return c.json({
+    threads: rows.map(t => ({
+      id: t.id,
+      title: t.title,
+      status: t.status || 'active',
+      category: t.category || 'discussion',
+      pinned: !!(t.pinned),
+      message_count: t.msg_count || 0,
+      created_at: new Date(t.created_at).toISOString(),
+      visibility: 'public',
+    })),
+    total,
+  });
+});
+
+// Guest thread detail — public only (T#559)
+app.get('/api/guest/thread/:id', (c) => {
+  const threadId = parseInt(c.req.param('id'), 10);
+  if (isNaN(threadId)) return c.json({ error: 'Invalid thread ID' }, 400);
+
+  const threadRow = sqlite.prepare('SELECT * FROM forum_threads WHERE id = ? AND visibility = ?').get(threadId, 'public') as any;
+  if (!threadRow) return c.json({ error: 'Thread not found' }, 404);
+
+  const rawLimit = c.req.query('limit');
+  const parsedLimit = rawLimit ? parseInt(rawLimit, 10) : NaN;
+  const limit = rawLimit ? (isNaN(parsedLimit) || parsedLimit < 1 ? 50 : parsedLimit) : undefined;
+  const rawOffset = parseInt(c.req.query('offset') || '0', 10);
+  const offset = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset;
+  const order = (c.req.query('order') === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc';
+
+  const threadData = getFullThread(threadId, limit, offset, order);
+  if (!threadData) return c.json({ error: 'Thread not found' }, 404);
+
+  return c.json({
+    thread: {
+      id: threadData.thread.id,
+      title: threadData.thread.title,
+      status: threadData.thread.status,
+      created_at: new Date(threadData.thread.createdAt).toISOString(),
+    },
+    messages: threadData.messages.map(m => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      author: m.author,
+      created_at: new Date(m.createdAt).toISOString(),
+    })),
+    total: threadData.total,
+  });
+});
+
+// Guest post message — public threads only (T#559)
+app.post('/api/guest/thread/:id/message', async (c) => {
+  const threadId = parseInt(c.req.param('id'), 10);
+  if (isNaN(threadId)) return c.json({ error: 'Invalid thread ID' }, 400);
+
+  const threadRow = sqlite.prepare('SELECT visibility FROM forum_threads WHERE id = ?').get(threadId) as any;
+  if (!threadRow || threadRow.visibility !== 'public') {
+    return c.json({ error: 'Thread not found' }, 404);
+  }
+
+  const guestUsername = (c.get as any)('guestUsername') || 'guest';
+  const data = await c.req.json();
+  if (!data.message) return c.json({ error: 'Message required' }, 400);
+
+  // Rate limiting
+  const rateCheck = checkGuestPostRate(guestUsername);
+  if (!rateCheck.allowed) return c.json({ error: rateCheck.error }, 429);
+
+  // Content length
+  const lengthCheck = checkGuestContentLength(data.message, 'post');
+  if (!lengthCheck.allowed) return c.json({ error: lengthCheck.error }, 400);
+
+  // Injection scan
+  const scan = scanForInjection(data.message);
+  if (scan.flagged) {
+    logSecurityEvent({
+      eventType: 'suspicious_content',
+      severity: 'warning',
+      actor: guestUsername,
+      actorType: 'guest',
+      target: `/api/guest/thread/${threadId}/message`,
+      details: { patterns: scan.patterns, content_preview: data.message.slice(0, 200) },
+      ipSource: c.req.header('x-real-ip') || 'local',
+      requestId: (c.get as any)('requestId'),
+    });
+  }
+
+  const author = `[Guest] ${guestUsername}`;
+  const result = await withRetry(() => handleThreadMessage({
+    message: data.message,
+    threadId,
+    role: 'human',
+    author,
+  }));
+
+  if (result.messageId) {
+    sqlite.prepare('UPDATE forum_messages SET author_role = ? WHERE id = ?').run('guest', result.messageId);
+    if (data.reply_to_id) {
+      sqlite.prepare('UPDATE forum_messages SET reply_to_id = ? WHERE id = ?').run(data.reply_to_id, result.messageId);
+    }
+  }
+
+  wsBroadcast('new_message', { thread_id: threadId, message_id: result.messageId, author });
+  return c.json({ thread_id: threadId, message_id: result.messageId }, 201);
+});
+
+// Guest pack — Beast profiles (T#559)
+app.get('/api/guest/pack', (c) => {
+  const beasts = sqlite.prepare(
+    "SELECT name, display_name, animal, role, bio, theme_color FROM beast_profiles ORDER BY name"
+  ).all() as any[];
+
+  return c.json({
+    beasts: beasts.map(b => ({
+      name: b.name,
+      displayName: b.display_name,
+      animal: b.animal,
+      role: b.role,
+      bio: b.bio,
+      themeColor: b.theme_color,
+    })),
+  });
+});
+
+// Guest DM — read own conversations (T#559)
+app.get('/api/guest/dm/:from/:to', (c) => {
+  const from = c.req.param('from');
+  const to = c.req.param('to');
+  const guestUsername = (c.get as any)('guestUsername');
+  const guestTag = `[Guest] ${guestUsername}`;
+
+  // Guests can only read their own conversations
+  if (from !== guestTag && to !== guestTag && from !== guestUsername && to !== guestUsername) {
+    return c.json({ error: 'Access denied' }, 403);
+  }
+
+  const limit = parseInt(c.req.query('limit') || '50');
+  const offset = parseInt(c.req.query('offset') || '0');
+  const messages = getDmMessages(from, to, limit, offset);
+  return c.json(messages);
+});
+
+// Guest DM — send message (T#559)
+app.post('/api/guest/dm', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername') || 'guest';
+  const data = await c.req.json();
+  if (!data.to || !data.message) return c.json({ error: 'to and message required' }, 400);
+
+  // Rate limiting
+  const rateCheck = checkGuestDmRate(guestUsername);
+  if (!rateCheck.allowed) return c.json({ error: rateCheck.error }, 429);
+
+  // Content length
+  const lengthCheck = checkGuestContentLength(data.message, 'dm');
+  if (!lengthCheck.allowed) return c.json({ error: lengthCheck.error }, 400);
+
+  // Injection scan
+  const scan = scanForInjection(data.message);
+  if (scan.flagged) {
+    logSecurityEvent({
+      eventType: 'suspicious_content',
+      severity: 'warning',
+      actor: guestUsername,
+      actorType: 'guest',
+      target: `/api/guest/dm/${data.to}`,
+      details: { patterns: scan.patterns, content_preview: data.message.slice(0, 200) },
+      ipSource: c.req.header('x-real-ip') || 'local',
+      requestId: (c.get as any)('requestId'),
+    });
+  }
+
+  const guestTag = `[Guest] ${guestUsername}`;
+  const result = await withRetry(() => sendDm(guestTag, data.to, data.message));
+
+  if (result.messageId) {
+    try {
+      sqlite.prepare('UPDATE dm_messages SET author_role = ? WHERE id = ?').run('guest', result.messageId);
+    } catch { /* column may not exist */ }
+  }
+
+  wsBroadcast('new_dm', { conversation_id: result.conversationId });
+  return c.json({ conversation_id: result.conversationId, message_id: result.messageId }, 201);
+});
+
+// Guest profile — own info (T#559)
+app.get('/api/guest/profile', (c) => {
+  const guestUsername = (c.get as any)('guestUsername');
+  if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
+
+  const guest = getGuestByUsername(sqlite, guestUsername);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
+  return c.json({
+    username: guest.username,
+    display_name: guest.display_name,
+    created_at: guest.created_at,
+    expires_at: guest.expires_at,
+  });
+});
+
 app.get('/api/dashboard/activity', (c) => {
   const days = parseInt(c.req.query('days') || '7');
   return c.json(handleDashboardActivity(days));

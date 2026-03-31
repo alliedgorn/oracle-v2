@@ -1795,6 +1795,49 @@ app.get('/api/read', async (c) => {
 app.get('/api/dashboard', (c) => c.json(handleDashboardSummary()));
 app.get('/api/dashboard/summary', (c) => c.json(handleDashboardSummary()));
 
+// Guest dashboard — public data only (T#558, Spec #32)
+app.get('/api/guest/dashboard', (c) => {
+  const guestUsername = (c.get as any)('guestUsername') as string | undefined;
+
+  // Public threads (visibility = public)
+  const publicThreads = sqlite.prepare(
+    "SELECT id, title, status, created_at, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE visibility = 'public' ORDER BY updated_at DESC LIMIT 10"
+  ).all() as any[];
+
+  // Pack info (Beast profiles)
+  const beasts = sqlite.prepare(
+    "SELECT name, display_name, animal, role, bio, theme_color FROM beast_profiles ORDER BY name"
+  ).all() as any[];
+
+  // Guest DM summary (own conversations only)
+  let dmSummary: any[] = [];
+  if (guestUsername) {
+    const guestTag = `[Guest] ${guestUsername}`;
+    dmSummary = sqlite.prepare(
+      "SELECT DISTINCT CASE WHEN participant1 = ? THEN participant2 ELSE participant1 END as other, (SELECT content FROM dm_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message, (SELECT created_at FROM dm_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_at FROM dm_conversations c WHERE participant1 = ? OR participant2 = ? ORDER BY last_at DESC LIMIT 10"
+    ).all(guestTag, guestTag, guestTag) as any[];
+  }
+
+  return c.json({
+    publicThreads: publicThreads.map(t => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      message_count: t.msg_count || 0,
+      created_at: new Date(t.created_at).toISOString(),
+    })),
+    pack: beasts.map(b => ({
+      name: b.name,
+      displayName: b.display_name,
+      animal: b.animal,
+      role: b.role,
+      bio: b.bio,
+      themeColor: b.theme_color,
+    })),
+    dmSummary,
+  });
+});
+
 app.get('/api/dashboard/activity', (c) => {
   const days = parseInt(c.req.query('days') || '7');
   return c.json(handleDashboardActivity(days));

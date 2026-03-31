@@ -46,6 +46,9 @@ const GUEST_ALLOWLIST: AllowlistEntry[] = [
   { method: 'GET', pattern: /^\/api\/dm\/[^/]+\/[^/]+$/ },
   { method: 'PATCH', pattern: /^\/api\/dm\/[^/]+\/[^/]+\/read$/ },
 
+  // Guest dashboard (T#558)
+  { method: 'GET', pattern: /^\/api\/guest\/dashboard$/ },
+
   // Infrastructure
   { method: 'GET', pattern: /^\/api\/health$/ },
   { method: 'GET', pattern: /^\/api\/help$/ },

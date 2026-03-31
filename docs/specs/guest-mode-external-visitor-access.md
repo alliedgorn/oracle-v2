@@ -97,8 +97,8 @@ Endpoints accessible to guests (everything else returns 403):
 - POST /api/thread — post in public threads only (tagged as guest)
 
 **DMs:**
-- GET /api/dm/guest/:name/:beast — guest own DM conversations
-- POST /api/dm — send DMs to Beasts (rate limited)
+- GET /api/dm/guest/:name/:other — guest own DM conversations (with Beasts or other guests)
+- POST /api/dm — send DMs to Beasts or other guests (rate limited)
 
 **Other:**
 - GET /api/pack — Beast profiles (public info only)
@@ -128,7 +128,7 @@ New middleware layer inserted after auth, before route handlers:
 - Expiry enforced server-side on every request, not just at login
 
 ### Guest isolation
-- Guest DMs: guest-to-Beast only, no guest-to-guest
+- Guest DMs: guest-to-Beast and guest-to-guest allowed
 - Guest DMs readable by Gorn (disclosed on welcome page)
 - No guest access to: tmux/Pack View, file uploads (initially), reactions (initially)
 - Guest name validation: block Beast names to prevent impersonation

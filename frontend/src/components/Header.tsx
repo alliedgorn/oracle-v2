@@ -27,10 +27,12 @@ const topNavItems = [
   { path: '/forge', label: 'Forge' },
 ];
 
-// Guest top nav — minimal
+// Guest top nav — flat, no dropdown
 const guestTopNavItems = [
-  { path: '/forum', label: 'Forum' },
+  { path: '/welcome', label: 'Welcome' },
   { path: '/', label: 'Pack' },
+  { path: '/forum', label: 'Forum' },
+  { path: '/dms', label: 'DM' },
 ];
 
 // Grouped navigation (dropdowns for secondary items)
@@ -83,20 +85,8 @@ const navGroups = [
   },
 ];
 
-// Guest grouped nav — DMs only
-const guestNavGroups = [
-  {
-    label: 'More',
-    subgroups: [
-      {
-        label: 'Social',
-        items: [
-          { path: '/dms', label: 'DMs' },
-        ],
-      },
-    ],
-  },
-];
+// Guest grouped nav — none, all items are top-level
+const guestNavGroups: typeof navGroups = [];
 
 interface NavBadges {
   specs: number;

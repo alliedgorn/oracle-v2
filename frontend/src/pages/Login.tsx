@@ -27,7 +27,7 @@ export function Login() {
         ? await login(password, username)
         : await login(password);
       if (result.success) {
-        navigate('/');
+        navigate(tab === 'guest' ? '/welcome' : '/');
       } else {
         setError(result.error || 'Login failed');
       }

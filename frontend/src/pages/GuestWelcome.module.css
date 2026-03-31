@@ -1,0 +1,64 @@
+.container {
+  display: flex;
+  justify-content: center;
+  padding: 3rem 1rem;
+}
+
+.card {
+  max-width: 540px;
+  width: 100%;
+  text-align: center;
+}
+
+.title {
+  font-size: 1.8rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.greeting {
+  color: var(--text-secondary, #aaa);
+  margin-bottom: 2rem;
+  font-size: 1.1rem;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  background: var(--bg-secondary, #1e1e1e);
+  border: 1px solid var(--border-color, #333);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.navItem:hover {
+  border-color: var(--accent-color, #5a9);
+  background: var(--bg-hover, #252525);
+}
+
+.navIcon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.navLabel {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.navDesc {
+  color: var(--text-secondary, #888);
+  font-size: 0.85rem;
+  margin-left: auto;
+}

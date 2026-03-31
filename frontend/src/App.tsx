@@ -35,6 +35,7 @@ import { Teams } from './pages/Teams';
 import { AuditLog } from './pages/AuditLog';
 import { SpecReview } from './pages/SpecReview';
 import { Files } from './pages/Files';
+import { GuestWelcome } from './pages/GuestWelcome';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ChatProvider, useChat } from './contexts/ChatContext';
 import { ChatOverlay } from './components/ChatOverlay';
@@ -42,7 +43,7 @@ import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
 
 // Guest-accessible routes (no redirect for guests)
-const GUEST_ROUTES = new Set(['/', '/pack', '/forum', '/dms', '/beast']);
+const GUEST_ROUTES = new Set(['/', '/pack', '/forum', '/dms', '/beast', '/welcome']);
 
 function isGuestRoute(pathname: string): boolean {
   if (GUEST_ROUTES.has(pathname)) return true;
@@ -102,6 +103,7 @@ function AppContent() {
       <div className={!isLoginPage ? 'app-main' : undefined}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/welcome" element={<RequireAuth><GuestWelcome /></RequireAuth>} />
         <Route path="/" element={<RequireAuth><PackView /></RequireAuth>} />
         <Route path="/overview" element={<RequireAuth><Overview /></RequireAuth>} />
         <Route path="/feed" element={<RequireAuth><Feed /></RequireAuth>} />

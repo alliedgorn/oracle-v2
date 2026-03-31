@@ -3107,8 +3107,10 @@ app.get('/api/files/stats', (c) => {
   });
 });
 
-// GET /api/files/:id — file metadata
+// GET /api/files/:id — file metadata (owner-only, Beasts use /api/f/:hash)
 app.get('/api/files/:id', (c) => {
+  const role = (c.get as any)('role');
+  if (role !== 'owner') return c.json({ error: 'Owner access only' }, 403);
   const id = parseInt(c.req.param('id'), 10);
   const file = sqlite.prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL').get(id) as any;
   if (!file) return c.json({ error: 'File not found' }, 404);
@@ -3120,8 +3122,10 @@ app.get('/api/files/:id', (c) => {
   });
 });
 
-// GET /api/files/:id/download — download by ID (owner/beast only, kept for backwards compat)
+// GET /api/files/:id/download — download by ID (owner-only, all other access via /api/f/:hash)
 app.get('/api/files/:id/download', (c) => {
+  const role = (c.get as any)('role');
+  if (role !== 'owner') return c.json({ error: 'Owner access only' }, 403);
   const id = parseInt(c.req.param('id'), 10);
   const file = sqlite.prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL').get(id) as any;
   if (!file) return c.json({ error: 'File not found' }, 404);

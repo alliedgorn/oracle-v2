@@ -1815,7 +1815,8 @@ app.get('/api/guest/dashboard', (c) => {
   // Guest DM summary (own conversations only)
   let dmSummary: any[] = [];
   if (guestUsername) {
-    const guestTag = `[Guest] ${guestUsername}`;
+    const guestDisplayName = getGuestDisplayName(guestUsername);
+  const guestTag = `[Guest] ${guestDisplayName}`;
     dmSummary = sqlite.prepare(
       "SELECT DISTINCT CASE WHEN participant1 = ? THEN participant2 ELSE participant1 END as other, (SELECT content FROM dm_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message, (SELECT created_at FROM dm_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_at FROM dm_conversations c WHERE participant1 = ? OR participant2 = ? ORDER BY last_at DESC LIMIT 10"
     ).all(guestTag, guestTag, guestTag) as any[];
@@ -1913,6 +1914,12 @@ app.get('/api/guest/thread/:id', (c) => {
   });
 });
 
+// Resolve guest display name from username
+function getGuestDisplayName(username: string): string {
+  const guest = sqlite.query('SELECT display_name FROM guest_accounts WHERE username = ?').get(username) as any;
+  return guest?.display_name || username;
+}
+
 // Guest post message — public threads only (T#559)
 app.post('/api/guest/thread/:id/message', async (c) => {
   const threadId = parseInt(c.req.param('id'), 10);
@@ -1950,7 +1957,8 @@ app.post('/api/guest/thread/:id/message', async (c) => {
     });
   }
 
-  const author = `[Guest] ${guestUsername}`;
+  const guestDisplayName = getGuestDisplayName(guestUsername);
+  const author = `[Guest] ${guestDisplayName}`;
   const result = await withRetry(() => handleThreadMessage({
     message: data.message,
     threadId,
@@ -1999,7 +2007,8 @@ app.post('/api/guest/thread', async (c) => {
     });
   }
 
-  const author = `[Guest] ${guestUsername}`;
+  const guestDisplayName = getGuestDisplayName(guestUsername);
+  const author = `[Guest] ${guestDisplayName}`;
   const result = await withRetry(() => handleThreadMessage({
     message: data.message,
     title: data.title,
@@ -2042,7 +2051,8 @@ app.get('/api/guest/dm/:from/:to', (c) => {
   const from = c.req.param('from');
   const to = c.req.param('to');
   const guestUsername = (c.get as any)('guestUsername');
-  const guestTag = `[Guest] ${guestUsername}`;
+  const guestDisplayName = getGuestDisplayName(guestUsername);
+  const guestTag = `[Guest] ${guestDisplayName}`;
 
   // Guests can only read their own conversations
   if (from !== guestTag && to !== guestTag && from !== guestUsername && to !== guestUsername) {
@@ -2084,7 +2094,8 @@ app.post('/api/guest/dm', async (c) => {
     });
   }
 
-  const guestTag = `[Guest] ${guestUsername}`;
+  const guestDisplayName = getGuestDisplayName(guestUsername);
+  const guestTag = `[Guest] ${guestDisplayName}`;
   const result = await withRetry(() => sendDm(guestTag, data.to, data.message));
 
   if (result.messageId) {

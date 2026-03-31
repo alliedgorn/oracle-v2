@@ -73,6 +73,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 function AppContent() {
   const location = useLocation();
+  const { isGuest } = useAuth();
   const isLoginPage = location.pathname === '/login';
   const [remoteCollapsed, setRemoteCollapsed] = useState(false);
   const [remoteMobileOpen, setRemoteMobileOpen] = useState(false);
@@ -139,13 +140,18 @@ function AppContent() {
       </Routes>
       {!isLoginPage && <QuickLearn />}
       </div>
-      {!isLoginPage && (
+      {!isLoginPage && !isGuest && (
         <RemotePanel
           isOpen={remoteMobileOpen}
           onClose={() => setRemoteMobileOpen(false)}
           collapsed={remoteCollapsed}
           onToggleCollapse={() => setRemoteCollapsed(prev => !prev)}
         />
+      )}
+      {!isLoginPage && isGuest && (
+        <div className="app-sidebar-guest">
+          <DirectMessages />
+        </div>
       )}
       </div>
       {!isLoginPage && <GlobalChatOverlay />}

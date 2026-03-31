@@ -453,7 +453,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
         )}
         {!isGuest && (
           <button onClick={() => openChat('sable', 'Sable')} className={styles.settingsLink} title="Chat with Sable">
-            <img src="/api/forum/file/e8ba613f-e2cd-47b7-a385-a05b6b2ee0ae.jpg" alt="Sable" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }} />
+            <img src="/api/f/e8ba613f-e2cd-47b7-a385-a05b6b2ee0ae.jpg" alt="Sable" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }} />
           </button>
         )}
         {!isGuest && (

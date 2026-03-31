@@ -93,6 +93,7 @@ export function sendDm(
   from: string,
   to: string,
   content: string,
+  notifyAs?: string,
 ): { conversationId: number; messageId: number; notified: boolean } {
   const fromLower = from.toLowerCase();
   const toLower = to.toLowerCase();
@@ -113,8 +114,8 @@ export function sendDm(
     .where(eq(dmConversations.id, conversation.id))
     .run();
 
-  // Notify recipient via tmux
-  const notified = notifyDmRecipient(fromLower, toLower, content);
+  // Notify recipient via tmux (use notifyAs for display if provided)
+  const notified = notifyDmRecipient(notifyAs || fromLower, toLower, content);
 
   return {
     conversationId: conversation.id,

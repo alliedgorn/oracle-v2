@@ -138,7 +138,7 @@ function AppContent() {
         <Route path="/files" element={<RequireAuth><Files /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       </Routes>
-      {!isLoginPage && <QuickLearn />}
+      {!isLoginPage && !isGuest && <QuickLearn />}
       </div>
       {!isLoginPage && !isGuest && (
         <RemotePanel
@@ -147,11 +147,6 @@ function AppContent() {
           collapsed={remoteCollapsed}
           onToggleCollapse={() => setRemoteCollapsed(prev => !prev)}
         />
-      )}
-      {!isLoginPage && isGuest && (
-        <div className="app-sidebar-guest">
-          <DirectMessages />
-        </div>
       )}
       </div>
       {!isLoginPage && <GlobalChatOverlay />}

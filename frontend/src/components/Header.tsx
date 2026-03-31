@@ -144,15 +144,17 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   });
 
   useEffect(() => {
+    if (isGuest) return; // Guests don't need session stats
     loadSessionStats();
     const interval = setInterval(() => {
       if (document.hidden) return;
       loadSessionStats();
     }, 30000);
     return () => clearInterval(interval);
-  }, [sessionStartTime]);
+  }, [sessionStartTime, isGuest]);
 
   async function loadSessionStats() {
+    if (isGuest) return;
     try {
       const response = await fetch(`/api/session/stats?since=${sessionStartTime}`);
       if (response.ok) {
@@ -170,7 +172,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   }
 
   const loadBadges = useCallback(async () => {
-    if (isGuest) return; // Guests don't need badge counts
+    if (isGuest) return;
     try {
       const [specsRes, prowlRes, dmRes, rulesRes] = await Promise.all([
         fetch('/api/specs?status=pending'),
@@ -193,7 +195,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
         rules: rulesData.total || 0,
       });
     } catch {}
-  }, []);
+  }, [isGuest]);
 
   // Initial load + refresh on visibility change
   useEffect(() => {

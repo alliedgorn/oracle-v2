@@ -37,6 +37,7 @@ import { Teams } from './pages/Teams';
 import { AuditLog } from './pages/AuditLog';
 import { SpecReview } from './pages/SpecReview';
 import { Files } from './pages/Files';
+import { Guests } from './pages/Guests';
 import { GuestWelcome } from './pages/GuestWelcome';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ChatProvider, useChat } from './contexts/ChatContext';
@@ -141,6 +142,7 @@ function AppContent() {
         <Route path="/audit" element={<RequireAuth><AuditLog /></RequireAuth>} />
         <Route path="/specs" element={<RequireAuth><SpecReview /></RequireAuth>} />
         <Route path="/files" element={<RequireAuth><Files /></RequireAuth>} />
+        <Route path="/guests" element={<RequireAuth><Guests /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       </Routes>
       {!isLoginPage && !authLoading && !isGuest && <QuickLearn />}

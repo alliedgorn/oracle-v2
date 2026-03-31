@@ -45,6 +45,7 @@ const navGroups = [
         label: 'Pack',
         items: [
           { path: '/pack', label: 'Pack' },
+          { path: '/guests', label: 'Guests' },
           { path: '/terminal', label: 'Terminal' },
           { path: '/teams', label: 'Teams' },
           { path: '/dms', label: 'DMs' },

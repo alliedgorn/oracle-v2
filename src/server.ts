@@ -3185,7 +3185,8 @@ app.get('/api/f/:hash', (c) => {
   c.header('Content-Type', isImage ? file.mime_type : 'application/octet-stream');
   c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${file.original_name.replace(/"/g, '_')}"`);
   if (!isImage) c.header('Content-Security-Policy', 'sandbox');
-  c.header('Cache-Control', 'public, max-age=31536000, immutable');
+  // private — browser can cache, but CDN/reverse proxy (Caddy) must not
+  c.header('Cache-Control', 'private, max-age=86400');
   c.header('ETag', etag);
   return c.body(content);
 });

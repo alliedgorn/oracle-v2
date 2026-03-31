@@ -842,10 +842,18 @@ app.get('/api/guests', (c) => {
   }
 
   const GUEST_ONLINE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
-  const guests = listGuests(sqlite).map(g => ({
-    ...g,
-    online: g.last_active_at ? (Date.now() - new Date(g.last_active_at + 'Z').getTime()) < GUEST_ONLINE_THRESHOLD_MS : false,
-  }));
+  const guests = listGuests(sqlite).map(g => {
+    const displayName = g.display_name || g.username;
+    const guestTag = `[guest] ${displayName}`.toLowerCase();
+    const msgCount = (sqlite.prepare('SELECT COUNT(*) as c FROM dm_messages WHERE LOWER(sender) = ?').get(guestTag) as any)?.c || 0;
+    const threadCount = (sqlite.prepare("SELECT COUNT(DISTINCT thread_id) as c FROM forum_messages WHERE LOWER(author) LIKE '%[guest]%' AND LOWER(author) LIKE ?").get(`%${g.username}%`) as any)?.c || 0;
+    return {
+      ...g,
+      online: g.last_active_at ? (Date.now() - new Date(g.last_active_at + 'Z').getTime()) < GUEST_ONLINE_THRESHOLD_MS : false,
+      message_count: msgCount,
+      threads_participated: threadCount,
+    };
+  });
   const onlineCount = guests.filter(g => g.online).length;
   return c.json({ guests, total: guests.length, online_count: onlineCount });
 });

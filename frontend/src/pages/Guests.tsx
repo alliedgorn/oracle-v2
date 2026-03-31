@@ -13,6 +13,8 @@ interface Guest {
   last_login_at: string | null;
   last_active_at: string | null;
   online: boolean;
+  message_count?: number;
+  threads_participated?: number;
 }
 
 const SORT_KEY = 'guests_sort';
@@ -340,6 +342,20 @@ export function Guests() {
                   </div>
                 )}
               </div>
+
+              {(selected.message_count || selected.threads_participated) ? (
+                <div className={styles.activitySummary}>
+                  <h4 className={styles.activityTitle}>Activity</h4>
+                  <div className={styles.activityRow}>
+                    <span className={styles.activityCount}>{selected.message_count || 0}</span>
+                    <span className={styles.activityLabel}>DM messages</span>
+                  </div>
+                  <div className={styles.activityRow}>
+                    <span className={styles.activityCount}>{selected.threads_participated || 0}</span>
+                    <span className={styles.activityLabel}>threads</span>
+                  </div>
+                </div>
+              ) : null}
 
               <div className={styles.detailActions}>
                 <button

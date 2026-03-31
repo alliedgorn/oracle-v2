@@ -418,6 +418,40 @@
   color: var(--text-secondary);
 }
 
+/* Activity Summary */
+.activitySummary {
+  margin-bottom: 20px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.activityTitle {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+  letter-spacing: 0.5px;
+}
+
+.activityRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.activityCount {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.activityLabel {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 /* Action Buttons */
 .detailActions {
   display: flex;

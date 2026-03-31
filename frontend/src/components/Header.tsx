@@ -164,7 +164,17 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   }
 
   const loadBadges = useCallback(async () => {
-    if (authLoading || isGuest) return;
+    if (authLoading) return;
+    if (isGuest) {
+      // Guest badge: count DM conversations
+      try {
+        const res = await fetch('/api/guest/dashboard');
+        const data = await res.json();
+        const dmCount = (data.dmSummary || []).length;
+        setBadges({ specs: 0, prowl: 0, dms: dmCount, rules: 0 });
+      } catch {}
+      return;
+    }
     try {
       const [specsRes, prowlRes, dmRes, rulesRes] = await Promise.all([
         fetch('/api/specs?status=pending'),
@@ -294,6 +304,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
         {activeTopNav.map(item => {
           const badgeCount = item.path === '/specs' ? badges.specs
             : item.path === '/prowl' ? badges.prowl
+            : item.path === '/dms' ? badges.dms
             : 0;
           return (
             <Link

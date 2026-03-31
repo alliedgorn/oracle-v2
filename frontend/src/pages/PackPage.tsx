@@ -209,13 +209,7 @@ export function PackPage() {
                 )}
                 <button
                   className={styles.actionButton}
-                  onClick={() => {
-                    if (isGuest) {
-                      window.location.href = '/dms';
-                    } else {
-                      openChat(selected.name, selected.displayName);
-                    }
-                  }}
+                  onClick={() => openChat(selected.name, selected.displayName)}
                 >
                   Direct Message
                 </button>

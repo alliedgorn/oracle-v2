@@ -19,6 +19,7 @@ export interface GuestAccount {
   failed_attempts: number;
   created_at: string;
   last_login_at: string | null;
+  last_active_at: string | null;
 }
 
 export interface GuestAuditEntry {
@@ -66,6 +67,13 @@ export function initGuestTables(sqlite: Database): void {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // Add last_active_at column if not present
+  try {
+    sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN last_active_at TEXT");
+  } catch {
+    // Column already exists
+  }
 
   // Add visibility column to forum_threads if not present (PR3)
   try {

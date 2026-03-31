@@ -164,6 +164,59 @@
   color: var(--text-muted);
 }
 
+/* Status dot next to name */
+.statusDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+
+.dotOnline {
+  background: #3fb950;
+  box-shadow: 0 0 6px rgba(63, 185, 80, 0.4);
+}
+
+.dotOffline {
+  background: #4b5563;
+}
+
+/* Status text in meta */
+.statusText {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.statusProcessing {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.1);
+}
+
+.statusWaiting {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.15);
+}
+
+.statusIdle {
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.1);
+}
+
+.statusOnline {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.08);
+}
+
+.statusOfflineText {
+  color: var(--text-muted);
+  background: rgba(110, 118, 129, 0.1);
+}
+
 /* Bio */
 .bio {
   font-size: 15px;

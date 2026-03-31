@@ -131,8 +131,23 @@ export function PackPage() {
                 </span>
               </div>
               <div className={styles.headerInfo}>
-                <h1 className={styles.profileName}>{selected.displayName}</h1>
+                <h1 className={styles.profileName}>
+                  {selected.displayName}
+                  <span className={`${styles.statusDot} ${selected.online ? styles.dotOnline : styles.dotOffline}`} />
+                </h1>
                 <div className={styles.meta}>
+                  <span className={`${styles.statusText} ${
+                    selected.status === 'processing' ? styles.statusProcessing :
+                    selected.status === 'waiting' ? styles.statusWaiting :
+                    selected.status === 'idle' ? styles.statusIdle :
+                    selected.online ? styles.statusOnline : styles.statusOfflineText
+                  }`}>
+                    {selected.status === 'processing' ? 'Processing' :
+                     selected.status === 'waiting' ? 'Waiting' :
+                     selected.status === 'idle' ? 'Idle' :
+                     selected.status === 'shell' ? 'Shell' :
+                     selected.online ? 'Online' : 'Offline'}
+                  </span>
                   <span className={styles.animal}>
                     {ANIMAL_EMOJI[selected.animal?.toLowerCase()] || '\uD83D\uDC3E'} {selected.animal}
                   </span>

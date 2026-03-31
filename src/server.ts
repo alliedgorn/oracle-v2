@@ -409,6 +409,10 @@ app.use('/api/*', async (c, next) => {
   if (publicPaths.some(p => path === p)) {
     return next();
   }
+  // Hash-based file downloads are public (UUID is unguessable)
+  if (path.startsWith('/api/f/')) {
+    return next();
+  }
 
   // Bearer token auth (T#546 — Beast API tokens)
   const authHeader = c.req.header('Authorization');
@@ -1312,7 +1316,8 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/files', desc: 'List all uploaded files', params: '?limit=50&offset=0' },
     { method: 'GET', path: '/api/files/stats', desc: 'File storage statistics', params: null },
     { method: 'GET', path: '/api/files/:id', desc: 'Get file metadata', params: null },
-    { method: 'GET', path: '/api/files/:id/download', desc: 'Download file', params: null },
+    { method: 'GET', path: '/api/files/:id/download', desc: 'Download file by ID (owner/beast)', params: null },
+    { method: 'GET', path: '/api/f/:hash', desc: 'Download file by hash (public, unguessable)', params: null },
     { method: 'DELETE', path: '/api/files/:id', desc: 'Delete file', params: null },
     // Specs (SDD)
     { method: 'GET', path: '/api/specs', desc: 'List all specs', params: '?status=&author=' },
@@ -2978,7 +2983,7 @@ app.post('/api/upload', async (c) => {
       original_name: file.name,
       mime_type: finalMime,
       category,
-      url: `/api/files/${(result as any).lastInsertRowid}/download`,
+      url: `/api/f/${filename}`,
       legacy_url: `/api/forum/file/${filename}`,
       size_bytes: processedBuffer.length,
     });
@@ -3119,7 +3124,7 @@ app.get('/api/files/:id', (c) => {
   });
 });
 
-// GET /api/files/:id/download — download with security headers
+// GET /api/files/:id/download — download by ID (owner/beast only, kept for backwards compat)
 app.get('/api/files/:id/download', (c) => {
   const id = parseInt(c.req.param('id'), 10);
   const file = sqlite.prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL').get(id) as any;
@@ -3129,6 +3134,36 @@ app.get('/api/files/:id/download', (c) => {
   if (!fs.existsSync(filePath)) return c.json({ error: 'File not found on disk' }, 404);
 
   // ETag for caching
+  const etag = `"${file.filename}"`;
+  const ifNoneMatch = c.req.header('if-none-match');
+  if (ifNoneMatch === etag) {
+    return new Response(null, { status: 304 });
+  }
+
+  const content = fs.readFileSync(filePath);
+  const safeImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+  const isImage = safeImageTypes.has(file.mime_type);
+
+  c.header('Content-Type', isImage ? file.mime_type : 'application/octet-stream');
+  c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${file.original_name.replace(/"/g, '_')}"`);
+  if (!isImage) c.header('Content-Security-Policy', 'sandbox');
+  c.header('Cache-Control', 'public, max-age=31536000, immutable');
+  c.header('ETag', etag);
+  return c.body(content);
+});
+
+// GET /api/f/:hash — download by hash (public-safe, unguessable UUID filename)
+app.get('/api/f/:hash', (c) => {
+  const hash = c.req.param('hash');
+  // Validate hash format: UUID with extension (e.g. abc123-def456.jpg)
+  if (!/^[0-9a-f-]+\.\w+$/.test(hash)) return c.json({ error: 'Invalid file hash' }, 400);
+
+  const file = sqlite.prepare('SELECT * FROM files WHERE filename = ? AND deleted_at IS NULL').get(hash) as any;
+  if (!file) return c.json({ error: 'File not found' }, 404);
+
+  const filePath = path.join(UPLOADS_DIR, file.filename);
+  if (!fs.existsSync(filePath)) return c.json({ error: 'File not found on disk' }, 404);
+
   const etag = `"${file.filename}"`;
   const ifNoneMatch = c.req.header('if-none-match');
   if (ifNoneMatch === etag) {

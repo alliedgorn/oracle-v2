@@ -4252,11 +4252,25 @@ app.get('/api/dm/:name', (c) => {
   });
 });
 
-// Get messages between two Oracles
+// Get messages between two Oracles (also handles guest usernames)
 app.get('/api/dm/:name/:other', (c) => {
-  const name = c.req.param('name');
-  const other = c.req.param('other');
+  let name = c.req.param('name');
+  let other = c.req.param('other');
   const as = c.req.query('as')?.toLowerCase();
+
+  // Resolve guest usernames to [Guest] tags
+  // If name/other doesn't match a known beast and matches a guest account, use the [Guest] tag
+  for (const param of ['name', 'other'] as const) {
+    const val = param === 'name' ? name : other;
+    if (!val.startsWith('[Guest]') && !val.startsWith('[guest]')) {
+      const guest = getGuestByUsername(sqlite, val);
+      if (guest) {
+        const tag = `[Guest] ${guest.display_name || val}`;
+        if (param === 'name') name = tag;
+        else other = tag;
+      }
+    }
+  }
   // IDOR protection: 'as' required from non-local. Must be participant or gorn.
   if (!isTrustedRequest(c)) {
     if (!as) return c.json({ error: 'as param required for DM access' }, 400);

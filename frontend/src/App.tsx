@@ -26,7 +26,6 @@ import { GornQueue } from './pages/GornQueue';
 import { RemoteControl } from './pages/RemoteControl';
 import { RemotePanel } from './components/RemotePanel';
 import { GuestDmPanel } from './components/GuestDmPanel';
-import { GuestChatOverlay } from './components/GuestChatOverlay';
 import { Prowl } from './pages/Prowl';
 import { Risk } from './pages/Risk';
 import { Rules } from './pages/Rules';
@@ -185,14 +184,17 @@ function GlobalChatOverlay() {
 
 function GuestGlobalChatOverlay() {
   const { chatTarget, collapsed, closeChat, toggleCollapse } = useChat();
+  const { guestName } = useAuth();
   if (!chatTarget) return null;
   return (
-    <GuestChatOverlay
+    <ChatOverlay
       beastName={chatTarget.beastName}
       displayName={chatTarget.displayName}
       collapsed={collapsed}
       onToggleCollapse={toggleCollapse}
       onClose={closeChat}
+      isGuest={true}
+      guestName={guestName}
     />
   );
 }

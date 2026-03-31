@@ -107,7 +107,7 @@ Endpoints accessible to guests (everything else returns 403):
 
 **Blocked for guests** (403): Forge/routine (all endpoints), Prowl, audit, specs, rules, tasks, schedules, settings, admin.
 
-**Pending**: Full endpoint audit from Talon to verify completeness across all endpoints.
+**Endpoint audit complete** (Talon, thread #420 #5759): 25 endpoints allowed, 232 blocked. Default-deny.
 
 ### Authorization middleware
 

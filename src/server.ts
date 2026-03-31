@@ -2089,12 +2089,19 @@ app.get('/api/guest/dm/:from/:to', (c) => {
   const offset = parseInt(c.req.query('offset') || '0');
   const order = c.req.query('order') || 'asc';
   const data = getDmMessages(from, to, limit, offset, order as 'asc' | 'desc');
+
+  // Map [Guest] tags back to username in response
+  const normalizeGuestSender = (s: string) => {
+    if (s.toLowerCase() === guestTag.toLowerCase()) return guestUsername;
+    return s;
+  };
+
   return c.json({
     conversation_id: data.conversationId,
-    participants: data.participants,
+    participants: data.participants.map(p => normalizeGuestSender(p)),
     messages: data.messages.map(m => ({
       id: m.id,
-      sender: m.sender,
+      sender: normalizeGuestSender(m.sender),
       message: m.content,
       read_at: m.readAt ? new Date(m.readAt).toISOString() : null,
       created_at: new Date(m.createdAt).toISOString(),

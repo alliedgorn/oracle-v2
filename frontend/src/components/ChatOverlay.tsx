@@ -331,7 +331,7 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
               <div className={styles.empty}>No messages yet. Say hello!</div>
             )}
             {messages.map(msg => (
-              <ChatMessage key={msg.id} msg={msg} onImgClick={handleImgClick} isSent={isGuest ? (msg.sender.includes('[Guest]') || msg.sender === guestName) : msg.sender === 'gorn'} />
+              <ChatMessage key={msg.id} msg={msg} onImgClick={handleImgClick} isSent={isGuest ? (msg.sender === sender || msg.sender.includes('[Guest]')) : msg.sender === 'gorn'} />
             ))}
             <div ref={messagesEndRef} />
           </div>

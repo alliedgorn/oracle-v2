@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { getSettings, updateSettings, type Settings as SettingsType } from '../api/oracle';
 import { useAuth } from '../contexts/AuthContext';
+import { GuestSettings } from './GuestSettings';
 import styles from './Settings.module.css';
 
 export function Settings() {
+  const { isGuest } = useAuth();
+  if (isGuest) return <GuestSettings />;
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

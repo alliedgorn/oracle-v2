@@ -12,6 +12,9 @@ export interface GuestAccount {
   username: string;
   password_hash: string;
   display_name: string | null;
+  bio: string | null;
+  interests: string | null;
+  avatar_url: string | null;
   created_by: string;
   expires_at: string | null;
   disabled_at: string | null;
@@ -81,6 +84,11 @@ export function initGuestTables(sqlite: Database): void {
   } catch {
     // Column already exists
   }
+
+  // Add profile fields for guest settings (T#574, Spec #35)
+  try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN bio TEXT"); } catch { /* exists */ }
+  try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN interests TEXT"); } catch { /* exists */ }
+  try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN avatar_url TEXT"); } catch { /* exists */ }
 }
 
 /**
@@ -223,6 +231,41 @@ export function recordFailedAttempt(sqlite: Database, guest: GuestAccount): void
 export function recordSuccessfulLogin(sqlite: Database, guestId: number): void {
   sqlite.prepare('UPDATE guest_accounts SET failed_attempts = 0, locked_until = NULL, last_login_at = datetime(\'now\') WHERE id = ?')
     .run(guestId);
+}
+
+/**
+ * Update a guest's profile (self-service, T#574).
+ */
+export function updateGuestProfile(
+  sqlite: Database,
+  id: number,
+  updates: { display_name?: string; bio?: string; interests?: string; avatar_url?: string },
+): GuestAccount | null {
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  if (updates.display_name !== undefined) {
+    fields.push('display_name = ?');
+    values.push(updates.display_name);
+  }
+  if (updates.bio !== undefined) {
+    fields.push('bio = ?');
+    values.push(updates.bio);
+  }
+  if (updates.interests !== undefined) {
+    fields.push('interests = ?');
+    values.push(updates.interests);
+  }
+  if (updates.avatar_url !== undefined) {
+    fields.push('avatar_url = ?');
+    values.push(updates.avatar_url);
+  }
+
+  if (fields.length === 0) return getGuest(sqlite, id);
+
+  values.push(id);
+  sqlite.prepare(`UPDATE guest_accounts SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  return getGuest(sqlite, id);
 }
 
 /**

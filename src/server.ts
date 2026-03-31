@@ -1956,6 +1956,56 @@ app.post('/api/guest/thread/:id/message', async (c) => {
   return c.json({ thread_id: threadId, message_id: result.messageId }, 201);
 });
 
+// Guest create thread — new public thread (T#561)
+app.post('/api/guest/thread', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername') || 'guest';
+  const data = await c.req.json();
+  if (!data.message) return c.json({ error: 'Message required' }, 400);
+  if (!data.title) return c.json({ error: 'Title required for new thread' }, 400);
+
+  // Rate limiting
+  const rateCheck = checkGuestPostRate(guestUsername);
+  if (!rateCheck.allowed) return c.json({ error: rateCheck.error }, 429);
+
+  // Content length
+  const lengthCheck = checkGuestContentLength(data.message, 'post');
+  if (!lengthCheck.allowed) return c.json({ error: lengthCheck.error }, 400);
+
+  // Injection scan
+  const scan = scanForInjection(data.message + ' ' + data.title);
+  if (scan.flagged) {
+    logSecurityEvent({
+      eventType: 'suspicious_content',
+      severity: 'warning',
+      actor: guestUsername,
+      actorType: 'guest',
+      target: '/api/guest/thread',
+      details: { patterns: scan.patterns, content_preview: (data.title + ': ' + data.message).slice(0, 200) },
+      ipSource: c.req.header('x-real-ip') || 'local',
+      requestId: (c.get as any)('requestId'),
+    });
+  }
+
+  const author = `[Guest] ${guestUsername}`;
+  const result = await withRetry(() => handleThreadMessage({
+    message: data.message,
+    title: data.title,
+    role: 'human',
+    author,
+  }));
+
+  // Force visibility to public and set author_role
+  if (result.threadId) {
+    sqlite.prepare('UPDATE forum_threads SET visibility = ? WHERE id = ?').run('public', result.threadId);
+  }
+  if (result.messageId) {
+    sqlite.prepare('UPDATE forum_messages SET author_role = ? WHERE id = ?').run('guest', result.messageId);
+  }
+
+  wsBroadcast('new_message', { thread_id: result.threadId, message_id: result.messageId, author });
+  return c.json({ thread_id: result.threadId, message_id: result.messageId }, 201);
+});
+
 // Guest pack — Beast profiles (T#559)
 app.get('/api/guest/pack', (c) => {
   const beasts = sqlite.prepare(

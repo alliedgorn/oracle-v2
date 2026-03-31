@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RemoteBeastCard } from './RemoteBeastCard';
+import { BeastCard } from './BeastCard';
 import { useChat } from '../contexts/ChatContext';
 import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './RemotePanel.module.css';
@@ -135,11 +135,11 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
             const isAttached = attachedBeast === beast.name;
 
             return (
-              <RemoteBeastCard
+              <BeastCard
                 key={beast.name}
                 {...beast}
                 selected={isAttached}
-                contextPct={beast.contextPct}
+                badge={isAttached ? 'ATTACHED' : beast.contextPct != null ? `${beast.contextPct}%` : undefined}
                 onClick={() => !loading && handleClick(beast)}
                 onTerminalClick={(e) => { e.stopPropagation(); onClose(); navigate(`/terminal?beast=${beast.name}`); }}
                 unreadCount={unreadCounts[beast.name] || 0}

@@ -600,10 +600,14 @@ export function Forum() {
       setSearchResults(null);
       return;
     }
-    if (isGuest) return; // Search not available for guests
-    const res = await fetch(`${API_BASE}/forum/search?q=${encodeURIComponent(searchQuery)}`);
+    if (isGuest) return;
+    // Use global search filtered to forum scope
+    const res = await fetch(`${API_BASE}/search?q=forum:${encodeURIComponent(searchQuery)}&limit=20`);
     const data = await res.json();
-    setSearchResults({ messages: data.messages, threads: data.threads });
+    const results = data.results || [];
+    const threadResults = results.filter((r: any) => r.type === 'thread');
+    const msgResults = results.filter((r: any) => r.type === 'message' || r.type === 'forum_message');
+    setSearchResults({ messages: msgResults, threads: threadResults });
   }
 
   function clearSearch() {
@@ -665,22 +669,22 @@ export function Forum() {
             </div>
             {searchResults.threads.map((t: any) => (
               <div
-                key={`t-${t.id}`}
+                key={`t-${t.id || t.url}`}
                 className={styles.searchItem}
-                onClick={() => { setSearchParams({ thread: t.id.toString() }); clearSearch(); }}
+                onClick={() => { const tid = t.id || t.url?.match(/thread=(\d+)/)?.[1]; if (tid) setSearchParams({ thread: tid.toString() }); clearSearch(); }}
               >
                 <span className={styles.searchLabel}>Thread</span>
-                <span className={styles.searchTitle}>{t.title}</span>
+                <span className={styles.searchTitle}>{t.title || t.label}</span>
               </div>
             ))}
             {searchResults.messages.map((m: any) => (
               <div
-                key={`m-${m.id}`}
+                key={`m-${m.id || m.url}`}
                 className={styles.searchItem}
-                onClick={() => { setSearchParams({ thread: m.thread_id.toString() }); clearSearch(); }}
+                onClick={() => { const tid = m.thread_id || m.url?.match(/thread=(\d+)/)?.[1]; if (tid) setSearchParams({ thread: tid.toString() }); clearSearch(); }}
               >
                 <span className={styles.searchLabel}>Msg</span>
-                <span className={styles.searchTitle}>{m.content.slice(0, 80)}...</span>
+                <span className={styles.searchTitle}>{(m.content || m.snippet || m.label || '').slice(0, 80)}</span>
               </div>
             ))}
           </div>

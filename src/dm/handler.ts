@@ -135,7 +135,11 @@ function notifyDmRecipient(from: string, to: string, content: string): boolean {
   if (!entry) return false;
 
   const preview = sanitizeForTmux(content, 120);
-  const message = `[DM from ${from}]: ${preview}...\n\nUse /dm to read and /dm ${from} <message> to reply.`;
+  const isGuestDm = from.startsWith('[Guest] ');
+  const guestUsername = isGuestDm ? from.slice(8) : null;
+  const dmLabel = isGuestDm ? `[DM [Guest] from ${guestUsername}]` : `[DM from ${from}]`;
+  const replyHint = isGuestDm ? `Use /dm to read.` : `Use /dm to read and /dm ${from} <message> to reply.`;
+  const message = `${dmLabel}: ${preview}...\n\n${replyHint}`;
 
   try {
     return enqueueNotification(to, message);

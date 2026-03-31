@@ -4217,7 +4217,15 @@ app.post('/api/dm', async (c) => {
         return c.json({ error: 'Sender impersonation blocked. as must match from.' }, 403);
       }
     }
-    const result = await withRetry(() => sendDm(data.from, data.to, data.message));
+    // Resolve guest usernames to [Guest] tags so messages land in the same conversation
+    let dmFrom = data.from;
+    let dmTo = data.to;
+    const guestFrom = getGuestByUsername(sqlite, data.from);
+    if (guestFrom) dmFrom = `[Guest] ${guestFrom.display_name || data.from}`;
+    const guestTo = getGuestByUsername(sqlite, data.to);
+    if (guestTo) dmTo = `[Guest] ${guestTo.display_name || data.to}`;
+
+    const result = await withRetry(() => sendDm(dmFrom, dmTo, data.message));
     // Set author_role on DM message (Spec #32, T#557 — Talon review fix)
     if (result.messageId) {
       const authorRole = role === 'guest' ? 'guest' : (role === 'owner' ? 'owner' : 'beast');

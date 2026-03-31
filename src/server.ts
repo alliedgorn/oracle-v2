@@ -600,12 +600,29 @@ app.get('/api/auth/status', (c) => {
   const isLocal = isLocalNetwork(c);
   const authenticated = isAuthenticated(c);
 
+  // Parse session token to get role info for frontend nav scoping
+  const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
+  const session = parseSessionToken(sessionCookie || '');
+  const role = session.valid ? (session.role || 'owner') : (authenticated ? 'owner' : undefined);
+  const guestUsername = session.valid && session.role === 'guest' ? session.data : undefined;
+
+  // Strip internal auth details from guest responses (Bertus security review)
+  if (role === 'guest') {
+    return c.json({
+      authenticated,
+      authEnabled,
+      role,
+      guestName: guestUsername,
+    });
+  }
+
   return c.json({
     authenticated,
     authEnabled,
     hasPassword,
     localBypass,
-    isLocal
+    isLocal,
+    role,
   });
 });
 

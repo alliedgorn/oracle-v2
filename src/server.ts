@@ -629,6 +629,7 @@ app.get('/api/auth/status', (c) => {
       authEnabled,
       role: guestActive ? role : undefined,
       guestName: guestActive ? guestDisplayName : undefined,
+      guestUsername: guestActive ? guestUsername : undefined,
     });
   }
 
@@ -2069,20 +2070,25 @@ app.get('/api/guest/pack', (c) => {
 
 // Guest DM — read own conversations (T#559)
 app.get('/api/guest/dm/:from/:to', (c) => {
-  const from = c.req.param('from');
-  const to = c.req.param('to');
+  const fromParam = c.req.param('from');
+  const toParam = c.req.param('to');
   const guestUsername = (c.get as any)('guestUsername');
   const guestDisplayName = getGuestDisplayName(guestUsername);
   const guestTag = `[Guest] ${guestDisplayName}`;
 
   // Guests can only read their own conversations
-  if (from !== guestTag && to !== guestTag && from !== guestUsername && to !== guestUsername) {
+  if (fromParam !== guestTag && toParam !== guestTag && fromParam !== guestUsername && toParam !== guestUsername) {
     return c.json({ error: 'Access denied' }, 403);
   }
 
+  // Normalize: if from/to is the username, replace with [Guest] tag (DB format)
+  const from = (fromParam === guestUsername || fromParam === guestDisplayName) ? guestTag : fromParam;
+  const to = (toParam === guestUsername || toParam === guestDisplayName) ? guestTag : toParam;
+
   const limit = parseInt(c.req.query('limit') || '50');
   const offset = parseInt(c.req.query('offset') || '0');
-  const messages = getDmMessages(from, to, limit, offset);
+  const order = c.req.query('order') || 'asc';
+  const messages = getDmMessages(from, to, limit, offset, order as 'asc' | 'desc');
   return c.json(messages);
 });
 

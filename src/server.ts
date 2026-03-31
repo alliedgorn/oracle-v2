@@ -101,6 +101,13 @@ import {
   recordSuccessfulLogin,
   logGuestAction,
 } from './server/guest-accounts.ts';
+import {
+  scanForInjection,
+  checkGuestPostRate,
+  checkGuestDmRate,
+  checkGuestContentLength,
+  initGuestSafetyMigrations,
+} from './server/guest-safety.ts';
 
 import {
   logSecurityEvent,
@@ -378,8 +385,9 @@ function isAuthenticated(c: Context): boolean {
   return verifySessionToken(sessionCookie || '');
 }
 
-// Initialize guest account tables (Spec #32, T#554)
+// Initialize guest account tables and safety migrations (Spec #32)
 initGuestTables(sqlite);
+initGuestSafetyMigrations(sqlite);
 
 // ============================================================================
 // Auth Middleware (protects /api/* except auth routes)
@@ -3065,6 +3073,8 @@ app.post('/api/thread', async (c) => {
     // Guest restrictions: can only post in existing public threads, cannot create new threads
     const role = (c.get as any)('role') as Role | undefined;
     if (role === 'guest') {
+      const guestUsername = (c.get as any)('guestUsername') || data.author;
+
       if (!data.thread_id) {
         return c.json({ error: 'Guests cannot create new threads' }, 403);
       }
@@ -3072,8 +3082,36 @@ app.post('/api/thread', async (c) => {
       if (!threadRow || threadRow.visibility !== 'public') {
         return c.json({ error: 'Guests can only post in public threads' }, 403);
       }
+
+      // Rate limiting
+      const rateCheck = checkGuestPostRate(guestUsername);
+      if (!rateCheck.allowed) {
+        return c.json({ error: rateCheck.error }, 429);
+      }
+
+      // Content length limit
+      const lengthCheck = checkGuestContentLength(data.message, 'post');
+      if (!lengthCheck.allowed) {
+        return c.json({ error: lengthCheck.error }, 400);
+      }
+
+      // Injection pattern scan (flag, don't block)
+      const scan = scanForInjection(data.message);
+      if (scan.flagged) {
+        logSecurityEvent({
+          eventType: 'suspicious_content',
+          severity: 'warning',
+          actor: guestUsername,
+          actorType: 'guest',
+          target: `/api/thread/${data.thread_id}`,
+          details: { patterns: scan.patterns, content_preview: data.message.slice(0, 200) },
+          ipSource: c.req.header('x-real-ip') || 'local',
+          requestId: (c.get as any)('requestId'),
+        });
+      }
+
       // Tag guest author with [Guest] prefix for display
-      data.author = `[Guest] ${(c.get as any)('guestUsername') || data.author}`;
+      data.author = `[Guest] ${guestUsername}`;
     }
 
     const result = await withRetry(() => handleThreadMessage({
@@ -3083,10 +3121,16 @@ app.post('/api/thread', async (c) => {
       role: data.role || 'human',
       author: data.author,
     }));
-    // Store reply_to_id if provided
-    if (data.reply_to_id && result.messageId) {
-      sqlite.prepare('UPDATE forum_messages SET reply_to_id = ? WHERE id = ?')
-        .run(data.reply_to_id, result.messageId);
+    // Store reply_to_id and author_role if applicable
+    if (result.messageId) {
+      if (data.reply_to_id) {
+        sqlite.prepare('UPDATE forum_messages SET reply_to_id = ? WHERE id = ?')
+          .run(data.reply_to_id, result.messageId);
+      }
+      // Set author_role for prompt injection defense (Spec #32, T#557)
+      const authorRole = role === 'guest' ? 'guest' : (role === 'owner' ? 'owner' : 'beast');
+      sqlite.prepare('UPDATE forum_messages SET author_role = ? WHERE id = ?')
+        .run(authorRole, result.messageId);
     }
     // Index forum message for search (T#347)
     if (result.messageId && result.threadId) {
@@ -3651,8 +3695,45 @@ app.post('/api/dm', async (c) => {
     if (!data.from || !data.to || !data.message) {
       return c.json({ error: 'Missing required fields: from, to, message' }, 400);
     }
+
+    // Guest DM restrictions
+    const role = (c.get as any)('role') as Role | undefined;
+    if (role === 'guest') {
+      const guestUsername = (c.get as any)('guestUsername') || data.from;
+
+      // Rate limiting
+      const rateCheck = checkGuestDmRate(guestUsername);
+      if (!rateCheck.allowed) {
+        return c.json({ error: rateCheck.error }, 429);
+      }
+
+      // Content length limit
+      const lengthCheck = checkGuestContentLength(data.message, 'dm');
+      if (!lengthCheck.allowed) {
+        return c.json({ error: lengthCheck.error }, 400);
+      }
+
+      // Injection pattern scan (flag, don't block)
+      const scan = scanForInjection(data.message);
+      if (scan.flagged) {
+        logSecurityEvent({
+          eventType: 'suspicious_content',
+          severity: 'warning',
+          actor: guestUsername,
+          actorType: 'guest',
+          target: `/api/dm/${data.to}`,
+          details: { patterns: scan.patterns, content_preview: data.message.slice(0, 200) },
+          ipSource: c.req.header('x-real-ip') || 'local',
+          requestId: (c.get as any)('requestId'),
+        });
+      }
+
+      // Tag guest sender
+      data.from = `[Guest] ${guestUsername}`;
+    }
+
     // Sender validation: non-local requests must provide 'as' matching 'from'
-    if (!isTrustedRequest(c)) {
+    if (!isTrustedRequest(c) && role !== 'guest') {
       const as = data.as?.toLowerCase();
       if (!as) return c.json({ error: 'as param required for sender validation' }, 400);
       if (as !== data.from.toLowerCase() && as !== 'gorn') {

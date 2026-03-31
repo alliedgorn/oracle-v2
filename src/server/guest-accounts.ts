@@ -226,6 +226,41 @@ export function recordSuccessfulLogin(sqlite: Database, guestId: number): void {
 }
 
 /**
+ * Reset a guest's password (by ID, owner action).
+ */
+export async function resetGuestPassword(sqlite: Database, id: number, newPassword: string): Promise<boolean> {
+  if (!newPassword || newPassword.length < 8) {
+    throw new Error('Password must be at least 8 characters');
+  }
+  const hash = await Bun.password.hash(newPassword, { algorithm: 'bcrypt', cost: 12 });
+  const result = sqlite.prepare('UPDATE guest_accounts SET password_hash = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?')
+    .run(hash, id);
+  return result.changes > 0;
+}
+
+/**
+ * Change a guest's password (self-service, requires current password).
+ */
+export async function changeGuestPassword(
+  sqlite: Database,
+  guest: GuestAccount,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ success: boolean; error?: string }> {
+  const valid = await Bun.password.verify(currentPassword, guest.password_hash);
+  if (!valid) {
+    return { success: false, error: 'Current password is incorrect' };
+  }
+  if (!newPassword || newPassword.length < 8) {
+    return { success: false, error: 'New password must be at least 8 characters' };
+  }
+  const hash = await Bun.password.hash(newPassword, { algorithm: 'bcrypt', cost: 12 });
+  sqlite.prepare('UPDATE guest_accounts SET password_hash = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?')
+    .run(hash, guest.id);
+  return { success: true };
+}
+
+/**
  * Log a guest API action to the audit log.
  */
 export function logGuestAction(sqlite: Database, guestId: number, endpoint: string, method: string): void {

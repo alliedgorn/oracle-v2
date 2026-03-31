@@ -100,6 +100,8 @@ import {
   recordFailedAttempt,
   recordSuccessfulLogin,
   logGuestAction,
+  resetGuestPassword,
+  changeGuestPassword,
 } from './server/guest-accounts.ts';
 import {
   scanForInjection,
@@ -879,6 +881,27 @@ app.patch('/api/guests/:id', (c) => {
     const { password_hash, ...safe } = updated;
     return c.json(safe);
   });
+});
+
+// Owner reset guest password (T#566)
+app.patch('/api/guests/:id/password', async (c) => {
+  if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
+    return c.json({ error: 'Guest account management requires owner session' }, 403);
+  }
+
+  const id = parseInt(c.req.param('id'), 10);
+  const guest = getGuest(sqlite, id);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
+  const body = await c.req.json();
+  if (!body.password) return c.json({ error: 'password required' }, 400);
+
+  try {
+    await resetGuestPassword(sqlite, id, body.password);
+    return c.json({ success: true });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
 });
 
 // Delete guest account
@@ -2162,6 +2185,27 @@ app.post('/api/guest/dm', async (c) => {
 
   wsBroadcast('new_dm', { conversation_id: result.conversationId });
   return c.json({ conversation_id: result.conversationId, message_id: result.messageId }, 201);
+});
+
+// Guest self-service password change (T#566)
+app.post('/api/guest/reset-password', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername');
+  if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
+
+  const guest = getGuestByUsername(sqlite, guestUsername);
+  if (!guest) return c.json({ error: 'Guest account not found' }, 404);
+
+  const body = await c.req.json();
+  if (!body.current_password || !body.new_password) {
+    return c.json({ error: 'current_password and new_password required' }, 400);
+  }
+
+  const result = await changeGuestPassword(sqlite, guest, body.current_password, body.new_password);
+  if (!result.success) {
+    return c.json({ error: result.error }, 400);
+  }
+
+  return c.json({ success: true });
 });
 
 // Guest profile — own info (T#559)

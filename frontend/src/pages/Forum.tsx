@@ -370,8 +370,15 @@ export function Forum() {
     if (!container) return;
 
     if (!initialScrollDone.current) {
-      container.scrollTop = container.scrollHeight;
-      initialScrollDone.current = true;
+      // Defer scroll to after DOM paint so scrollHeight reflects rendered messages
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+          }
+          initialScrollDone.current = true;
+        });
+      });
     }
   }, [selectedThread?.messages.length]);
 

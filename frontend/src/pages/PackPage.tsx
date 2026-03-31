@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import styles from './PackPage.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
-import { BeastCard } from '../components/BeastCard';
 import { useAuth } from '../contexts/AuthContext';
+import { useChat } from '../contexts/ChatContext';
 
 interface Beast {
   name: string;
@@ -25,16 +25,17 @@ const API_BASE = '/api';
 
 export function PackPage() {
   const { isGuest, guestName } = useAuth();
+  const { openChat } = useChat();
   const [searchParams, setSearchParams] = useSearchParams();
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [selected, setSelected] = useState<Beast | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   const loadPack = useCallback(async () => {
     try {
       const res = await fetch(isGuest ? '/api/guest/pack' : `${API_BASE}/pack`);
       const data = await res.json();
-      const beastList = data.beasts || [];
-      setBeasts(beastList);
+      setBeasts(data.beasts || []);
     } catch { /* ignore */ }
   }, [isGuest]);
 
@@ -55,23 +56,19 @@ export function PackPage() {
     if (match) setSelected(match);
   }, [beastParam, beasts]);
 
-  const selectBeast = useCallback((beast: Beast) => {
+  // Keep selected beast data fresh when beasts list updates
+  useEffect(() => {
+    if (!selected || beasts.length === 0) return;
+    const updated = beasts.find(b => b.name === selected.name);
+    if (updated && (updated.status !== selected.status || updated.online !== selected.online)) {
+      setSelected(updated);
+    }
+  }, [beasts, selected]);
+
+  function selectBeast(beast: Beast) {
     setSelected(beast);
     setSearchParams({ beast: beast.name }, { replace: true });
-  }, [setSearchParams]);
-
-  const beastCallbacks = useMemo(() => {
-    const map: Record<string, { onClick: () => void; onProfileClick: (e: React.MouseEvent) => void }> = {};
-    for (const beast of beasts) {
-      map[beast.name] = {
-        onClick: () => selectBeast(beast),
-        onProfileClick: (e: React.MouseEvent) => { e.stopPropagation(); window.location.href = `/beast/${beast.name}`; },
-      };
-    }
-    return map;
-  }, [beasts, selectBeast]);
-
-  const [bannerDismissed, setBannerDismissed] = useState(false);
+  }
 
   // Parse interests
   let interests: string[] = [];
@@ -84,131 +81,153 @@ export function PackPage() {
     }
   }
 
+  function getStatusClass(beast: Beast) {
+    if (beast.status === 'processing') return styles.cardProcessing;
+    if (beast.status === 'waiting') return styles.cardWaiting;
+    if (!beast.online) return styles.cardOffline;
+    return '';
+  }
+
+  function getDotClass(beast: Beast) {
+    if (beast.status === 'processing') return styles.dotProcessing;
+    if (beast.status === 'waiting') return styles.dotWaiting;
+    if (beast.online) return styles.dotOnline;
+    return styles.dotOffline;
+  }
+
   return (
     <div className={styles.container}>
       {/* Guest Welcome Banner */}
       {isGuest && !bannerDismissed && (
         <div className={styles.guestBanner}>
-          <span>Welcome to The Den{guestName ? `, ${guestName}` : ''}! You're visiting as a guest.</span>
+          <span>Welcome to The Den{guestName ? `, ${guestName}` : ''}! You are visiting as a guest.</span>
           <button className={styles.guestBannerClose} onClick={() => setBannerDismissed(true)}>x</button>
         </div>
       )}
 
-      {/* Beast Grid (left pane) */}
-      <div className={styles.packGrid}>
-        <h2 className={styles.title}>The Pack</h2>
-        <div className={styles.beastGrid}>
-          {beasts.map(beast => (
-            <BeastCard
-              key={beast.name}
-              {...beast}
-              selected={selected?.name === beast.name}
-              onClick={beastCallbacks[beast.name]?.onClick}
-              onProfileClick={beastCallbacks[beast.name]?.onProfileClick}
-            />
-          ))}
+      {/* Main Layout */}
+      <div className={styles.layout}>
+        {/* Beast Card Grid */}
+        <div className={styles.gridSection}>
+          <h2 className={styles.title}>The Pack</h2>
+          <div className={styles.beastGrid}>
+            {beasts.map(beast => {
+              const emoji = ANIMAL_EMOJI[beast.animal?.toLowerCase()] || '\uD83D\uDC3E';
+              const isSelected = selected?.name === beast.name;
+              return (
+                <div
+                  key={beast.name}
+                  className={`${styles.card} ${isSelected ? styles.cardSelected : ''} ${getStatusClass(beast)}`}
+                  style={beast.themeColor ? { '--beast-color': beast.themeColor } as React.CSSProperties : undefined}
+                  onClick={() => selectBeast(beast)}
+                >
+                  {beast.status === 'processing' && <div className={styles.shimmerBar} />}
+                  <div className={styles.cardAvatar}>
+                    {beast.avatarUrl ? (
+                      <img src={beast.avatarUrl} alt={beast.displayName} className={styles.cardAvatarImg} />
+                    ) : (
+                      <span className={styles.cardAvatarEmoji}>{emoji}</span>
+                    )}
+                    <span className={`${styles.cardDot} ${getDotClass(beast)}`} />
+                  </div>
+                  <div className={styles.cardName}>{beast.displayName}</div>
+                  <div className={styles.cardAnimal}>{emoji} {beast.animal}</div>
+                  {beast.role && <div className={styles.cardRole}>{beast.role}</div>}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
 
-      {/* Profile Panel (right pane) */}
-      <div className={styles.profilePanel}>
-        {selected ? (
-          <div className={styles.profileContent}>
-            {/* Avatar + Name */}
-            <div className={styles.profileHeader}>
-              <div className={styles.avatarSection}>
-                <div className={styles.avatarRing} style={selected.themeColor ? { borderColor: selected.themeColor } : undefined}>
+        {/* Profile Detail Panel */}
+        <div className={styles.profilePanel}>
+          {selected ? (
+            <div className={styles.profileContent}>
+              {/* Hero */}
+              <div className={styles.hero}>
+                <div className={styles.heroAvatar} style={selected.themeColor ? { borderColor: selected.themeColor } : undefined}>
                   {selected.avatarUrl ? (
-                    <img src={selected.avatarUrl} alt={selected.displayName} className={styles.avatarImg} />
+                    <img src={selected.avatarUrl} alt={selected.displayName} className={styles.heroAvatarImg} />
                   ) : (
-                    <span className={styles.avatarEmoji}>
+                    <span className={styles.heroAvatarEmoji}>
                       {ANIMAL_EMOJI[selected.animal?.toLowerCase()] || '\uD83D\uDC3E'}
                     </span>
                   )}
                 </div>
-                <span className={`${styles.statusBadge} ${selected.online ? styles.online : styles.offline}`}>
-                  {selected.online ? 'ONLINE' : 'OFFLINE'}
-                </span>
-              </div>
-              <div className={styles.headerInfo}>
-                <h1 className={styles.profileName}>
-                  {selected.displayName}
-                  <span className={`${styles.statusDot} ${selected.online ? styles.dotOnline : styles.dotOffline}`} />
-                </h1>
-                <div className={styles.meta}>
-                  <span className={`${styles.statusText} ${
-                    selected.status === 'processing' ? styles.statusProcessing :
-                    selected.status === 'waiting' ? styles.statusWaiting :
-                    selected.status === 'idle' ? styles.statusIdle :
-                    selected.online ? styles.statusOnline : styles.statusOfflineText
-                  }`}>
-                    {selected.status === 'processing' ? 'Processing' :
-                     selected.status === 'waiting' ? 'Waiting' :
-                     selected.status === 'idle' ? 'Idle' :
-                     selected.status === 'shell' ? 'Shell' :
-                     selected.online ? 'Online' : 'Offline'}
-                  </span>
-                  <span className={styles.animal}>
-                    {ANIMAL_EMOJI[selected.animal?.toLowerCase()] || '\uD83D\uDC3E'} {selected.animal}
-                  </span>
-                  {selected.sex && <span className={styles.metaItem}>{selected.sex === 'male' ? '\u2642' : '\u2640'} {selected.sex}</span>}
-                  {selected.role && <span className={styles.metaItem}>{selected.role}</span>}
-                  {selected.birthdate && (
-                    <span className={styles.metaItem}>
-                      Born {new Date(selected.birthdate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                    </span>
-                  )}
+                <h1 className={styles.heroName}>{selected.displayName}</h1>
+                <div className={styles.heroMeta}>
+                  <span>{ANIMAL_EMOJI[selected.animal?.toLowerCase()] || '\uD83D\uDC3E'} {selected.animal}</span>
+                  {selected.sex && <span>{selected.sex === 'male' ? '\u2642' : '\u2640'} {selected.sex}</span>}
+                  {selected.role && <span>{selected.role}</span>}
                 </div>
               </div>
-            </div>
 
-            {/* Bio */}
-            {selected.bio && <p className={styles.bio}>{selected.bio}</p>}
-
-            {/* Interests */}
-            {interests.length > 0 && (
-              <div className={styles.interests}>
-                {interests.map(tag => (
-                  <span key={tag} className={styles.interestTag}>{tag}</span>
-                ))}
-              </div>
-            )}
-
-            {/* Details */}
-            <div className={styles.details}>
-              <div className={styles.detailItem}>
-                <span className={styles.detailLabel}>Session</span>
-                <span className={styles.detailValue}>{selected.sessionName}</span>
-              </div>
-              <div className={styles.detailItem}>
-                <span className={styles.detailLabel}>Status</span>
-                <span className={`${styles.detailValue} ${selected.online ? styles.textOnline : styles.textOffline}`}>
-                  {selected.online ? 'Active in tmux' : 'No active session'}
+              {/* Status Bar */}
+              <div className={`${styles.statusBar} ${
+                selected.status === 'processing' ? styles.statusBarProcessing :
+                selected.status === 'waiting' ? styles.statusBarWaiting :
+                selected.online ? styles.statusBarOnline : styles.statusBarOffline
+              }`}>
+                <span className={`${styles.statusBarDot} ${getDotClass(selected)}`} />
+                <span>
+                  {selected.status === 'processing' ? 'Processing' :
+                   selected.status === 'waiting' ? 'Waiting for input' :
+                   selected.status === 'idle' ? 'Idle' :
+                   selected.status === 'shell' ? 'Shell' :
+                   selected.online ? 'Online' : 'Offline'}
                 </span>
               </div>
-            </div>
 
-            {/* Actions */}
-            <div className={styles.actions}>
-              <Link to={`/beast/${selected.name}`} className={styles.actionButton}>
-                Full Profile
-              </Link>
-              {!isGuest && (
-                <Link to={`/terminal?beast=${selected.name}`} className={styles.actionButton}>
-                  Terminal
-                </Link>
+              {/* Bio */}
+              {selected.bio && <p className={styles.bio}>{selected.bio}</p>}
+
+              {/* Interests */}
+              {interests.length > 0 && (
+                <div className={styles.interests}>
+                  {interests.map(tag => (
+                    <span key={tag} className={styles.interestTag}>{tag}</span>
+                  ))}
+                </div>
               )}
-              <Link to="/dms" className={styles.actionButton}>
-                Direct Message
-              </Link>
+
+              {/* Birthdate */}
+              {selected.birthdate && (
+                <div className={styles.birthdate}>
+                  Born {new Date(selected.birthdate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className={styles.actions}>
+                <Link to={`/beast/${selected.name}`} className={styles.actionButton}>
+                  Full Profile
+                </Link>
+                {!isGuest && (
+                  <Link to={`/terminal?beast=${selected.name}`} className={styles.actionButton}>
+                    Terminal
+                  </Link>
+                )}
+                <button
+                  className={styles.actionButton}
+                  onClick={() => {
+                    if (isGuest) {
+                      window.location.href = '/dms';
+                    } else {
+                      openChat(selected.name, selected.displayName);
+                    }
+                  }}
+                >
+                  Direct Message
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className={styles.placeholder}>
-            <span className={styles.placeholderIcon}>{'\uD83D\uDC3E'}</span>
-            <p>Select a Beast to view their profile</p>
-          </div>
-        )}
+          ) : (
+            <div className={styles.placeholder}>
+              <span className={styles.placeholderIcon}>{'\uD83D\uDC3E'}</span>
+              <p>Select a Beast to view their profile</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

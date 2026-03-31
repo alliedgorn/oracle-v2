@@ -845,21 +845,25 @@ export function Forum() {
                         {r.emoji} {r.count}
                       </button>
                     ))}
-                    <button
-                      className={styles.addReaction}
-                      onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
-                      title="React"
-                    >+</button>
-                    {emojiPickerMsgId === msg.id && (
-                      <div className={styles.emojiPicker}>
-                        {supportedEmoji.map(e => (
-                          <button
-                            key={e}
-                            className={styles.emojiOption}
-                            onClick={() => { toggleReaction(msg.id, e); setEmojiPickerMsgId(null); }}
-                          >{e}</button>
-                        ))}
-                      </div>
+                    {!isGuest && (
+                      <>
+                        <button
+                          className={styles.addReaction}
+                          onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                          title="React"
+                        >+</button>
+                        {emojiPickerMsgId === msg.id && (
+                          <div className={styles.emojiPicker}>
+                            {supportedEmoji.map(e => (
+                              <button
+                                key={e}
+                                className={styles.emojiOption}
+                                onClick={() => { toggleReaction(msg.id, e); setEmojiPickerMsgId(null); }}
+                              >{e}</button>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
                     <button
                       className={styles.replyBtn}

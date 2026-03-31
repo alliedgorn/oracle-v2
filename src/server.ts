@@ -3746,6 +3746,24 @@ app.post('/api/message/:id/react', async (c) => {
     if (!body.beast || !body.emoji) {
       return c.json({ error: 'beast and emoji are required' }, 400);
     }
+
+    const role = (c.get as any)('role');
+
+    // Guest identity enforcement — override body.beast with session identity
+    if (role === 'guest') {
+      const guestUsername = (c.get as any)('guestUsername');
+      body.beast = `[Guest] ${guestUsername || 'Guest'}`;
+
+      // Thread visibility check — guests can only react to messages in public threads
+      const msg = sqlite.prepare('SELECT thread_id FROM forum_messages WHERE id = ?').get(messageId) as any;
+      if (msg) {
+        const thread = sqlite.prepare('SELECT visibility FROM forum_threads WHERE id = ?').get(msg.thread_id) as any;
+        if (thread && thread.visibility && thread.visibility !== 'public') {
+          return c.json({ error: 'Guests cannot react to messages in private threads' }, 403);
+        }
+      }
+    }
+
     // Sender validation for non-local requests
     if (!isTrustedRequest(c)) {
       const as = body.as?.toLowerCase();
@@ -3799,6 +3817,14 @@ app.delete('/api/message/:id/react', async (c) => {
     if (!body.beast || !body.emoji) {
       return c.json({ error: 'beast and emoji are required' }, 400);
     }
+
+    const role = (c.get as any)('role');
+    // Guest identity enforcement
+    if (role === 'guest') {
+      const guestUsername = (c.get as any)('guestUsername');
+      body.beast = `[Guest] ${guestUsername || 'Guest'}`;
+    }
+
     if (!isTrustedRequest(c)) {
       const as = body.as?.toLowerCase();
       if (!as) return c.json({ error: 'as param required' }, 400);

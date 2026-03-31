@@ -5267,14 +5267,15 @@ app.post('/api/tasks/:id/comments', async (c) => {
 
   // Notify task assignee, creator, and @mentioned beasts about the new comment
   try {
-    const task = sqlite.prepare('SELECT assigned_to, created_by, title FROM tasks WHERE id = ?').get(taskId) as any;
+    const task = sqlite.prepare('SELECT assigned_to, created_by, reviewer, title FROM tasks WHERE id = ?').get(taskId) as any;
     if (task) {
       const { parseMentions, notifyMentioned } = await import('./forum/mentions.ts');
       const commenter = author.split('@')[0].toLowerCase();
       const toNotify = new Set<string>();
-      // Notify assignee and creator
+      // Notify assignee, creator, and reviewer (T#575)
       if (task.assigned_to && task.assigned_to !== commenter) toNotify.add(task.assigned_to.toLowerCase());
       if (task.created_by && task.created_by !== commenter) toNotify.add(task.created_by.toLowerCase());
+      if (task.reviewer && task.reviewer !== commenter) toNotify.add(task.reviewer.toLowerCase());
       // Parse @mentions from comment content
       const mentions = parseMentions(content, 0);
       for (const m of mentions) toNotify.add(m.toLowerCase());

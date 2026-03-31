@@ -314,9 +314,7 @@ export function Forum() {
   useEffect(() => {
     loadThreads();
     loadUnreadCounts();
-    if (!isGuest) {
-      fetch('/api/reactions/supported').then(r => r.json()).then(d => setSupportedEmoji(d.emoji || [])).catch(() => {});
-    }
+    fetch('/api/reactions/supported').then(r => r.json()).then(d => setSupportedEmoji(d.emoji || [])).catch(() => {});
   }, []);
 
   // Load thread from URL param or auto-select first
@@ -557,36 +555,34 @@ export function Forum() {
       }
     }
 
-    // Fetch individually only for messages without inline reactions (skip for guests)
-    if (!isGuest) {
-      await Promise.all(needsFetch.map(async (m) => {
-        try {
-          const res = await fetch(`${API_BASE}/message/${m.id}/reactions`);
-          const data = await res.json();
-          map[m.id] = data.reactions || [];
-        } catch { /* ignore */ }
-      }));
-    }
+    // Fetch individually only for messages without inline reactions
+    await Promise.all(needsFetch.map(async (m) => {
+      try {
+        const res = await fetch(`${API_BASE}/message/${m.id}/reactions`);
+        const data = await res.json();
+        map[m.id] = data.reactions || [];
+      } catch { /* ignore */ }
+    }));
 
     // Merge with existing reactions
     setReactions(prev => ({ ...prev, ...map }));
   }
 
   async function toggleReaction(messageId: number, emoji: string) {
-    if (isGuest) return; // Guests cannot toggle reactions
+    const reactAs = isGuest ? `[Guest] ${guestName || 'Guest'}` : 'gorn';
     const existing = reactions[messageId] || [];
-    const myReaction = existing.find(r => r.emoji === emoji && r.beasts.includes('gorn'));
+    const myReaction = existing.find(r => r.emoji === emoji && r.beasts.includes(reactAs));
     if (myReaction) {
       await fetch(`${API_BASE}/message/${messageId}/react`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beast: 'gorn', emoji }),
+        body: JSON.stringify({ beast: reactAs, emoji }),
       });
     } else {
       await fetch(`${API_BASE}/message/${messageId}/react`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beast: 'gorn', emoji }),
+        body: JSON.stringify({ beast: reactAs, emoji }),
       });
     }
     // Reload reactions for this message
@@ -838,32 +834,28 @@ export function Forum() {
                     {(reactions[msg.id] || []).map(r => (
                       <button
                         key={r.emoji}
-                        className={`${styles.reactionBtn} ${r.beasts.includes('gorn') ? styles.reactionActive : ''}`}
+                        className={`${styles.reactionBtn} ${r.beasts.includes(isGuest ? `[Guest] ${guestName || 'Guest'}` : 'gorn') ? styles.reactionActive : ''}`}
                         onClick={() => toggleReaction(msg.id, r.emoji)}
                         title={r.beasts.join(', ')}
                       >
                         {r.emoji} {r.count}
                       </button>
                     ))}
-                    {!isGuest && (
-                      <>
-                        <button
-                          className={styles.addReaction}
-                          onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
-                          title="React"
-                        >+</button>
-                        {emojiPickerMsgId === msg.id && (
-                          <div className={styles.emojiPicker}>
-                            {supportedEmoji.map(e => (
-                              <button
-                                key={e}
-                                className={styles.emojiOption}
-                                onClick={() => { toggleReaction(msg.id, e); setEmojiPickerMsgId(null); }}
-                              >{e}</button>
-                            ))}
-                          </div>
-                        )}
-                      </>
+                    <button
+                      className={styles.addReaction}
+                      onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                      title="React"
+                    >+</button>
+                    {emojiPickerMsgId === msg.id && (
+                      <div className={styles.emojiPicker}>
+                        {supportedEmoji.map(e => (
+                          <button
+                            key={e}
+                            className={styles.emojiOption}
+                            onClick={() => { toggleReaction(msg.id, e); setEmojiPickerMsgId(null); }}
+                          >{e}</button>
+                        ))}
+                      </div>
                     )}
                     <button
                       className={styles.replyBtn}

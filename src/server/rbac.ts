@@ -35,6 +35,11 @@ const GUEST_ALLOWLIST: AllowlistEntry[] = [
 
   // Public read-only data (used by guest-accessible components)
   { method: 'GET', pattern: /^\/api\/reactions\/supported$/ },
+
+  // Reactions — guests can react to messages
+  { method: 'POST', pattern: /^\/api\/message\/\d+\/react$/ },
+  { method: 'DELETE', pattern: /^\/api\/message\/\d+\/react$/ },
+  { method: 'GET', pattern: /^\/api\/message\/\d+\/reactions$/ },
 ];
 
 /**

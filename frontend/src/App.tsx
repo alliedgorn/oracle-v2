@@ -184,7 +184,7 @@ function GlobalChatOverlay() {
 
 function GuestGlobalChatOverlay() {
   const { chatTarget, collapsed, closeChat, toggleCollapse } = useChat();
-  const { guestName } = useAuth();
+  const { guestUsername, guestName } = useAuth();
   if (!chatTarget) return null;
   return (
     <ChatOverlay
@@ -194,7 +194,7 @@ function GuestGlobalChatOverlay() {
       onToggleCollapse={toggleCollapse}
       onClose={closeChat}
       isGuest={true}
-      guestName={guestName}
+      guestName={guestUsername || guestName}
     />
   );
 }

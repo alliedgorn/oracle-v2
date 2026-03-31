@@ -378,11 +378,14 @@ function isAuthenticated(c: Context): boolean {
   const authEnabled = getSetting('auth_enabled') === 'true';
   if (!authEnabled) return true; // Auth not enabled, everyone is "authenticated"
 
+  // Check session cookie first — guest sessions take priority over local bypass
+  const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
+  if (sessionCookie && verifySessionToken(sessionCookie)) return true;
+
   const localBypass = getSetting('auth_local_bypass') !== 'false'; // Default true
   if (localBypass && isLocalNetwork(c)) return true;
 
-  const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
-  return verifySessionToken(sessionCookie || '');
+  return false;
 }
 
 // Initialize guest account tables and safety migrations (Spec #32)

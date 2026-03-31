@@ -132,16 +132,31 @@ async function fetchThread(id: number, limit?: number, offset = 0, order: 'asc' 
 }
 
 async function sendMessage(message: string, threadId?: number, title?: string, replyToId?: number, isGuest = false): Promise<any> {
-  const base = isGuest ? '/api/guest' : API_BASE;
-  const body: Record<string, any> = { message, thread_id: threadId, title, reply_to_id: replyToId };
-  if (!isGuest) {
-    body.author = 'gorn';
-    body.role = 'human';
+  if (isGuest) {
+    if (threadId) {
+      // Reply to existing thread
+      const body: Record<string, any> = { message };
+      if (replyToId) body.reply_to_id = replyToId;
+      const res = await fetch(`/api/guest/thread/${threadId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return res.json();
+    } else {
+      // Create new thread
+      const res = await fetch('/api/guest/thread', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, title }),
+      });
+      return res.json();
+    }
   }
-  const res = await fetch(`${base}/thread`, {
+  const res = await fetch(`${API_BASE}/thread`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ message, thread_id: threadId, title, reply_to_id: replyToId, author: 'gorn', role: 'human' })
   });
   return res.json();
 }

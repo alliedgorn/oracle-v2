@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import styles from './BeastProfile.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
 
@@ -27,6 +28,8 @@ const API_BASE = '/api';
 export function BeastProfile() {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
+  const { isGuest } = useAuth();
+  const packUrl = isGuest ? '/api/guest/pack' : `${API_BASE}/pack`;
   const [beast, setBeast] = useState<Beast | null>(null);
   const [allBeasts, setAllBeasts] = useState<Beast[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +53,7 @@ export function BeastProfile() {
     setLoading(true);
 
     // Fetch pack data (includes online status)
-    fetch(`${API_BASE}/pack`)
+    fetch(packUrl)
       .then(res => res.json())
       .then((data: PackData) => {
         setAllBeasts(data.beasts);
@@ -66,7 +69,7 @@ export function BeastProfile() {
     if (!name) return;
     const interval = setInterval(() => {
       if (document.hidden) return;
-      fetch(`${API_BASE}/pack`)
+      fetch(packUrl)
         .then(res => res.json())
         .then((data: PackData) => {
           setAllBeasts(data.beasts);
@@ -121,7 +124,7 @@ export function BeastProfile() {
         }),
       });
       // Refresh
-      const res = await fetch(`${API_BASE}/pack`);
+      const res = await fetch(packUrl);
       const data: PackData = await res.json();
       const found = data.beasts.find(b => b.name === beastName);
       if (found) setBeast(found);

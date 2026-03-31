@@ -168,17 +168,25 @@ function GlobalChatOverlay() {
   );
 }
 
-function App() {
+function AppInit() {
+  const { isGuest, isLoading } = useAuth();
+
   useEffect(() => {
+    if (isLoading || isGuest) return;
     getStats().then(stats => {
       if (stats.vault_repo) setVaultRepo(stats.vault_repo);
     }).catch(() => {});
-  }, []);
+  }, [isLoading, isGuest]);
 
+  return null;
+}
+
+function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <ChatProvider>
+          <AppInit />
           <AppContent />
         </ChatProvider>
       </AuthProvider>

@@ -118,7 +118,7 @@ interface HeaderProps {
 export function Header({ onRemoteToggle }: HeaderProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAuthenticated, authEnabled, isGuest, guestName, logout } = useAuth();
+  const { isAuthenticated, authEnabled, isGuest, isLoading: authLoading, guestName, logout } = useAuth();
   const activeTopNav = isGuest ? guestTopNavItems : topNavItems;
   const activeNavGroups = isGuest ? guestNavGroups : navGroups;
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
@@ -144,14 +144,14 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   });
 
   useEffect(() => {
-    if (isGuest) return; // Guests don't need session stats
+    if (authLoading || isGuest) return; // Wait for auth to resolve; guests don't need session stats
     loadSessionStats();
     const interval = setInterval(() => {
       if (document.hidden) return;
       loadSessionStats();
     }, 30000);
     return () => clearInterval(interval);
-  }, [sessionStartTime, isGuest]);
+  }, [sessionStartTime, isGuest, authLoading]);
 
   async function loadSessionStats() {
     if (isGuest) return;
@@ -172,7 +172,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   }
 
   const loadBadges = useCallback(async () => {
-    if (isGuest) return;
+    if (authLoading || isGuest) return;
     try {
       const [specsRes, prowlRes, dmRes, rulesRes] = await Promise.all([
         fetch('/api/specs?status=pending'),
@@ -195,7 +195,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
         rules: rulesData.total || 0,
       });
     } catch {}
-  }, [isGuest]);
+  }, [isGuest, authLoading]);
 
   // Initial load + refresh on visibility change
   useEffect(() => {

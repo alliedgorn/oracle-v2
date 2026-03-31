@@ -3152,8 +3152,16 @@ app.get('/api/files/:id/download', (c) => {
   return c.body(content);
 });
 
-// GET /api/f/:hash — download by hash (public-safe, unguessable UUID filename)
+// GET /api/f/:hash — download by hash (requires login — no local bypass)
 app.get('/api/f/:hash', (c) => {
+  // Require session or bearer token — local bypass not sufficient for file access
+  const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
+  const hasSession = sessionCookie && verifySessionToken(sessionCookie);
+  const hasBearer = c.req.header('Authorization')?.startsWith('Bearer den_');
+  if (!hasSession && !hasBearer) {
+    return c.json({ error: 'Authentication required — login to access files' }, 401);
+  }
+
   const hash = c.req.param('hash');
   // Validate hash format: UUID with extension (e.g. abc123-def456.jpg)
   if (!/^[0-9a-f-]+\.\w+$/.test(hash)) return c.json({ error: 'Invalid file hash' }, 400);

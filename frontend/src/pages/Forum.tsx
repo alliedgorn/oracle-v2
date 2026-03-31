@@ -169,7 +169,7 @@ async function sendMessage(message: string, threadId?: number, title?: string, r
 
 
 export function Forum() {
-  const { isGuest } = useAuth();
+  const { isGuest, guestName } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedThread, setSelectedThread] = useState<ThreadDetail | null>(null);
@@ -393,7 +393,7 @@ export function Forum() {
   // Real-time WebSocket updates — fetch only new messages, append
   const handleWsMessage = useCallback((data: any) => {
     if (selectedThread && data.thread_id === selectedThread.thread.id) {
-      fetchThread(selectedThread.thread.id, 5, 0, 'desc').then(d => {
+      fetchThread(selectedThread.thread.id, 5, 0, 'desc', isGuest).then(d => {
         setSelectedThread(prev => {
           if (!prev) return prev;
           const existingIds = new Set(prev.messages.map(m => m.id));
@@ -406,7 +406,7 @@ export function Forum() {
       }).catch(() => {});
     }
     fetchThreads(isGuest).then(d => setThreads(d.threads)).catch(() => {});
-  }, [selectedThread?.thread.id]);
+  }, [selectedThread?.thread.id, isGuest]);
 
   useWebSocket('new_message', handleWsMessage);
 

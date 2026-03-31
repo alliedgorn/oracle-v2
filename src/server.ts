@@ -2995,35 +2995,11 @@ app.post('/api/upload', async (c) => {
   }
 });
 
-// Serve uploaded files (legacy endpoint — kept for backwards compatibility)
+// Legacy file endpoint — redirect to /api/f/ which has proper auth + cache headers
 app.get('/api/forum/file/:filename', (c) => {
   const filename = c.req.param('filename');
   if (filename.includes('..') || filename.includes('/')) return c.json({ error: 'Invalid filename' }, 400);
-  const filePath = path.join(UPLOADS_DIR, filename);
-  if (!fs.existsSync(filePath)) return c.json({ error: 'File not found' }, 404);
-
-  const meta = sqlite.prepare('SELECT mime_type, original_name, deleted_at FROM files WHERE filename = ?').get(filename) as any
-    || sqlite.prepare('SELECT mime_type, original_name FROM forum_attachments WHERE filename = ?').get(filename) as any;
-  if (meta?.deleted_at) return c.json({ error: 'File not found' }, 404);
-
-  // ETag based on filename (UUID — immutable content)
-  const etag = `"${filename}"`;
-  const ifNoneMatch = c.req.header('if-none-match');
-  if (ifNoneMatch === etag) {
-    return new Response(null, { status: 304 });
-  }
-
-  const content = fs.readFileSync(filePath);
-  const safeImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
-  const isImage = safeImageTypes.has(meta?.mime_type);
-  const contentType = isImage ? meta.mime_type : 'application/octet-stream';
-
-  c.header('Content-Type', contentType);
-  c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${(meta?.original_name || filename).replace(/"/g, '_')}"`);
-  if (!isImage) c.header('Content-Security-Policy', 'sandbox');
-  c.header('Cache-Control', 'public, max-age=31536000, immutable');
-  c.header('ETag', etag);
-  return c.body(content);
+  return c.redirect(`/api/f/${filename}`, 301);
 });
 
 // ============================================================================

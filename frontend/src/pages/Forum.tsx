@@ -91,6 +91,7 @@ interface Thread {
   pinned: boolean;
   message_count: number;
   created_at: string;
+  created_by: string | null;
   issue_url: string | null;
   visibility?: 'public' | 'internal';
 }
@@ -712,6 +713,7 @@ export function Forum() {
                 )}
               </div>
               <div className={styles.threadMeta}>
+                {thread.created_by && <span className={styles.threadCreator}>by {thread.created_by}</span>}
                 <span className={styles.categoryBadge}>{thread.category || 'discussion'}</span>
                 {!isGuest && thread.visibility && (
                   <span className={thread.visibility === 'public' ? styles.visibilityPublic : styles.visibilityInternal}>
@@ -788,6 +790,27 @@ export function Forum() {
               <button className={styles.mobileBack} onClick={() => { setSelectedThread(null); setSearchParams({}); }}>←</button>
               <h2><span className={styles.threadIdHeader}>#{selectedThread.thread.id}</span> {selectedThread.thread.title}</h2>
               <div className={styles.threadActions}>
+                {!isGuest && (
+                  <button
+                    className={styles.deleteThreadBtn}
+                    onClick={async () => {
+                      if (!confirm(`Delete thread #${selectedThread.thread.id} "${selectedThread.thread.title}"? This cannot be undone.`)) return;
+                      try {
+                        await fetch(`${API_BASE}/thread/${selectedThread.thread.id}`, {
+                          method: 'DELETE',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ beast: 'gorn' }),
+                        });
+                        setSelectedThread(null);
+                        setSearchParams({});
+                        loadThreads();
+                      } catch {}
+                    }}
+                    title="Delete thread"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
 

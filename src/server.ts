@@ -102,6 +102,7 @@ import {
   logGuestAction,
   resetGuestPassword,
   changeGuestPassword,
+  updateGuestProfile,
 } from './server/guest-accounts.ts';
 import {
   scanForInjection,
@@ -2220,7 +2221,28 @@ app.post('/api/guest/dm', async (c) => {
   return c.json({ conversation_id: result.conversationId, message_id: result.messageId }, 201);
 });
 
-// Guest self-service password change (T#566)
+// Guest self-service password change (T#566, Spec #35 alias)
+app.post('/api/guest/change-password', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername');
+  if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
+
+  const guest = getGuestByUsername(sqlite, guestUsername);
+  if (!guest) return c.json({ error: 'Guest account not found' }, 404);
+
+  const body = await c.req.json();
+  if (!body.current_password || !body.new_password) {
+    return c.json({ error: 'current_password and new_password required' }, 400);
+  }
+
+  const result = await changeGuestPassword(sqlite, guest, body.current_password, body.new_password);
+  if (!result.success) {
+    return c.json({ error: result.error }, 400);
+  }
+
+  return c.json({ success: true });
+});
+
+// Legacy alias (T#566)
 app.post('/api/guest/reset-password', async (c) => {
   const guestUsername = (c.get as any)('guestUsername');
   if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
@@ -2241,7 +2263,7 @@ app.post('/api/guest/reset-password', async (c) => {
   return c.json({ success: true });
 });
 
-// Guest profile — own info (T#559)
+// Guest profile — own info (T#559, expanded T#574)
 app.get('/api/guest/profile', (c) => {
   const guestUsername = (c.get as any)('guestUsername');
   if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
@@ -2252,9 +2274,89 @@ app.get('/api/guest/profile', (c) => {
   return c.json({
     username: guest.username,
     display_name: guest.display_name,
+    bio: guest.bio || null,
+    interests: guest.interests || null,
+    avatar_url: guest.avatar_url || null,
     created_at: guest.created_at,
     expires_at: guest.expires_at,
   });
+});
+
+// Guest self-service profile update (T#574, Spec #35)
+app.patch('/api/guest/profile', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername');
+  if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
+
+  const guest = getGuestByUsername(sqlite, guestUsername);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
+  const body = await c.req.json();
+
+  // Validate display_name length
+  if (body.display_name !== undefined && (!body.display_name || body.display_name.length > 50)) {
+    return c.json({ error: 'Display name must be 1-50 characters' }, 400);
+  }
+  // Validate bio length
+  if (body.bio !== undefined && body.bio.length > 500) {
+    return c.json({ error: 'Bio must be under 500 characters' }, 400);
+  }
+  // Validate interests length
+  if (body.interests !== undefined && body.interests.length > 300) {
+    return c.json({ error: 'Interests must be under 300 characters' }, 400);
+  }
+
+  const updated = updateGuestProfile(sqlite, guest.id, {
+    display_name: body.display_name,
+    bio: body.bio,
+    interests: body.interests,
+    avatar_url: body.avatar_url,
+  });
+
+  if (!updated) return c.json({ error: 'Update failed' }, 500);
+
+  return c.json({
+    username: updated.username,
+    display_name: updated.display_name,
+    bio: updated.bio || null,
+    interests: updated.interests || null,
+    avatar_url: updated.avatar_url || null,
+  });
+});
+
+// Guest avatar upload (T#574, Spec #35)
+app.post('/api/guest/avatar', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername');
+  if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
+
+  const guest = getGuestByUsername(sqlite, guestUsername);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
+  const formData = await c.req.formData();
+  const file = formData.get('file') as File | null;
+  if (!file) return c.json({ error: 'No file provided' }, 400);
+
+  // Validate file type
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    return c.json({ error: 'File must be jpg, png, or webp' }, 400);
+  }
+
+  // Validate file size (2MB max)
+  if (file.size > 2 * 1024 * 1024) {
+    return c.json({ error: 'File must be under 2MB' }, 400);
+  }
+
+  // Save file
+  const ext = file.type.split('/')[1] === 'jpeg' ? 'jpg' : file.type.split('/')[1];
+  const filename = `guest-${guestUsername}-avatar.${ext}`;
+  const filePath = `${process.cwd()}/data/uploads/${filename}`;
+  const buffer = await file.arrayBuffer();
+  await Bun.write(filePath, buffer);
+
+  const avatarUrl = `/api/f/${filename}`;
+  updateGuestProfile(sqlite, guest.id, { avatar_url: avatarUrl });
+
+  return c.json({ avatar_url: avatarUrl });
 });
 
 app.get('/api/dashboard/activity', (c) => {
@@ -3591,6 +3693,7 @@ app.get('/api/threads', (c) => {
       pinned: !!(t.pinned),
       message_count: t.msg_count || 0,
       created_at: new Date(t.created_at).toISOString(),
+      created_by: t.created_by || null,
       issue_url: t.issue_url,
       visibility: t.visibility || 'internal',
     })),

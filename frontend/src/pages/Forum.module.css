@@ -524,6 +524,28 @@
   gap: 12px;
 }
 
+.threadCreator {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.deleteThreadBtn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.deleteThreadBtn:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
 .statusBadge {
   font-size: 12px;
   padding: 4px 12px;

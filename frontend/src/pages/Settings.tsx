@@ -621,8 +621,8 @@ function GuestManagement() {
           {guests.map(guest => (
             <div key={guest.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
               <span style={{ flex: 1, color: 'var(--text-primary)', fontSize: 14 }}>
-                {guest.display_name || guest.username}
-                <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: 12 }}>@{guest.username}</span>
+                {guest.username}
+                {guest.display_name && <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: 12 }}>({guest.display_name})</span>}
                 {guest.disabled_at && <span style={{ color: '#ef4444', marginLeft: 8, fontSize: 11 }}>Disabled</span>}
                 {guest.expires_at && !guest.disabled_at && (
                   <span style={{ color: 'var(--text-muted)', marginLeft: 8, fontSize: 11 }}>
@@ -648,31 +648,43 @@ function GuestManagement() {
           ))}
 
           {showForm ? (
-            <form onSubmit={handleCreate} style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <input
-                type="text"
-                value={form.username}
-                onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                placeholder="Username (lowercase, 3+ chars)"
-                className={styles.input}
-                style={{ padding: '8px 12px', fontSize: 13 }}
-              />
-              <input
-                type="password"
-                value={form.password}
-                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                placeholder="Password (8+ chars)"
-                className={styles.input}
-                style={{ padding: '8px 12px', fontSize: 13 }}
-              />
-              <input
-                type="text"
-                value={form.display_name}
-                onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))}
-                placeholder="Display name (optional)"
-                className={styles.input}
-                style={{ padding: '8px 12px', fontSize: 13 }}
-              />
+            <form onSubmit={handleCreate} style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }} autoComplete="off">
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Username</label>
+                <input
+                  type="text"
+                  value={form.username}
+                  onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                  placeholder="lowercase, 3+ chars"
+                  className={styles.input}
+                  style={{ padding: '8px 12px', fontSize: 13 }}
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Password</label>
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  placeholder="8+ characters"
+                  className={styles.input}
+                  style={{ padding: '8px 12px', fontSize: 13 }}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Display Name (optional)</label>
+                <input
+                  type="text"
+                  value={form.display_name}
+                  onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))}
+                  placeholder="Visible name for this guest"
+                  className={styles.input}
+                  style={{ padding: '8px 12px', fontSize: 13 }}
+                  autoComplete="off"
+                />
+              </div>
               <input
                 type="date"
                 value={form.expires_at}

@@ -194,6 +194,7 @@ export function Forum() {
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
   const [supportedEmoji, setSupportedEmoji] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'recent' | 'active' | 'most-msgs'>('recent');
   const [newCategory, setNewCategory] = useState<string>('discussion');
   const [replyTo, setReplyTo] = useState<{ id: number; author: string | null; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
@@ -624,6 +625,30 @@ export function Forum() {
           </button>
         </div>
 
+        <div className={styles.filterRow}>
+          <FilterTabs
+            items={[
+              { id: 'all', label: 'All' },
+              { id: 'announcement', label: 'Announcement' },
+              { id: 'task', label: 'Task' },
+              { id: 'discussion', label: 'Discussion' },
+              { id: 'decision', label: 'Decision' },
+              { id: 'question', label: 'Question' },
+            ]}
+            activeId={categoryFilter}
+            onChange={setCategoryFilter}
+          />
+          <select
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
+            className={styles.sortSelect}
+          >
+            <option value="recent">Recent</option>
+            <option value="active">Most active</option>
+            <option value="most-msgs">Most messages</option>
+          </select>
+        </div>
+
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
@@ -661,25 +686,14 @@ export function Forum() {
           </div>
         )}
 
-        <div className={styles.filterWrapper}>
-          <FilterTabs
-            items={[
-              { id: 'all', label: 'All' },
-              { id: 'announcement', label: 'Announcement' },
-              { id: 'task', label: 'Task' },
-              { id: 'discussion', label: 'Discussion' },
-              { id: 'decision', label: 'Decision' },
-              { id: 'question', label: 'Question' },
-            ]}
-            activeId={categoryFilter}
-            onChange={setCategoryFilter}
-            variant="compact"
-          />
-        </div>
-
         <div className={styles.threadList}>
           {threads
             .filter(t => categoryFilter === 'all' || t.category === categoryFilter)
+            .sort((a, b) => {
+              if (sortOrder === 'most-msgs') return (b.message_count || 0) - (a.message_count || 0);
+              // 'recent' and 'active' use default server order
+              return 0;
+            })
             .map(thread => (
             <div
               key={thread.id}

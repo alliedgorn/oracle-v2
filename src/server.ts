@@ -1918,10 +1918,10 @@ app.get('/api/guest/threads', (c) => {
   const offset = parseInt(c.req.query('offset') || '0');
 
   const rows = sqlite.prepare(
-    "SELECT *, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE visibility = 'public' ORDER BY COALESCE(pinned, 0) DESC, updated_at DESC LIMIT ? OFFSET ?"
+    "SELECT *, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE visibility = 'public' AND deleted_at IS NULL ORDER BY COALESCE(pinned, 0) DESC, updated_at DESC LIMIT ? OFFSET ?"
   ).all(limit, offset) as any[];
 
-  const total = (sqlite.prepare("SELECT COUNT(*) as total FROM forum_threads WHERE visibility = 'public'").get() as any)?.total || 0;
+  const total = (sqlite.prepare("SELECT COUNT(*) as total FROM forum_threads WHERE visibility = 'public' AND deleted_at IS NULL").get() as any)?.total || 0;
 
   return c.json({
     threads: rows.map(t => ({
@@ -3670,7 +3670,7 @@ app.get('/api/threads', (c) => {
   const offset = parseInt(c.req.query('offset') || '0');
   const role = (c.get as any)('role') as Role | undefined;
 
-  let query = 'SELECT *, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE 1=1';
+  let query = 'SELECT *, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE deleted_at IS NULL';
   const params: any[] = [];
   if (status) { query += ' AND status = ?'; params.push(status); }
   if (category) { query += ' AND category = ?'; params.push(category); }
@@ -3680,8 +3680,8 @@ app.get('/api/threads', (c) => {
   params.push(limit, offset);
 
   const rows = sqlite.prepare(query).all(...params) as any[];
-  let countQuery = 'SELECT COUNT(*) as total FROM forum_threads';
-  if (role === 'guest') { countQuery += " WHERE visibility = 'public'"; }
+  let countQuery = 'SELECT COUNT(*) as total FROM forum_threads WHERE deleted_at IS NULL';
+  if (role === 'guest') { countQuery += " AND visibility = 'public'"; }
   const total = (sqlite.prepare(countQuery).get() as any)?.total || 0;
 
   return c.json({
@@ -4126,6 +4126,10 @@ try {
   sqlite.prepare('ALTER TABLE forum_threads ADD COLUMN queue_summary TEXT DEFAULT NULL').run();
 } catch { /* column already exists */ }
 
+try {
+  sqlite.prepare('ALTER TABLE forum_threads ADD COLUMN deleted_at TEXT DEFAULT NULL').run();
+} catch { /* column already exists */ }
+
 // Mindlink removed — replaced by Prowl (T#279/T#280)
 // DB table 'mindlinks' preserved for data migration to Prowl
 
@@ -4290,8 +4294,8 @@ app.patch('/api/thread/:id/status', async (c) => {
   }
 });
 
-// DELETE /api/thread/:id — delete a thread and all related data
-// Auth: thread creator or Gorn only (for test cleanup)
+// DELETE /api/thread/:id — soft delete (set deleted_at, hide from listings)
+// Auth: thread creator or Gorn only
 app.delete('/api/thread/:id', (c) => {
   const id = parseInt(c.req.param('id'));
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -4302,12 +4306,9 @@ app.delete('/api/thread/:id', (c) => {
   if (as !== 'gorn' && as !== existing.created_by?.toLowerCase()) {
     return c.json({ error: 'Only the thread creator or Gorn can delete a thread' }, 403);
   }
-  // Cascade: reactions, read state, messages, then thread
-  sqlite.prepare('DELETE FROM forum_reactions WHERE message_id IN (SELECT id FROM forum_messages WHERE thread_id = ?)').run(id);
-  sqlite.prepare('DELETE FROM forum_read_status WHERE thread_id = ?').run(id);
-  sqlite.prepare('DELETE FROM forum_messages WHERE thread_id = ?').run(id);
-  sqlite.prepare('DELETE FROM forum_threads WHERE id = ?').run(id);
-  return c.json({ deleted: id, title: existing.title });
+  // Soft delete — set deleted_at timestamp (Nothing is Deleted)
+  sqlite.prepare("UPDATE forum_threads SET deleted_at = datetime('now'), status = 'deleted' WHERE id = ?").run(id);
+  return c.json({ deleted: id, title: existing.title, soft: true });
 });
 
 // ============================================================================

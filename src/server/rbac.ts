@@ -32,10 +32,10 @@ const GUEST_ALLOWLIST: AllowlistEntry[] = [
   { method: 'GET', pattern: /^\/api\/beast\/[^/]+$/ },
   { method: 'GET', pattern: /^\/api\/beast\/[^/]+\/avatar\.svg$/ },
 
-  // Forum (visibility enforced at handler level)
+  // Forum (visibility + guest-only-posts enforced at handler level in PR3)
   { method: 'GET', pattern: /^\/api\/threads$/ },
   { method: 'GET', pattern: /^\/api\/thread\/\d+$/ },
-  { method: 'POST', pattern: /^\/api\/thread\/\d+\/messages$/ },
+  { method: 'POST', pattern: /^\/api\/thread$/ },  // Handler must enforce: guests post to existing public threads only, no new threads
   { method: 'POST', pattern: /^\/api\/message\/\d+\/react$/ },
   { method: 'GET', pattern: /^\/api\/message\/\d+\/reactions$/ },
   { method: 'GET', pattern: /^\/api\/forum\/emojis$/ },
@@ -72,7 +72,8 @@ export function rbacMiddleware() {
   return async (c: Context, next: Next) => {
     const role = (c.get as any)('role') as Role | undefined;
 
-    // No role set = not authenticated (auth middleware handles 401)
+    // No role set = either unauthenticated (auth middleware already returned 401)
+    // or a public path that skipped auth. Safe to pass through.
     if (!role) return next();
 
     // Owner and beast have full access

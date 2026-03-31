@@ -88,6 +88,19 @@ import {
 import { enqueueNotification } from './notify.ts';
 import { rbacMiddleware } from './server/rbac.ts';
 import type { Role } from './server/rbac.ts';
+import {
+  initGuestTables,
+  createGuest,
+  listGuests,
+  getGuest,
+  getGuestByUsername,
+  updateGuest,
+  deleteGuest,
+  isGuestActive,
+  recordFailedAttempt,
+  recordSuccessfulLogin,
+  logGuestAction,
+} from './server/guest-accounts.ts';
 
 import {
   logSecurityEvent,
@@ -236,7 +249,8 @@ app.use('*', async (c, next) => {
 // Session secret - generate once per server run
 const SESSION_SECRET = process.env.ORACLE_SESSION_SECRET || crypto.randomUUID();
 const SESSION_COOKIE_NAME = 'oracle_session';
-const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days (owner)
+const GUEST_SESSION_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours (guest)
 
 // Check if request is from local network
 function isLocalNetwork(c: Context): boolean {
@@ -270,33 +284,75 @@ function isLocalNetwork(c: Context): boolean {
 }
 
 // Generate session token using HMAC-SHA256
-function generateSessionToken(): string {
-  const expires = Date.now() + SESSION_DURATION_MS;
+// Format: role:data:expires:signature
+// role = 'owner' or 'guest', data = '' for owner or 'username' for guest
+function generateSessionToken(role: Role = 'owner', data: string = ''): string {
+  const duration = role === 'guest' ? GUEST_SESSION_DURATION_MS : SESSION_DURATION_MS;
+  const expires = Date.now() + duration;
+  const payload = `${role}:${data}:${expires}`;
   const signature = createHmac('sha256', SESSION_SECRET)
-    .update(String(expires))
+    .update(payload)
     .digest('hex');
-  return `${expires}:${signature}`;
+  return `${payload}:${signature}`;
 }
 
 // Verify session token with timing-safe comparison
+// Returns { valid, role, data } or { valid: false }
+interface SessionInfo {
+  valid: boolean;
+  role?: Role;
+  data?: string;
+}
+
 function verifySessionToken(token: string): boolean {
-  if (!token) return false;
-  const colonIdx = token.indexOf(':');
-  if (colonIdx === -1) return false;
+  return parseSessionToken(token).valid;
+}
 
-  const expiresStr = token.substring(0, colonIdx);
-  const signature = token.substring(colonIdx + 1);
-  const expires = parseInt(expiresStr, 10);
-  if (isNaN(expires) || expires < Date.now()) return false;
+function parseSessionToken(token: string): SessionInfo {
+  if (!token) return { valid: false };
 
-  const expectedSignature = createHmac('sha256', SESSION_SECRET)
-    .update(expiresStr)
-    .digest('hex');
+  // Support both old format (expires:sig) and new format (role:data:expires:sig)
+  const parts = token.split(':');
 
-  const sigBuf = Buffer.from(signature);
-  const expectedBuf = Buffer.from(expectedSignature);
-  if (sigBuf.length !== expectedBuf.length) return false;
-  return timingSafeEqual(sigBuf, expectedBuf);
+  if (parts.length === 2) {
+    // Legacy format: expires:signature (owner session)
+    const [expiresStr, signature] = parts;
+    const expires = parseInt(expiresStr, 10);
+    if (isNaN(expires) || expires < Date.now()) return { valid: false };
+
+    const expectedSignature = createHmac('sha256', SESSION_SECRET)
+      .update(expiresStr)
+      .digest('hex');
+
+    const sigBuf = Buffer.from(signature);
+    const expectedBuf = Buffer.from(expectedSignature);
+    if (sigBuf.length !== expectedBuf.length) return { valid: false };
+    if (!timingSafeEqual(sigBuf, expectedBuf)) return { valid: false };
+
+    return { valid: true, role: 'owner', data: '' };
+  }
+
+  if (parts.length === 4) {
+    // New format: role:data:expires:signature
+    const [role, data, expiresStr, signature] = parts;
+    const expires = parseInt(expiresStr, 10);
+    if (isNaN(expires) || expires < Date.now()) return { valid: false };
+    if (role !== 'owner' && role !== 'guest') return { valid: false };
+
+    const payload = `${role}:${data}:${expiresStr}`;
+    const expectedSignature = createHmac('sha256', SESSION_SECRET)
+      .update(payload)
+      .digest('hex');
+
+    const sigBuf = Buffer.from(signature);
+    const expectedBuf = Buffer.from(expectedSignature);
+    if (sigBuf.length !== expectedBuf.length) return { valid: false };
+    if (!timingSafeEqual(sigBuf, expectedBuf)) return { valid: false };
+
+    return { valid: true, role: role as Role, data };
+  }
+
+  return { valid: false };
 }
 
 // Check if request has a valid browser session (Gorn)
@@ -321,6 +377,9 @@ function isAuthenticated(c: Context): boolean {
   const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
   return verifySessionToken(sessionCookie || '');
 }
+
+// Initialize guest account tables (Spec #32, T#554)
+initGuestTables(sqlite);
 
 // ============================================================================
 // Auth Middleware (protects /api/* except auth routes)
@@ -375,9 +434,29 @@ app.use('/api/*', async (c, next) => {
     return c.json({ error: 'Unauthorized', requiresAuth: true }, 401);
   }
 
-  // Set role for session/local-bypass auth (owner by default — guest role set in PR2)
+  // Set role from session token (owner or guest) or local bypass (owner)
   if (!(c.get as any)('role')) {
-    c.set('role' as any, 'owner' as Role);
+    const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
+    const session = parseSessionToken(sessionCookie || '');
+    if (session.valid && session.role === 'guest') {
+      // Guest session — check expiry/disabled/lockout server-side on every request
+      const guest = getGuestByUsername(sqlite, session.data || '');
+      if (guest) {
+        const status = isGuestActive(guest);
+        if (!status.active) {
+          return c.json({ error: 'Unauthorized', message: status.reason, requiresAuth: true }, 401);
+        }
+        c.set('role' as any, 'guest' as Role);
+        c.set('guestUsername' as any, session.data);
+        c.set('guestId' as any, guest.id);
+        // Log guest API access
+        logGuestAction(sqlite, guest.id, path, c.req.method);
+      } else {
+        return c.json({ error: 'Unauthorized', message: 'Guest account not found', requiresAuth: true }, 401);
+      }
+    } else {
+      c.set('role' as any, 'owner' as Role);
+    }
   }
 
   return next();
@@ -552,12 +631,72 @@ app.post('/api/auth/login', async (c) => {
   }
 
   const body = await c.req.json();
-  const { password } = body;
+  const { password, username } = body;
 
   if (!password) {
     return c.json({ success: false, error: 'Password required' }, 400);
   }
 
+  // Try guest login first if username is provided
+  if (username) {
+    const guest = getGuestByUsername(sqlite, username);
+
+    // Always run bcrypt even if user doesn't exist (timing attack mitigation)
+    const dummyHash = '$2b$12$LJ3m4ys3Ls.yBVBMGIiu2OiEfO/JsU1TOiIYxlhfPHQsGxJF6mYr2';
+    const hashToVerify = guest?.password_hash || dummyHash;
+    const validPassword = await Bun.password.verify(password, hashToVerify);
+
+    if (!guest || !validPassword) {
+      const entry = loginAttempts.get(ip) || { count: 0, firstAttempt: now };
+      entry.count++;
+      loginAttempts.set(ip, entry);
+      if (guest) recordFailedAttempt(sqlite, guest);
+      logSecurityEvent({
+        eventType: 'auth_failure',
+        severity: 'warning',
+        actor: username,
+        actorType: 'guest',
+        target: '/api/auth/login',
+        details: { attempt_number: (loginAttempts.get(ip)?.count || 1), auth_type: 'guest' },
+        ipSource: ip,
+        requestId: (c.get as any)('requestId'),
+      });
+      return c.json({ success: false, error: 'Invalid username or password' }, 401);
+    }
+
+    // Check if guest account is active (not expired, disabled, or locked)
+    const status = isGuestActive(guest);
+    if (!status.active) {
+      return c.json({ success: false, error: status.reason }, 401);
+    }
+
+    // Successful guest login
+    loginAttempts.delete(ip);
+    recordSuccessfulLogin(sqlite, guest.id);
+    logSecurityEvent({
+      eventType: 'auth_success',
+      severity: 'info',
+      actor: username,
+      actorType: 'guest',
+      target: '/api/auth/login',
+      details: { auth_type: 'guest', guest_id: guest.id },
+      ipSource: ip,
+      requestId: (c.get as any)('requestId'),
+    });
+
+    const token = generateSessionToken('guest', guest.username);
+    setCookie(c, SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Lax',
+      maxAge: GUEST_SESSION_DURATION_MS / 1000,
+      path: '/'
+    });
+
+    return c.json({ success: true, role: 'guest', display_name: guest.display_name });
+  }
+
+  // Owner login (password only, no username)
   const storedHash = getSetting('auth_password_hash');
   if (!storedHash) {
     return c.json({ success: false, error: 'No password configured' }, 400);
@@ -581,7 +720,7 @@ app.post('/api/auth/login', async (c) => {
     return c.json({ success: false, error: 'Invalid password' }, 401);
   }
 
-  // Successful login clears rate limit
+  // Successful owner login clears rate limit
   loginAttempts.delete(ip);
   logSecurityEvent({
     eventType: 'auth_success',
@@ -594,7 +733,7 @@ app.post('/api/auth/login', async (c) => {
   });
 
   // Set session cookie
-  const token = generateSessionToken();
+  const token = generateSessionToken('owner');
   const isHttps = c.req.url.startsWith('https') || c.req.header('x-forwarded-proto') === 'https';
   setCookie(c, SESSION_COOKIE_NAME, token, {
     httpOnly: true,
@@ -604,7 +743,7 @@ app.post('/api/auth/login', async (c) => {
     path: '/'
   });
 
-  return c.json({ success: true });
+  return c.json({ success: true, role: 'owner' });
 });
 
 // Logout
@@ -620,6 +759,92 @@ app.post('/api/auth/logout', (c) => {
     requestId: (c.get as any)('requestId'),
   });
   deleteCookie(c, SESSION_COOKIE_NAME, { path: '/' });
+  return c.json({ success: true });
+});
+
+// ============================================================================
+// Guest Account Routes (Spec #32, T#554 — Gorn only)
+// ============================================================================
+
+// Create guest account
+app.post('/api/guests', async (c) => {
+  if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
+    return c.json({ error: 'Guest account management requires owner session' }, 403);
+  }
+
+  const body = await c.req.json();
+  const { username, password, display_name, expires_at } = body;
+
+  if (!username || !password) {
+    return c.json({ error: 'Username and password are required' }, 400);
+  }
+
+  try {
+    const guest = await createGuest(sqlite, username, password, display_name, expires_at);
+    const { password_hash, ...safe } = guest;
+    return c.json(safe, 201);
+  } catch (err: any) {
+    if (err.message?.includes('UNIQUE constraint')) {
+      return c.json({ error: 'Username already exists' }, 409);
+    }
+    return c.json({ error: err.message || 'Failed to create guest' }, 400);
+  }
+});
+
+// List guest accounts
+app.get('/api/guests', (c) => {
+  if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
+    return c.json({ error: 'Guest account management requires owner session' }, 403);
+  }
+
+  const guests = listGuests(sqlite);
+  return c.json({ guests });
+});
+
+// Get single guest account
+app.get('/api/guests/:id', (c) => {
+  if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
+    return c.json({ error: 'Guest account management requires owner session' }, 403);
+  }
+
+  const id = parseInt(c.req.param('id'), 10);
+  const guest = getGuest(sqlite, id);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
+  const { password_hash, ...safe } = guest;
+  return c.json(safe);
+});
+
+// Update guest account (expiry, disable, display name)
+app.patch('/api/guests/:id', (c) => {
+  if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
+    return c.json({ error: 'Guest account management requires owner session' }, 403);
+  }
+
+  const id = parseInt(c.req.param('id'), 10);
+  return c.req.json().then(body => {
+    const updated = updateGuest(sqlite, id, {
+      display_name: body.display_name,
+      expires_at: body.expires_at,
+      disabled_at: body.disabled_at,
+    });
+    if (!updated) return c.json({ error: 'Guest not found' }, 404);
+
+    const { password_hash, ...safe } = updated;
+    return c.json(safe);
+  });
+});
+
+// Delete guest account
+app.delete('/api/guests/:id', (c) => {
+  if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
+    return c.json({ error: 'Guest account management requires owner session' }, 403);
+  }
+
+  const id = parseInt(c.req.param('id'), 10);
+  const deleted = deleteGuest(sqlite, id);
+  if (!deleted) return c.json({ error: 'Guest not found' }, 404);
+
   return c.json({ success: true });
 });
 

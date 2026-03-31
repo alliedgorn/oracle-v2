@@ -588,14 +588,12 @@ export function Forum() {
       <div className={`${styles.sidebar} ${selectedThread || showNewThread ? styles.hidden : ''}`}>
         <div className={styles.sidebarHeader}>
           <h2>Threads</h2>
-          {!isGuest && (
-            <button
-              className={styles.newButton}
-              onClick={openNewThread}
-            >
-              + New
-            </button>
-          )}
+          <button
+            className={styles.newButton}
+            onClick={openNewThread}
+          >
+            + New
+          </button>
         </div>
 
         <SearchInput

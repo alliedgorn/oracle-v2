@@ -3304,7 +3304,6 @@ app.post('/api/upload', async (c) => {
       mime_type: finalMime,
       category,
       url: `/api/f/${filename}`,
-      legacy_url: `/api/forum/file/${filename}`,
       size_bytes: processedBuffer.length,
     });
   } catch (error) {
@@ -3361,7 +3360,7 @@ app.get('/api/files', (c) => {
       ...f,
       url: `/api/files/${f.id}/download`,
       is_image: f.mime_type.startsWith('image/'),
-      thumbnail_url: f.mime_type.startsWith('image/') ? `/api/forum/file/${f.filename}` : null,
+      thumbnail_url: f.mime_type.startsWith('image/') ? `/api/f/${f.filename}` : null,
     })),
     total,
     page,
@@ -3418,7 +3417,7 @@ app.get('/api/files/:id', (c) => {
     ...file,
     url: `/api/files/${file.id}/download`,
     is_image: file.mime_type.startsWith('image/'),
-    thumbnail_url: file.mime_type.startsWith('image/') ? `/api/forum/file/${file.filename}` : null,
+    thumbnail_url: file.mime_type.startsWith('image/') ? `/api/f/${file.filename}` : null,
   });
 });
 
@@ -3536,7 +3535,7 @@ app.get('/api/message/:id/attachments', (c) => {
       id: r.id,
       filename: r.filename,
       original_name: r.original_name,
-      url: `/api/forum/file/${r.filename}`,
+      url: `/api/f/${r.filename}`,
       mime_type: r.mime_type,
       size_bytes: r.size_bytes,
       uploaded_by: r.uploaded_by,

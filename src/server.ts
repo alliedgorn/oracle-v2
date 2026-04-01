@@ -2392,6 +2392,16 @@ app.patch('/api/guest/profile', async (c) => {
   if (body.display_name !== undefined && (!body.display_name || body.display_name.length > 50)) {
     return c.json({ error: 'Display name must be 1-50 characters' }, 400);
   }
+  // Block reserved names (Beast names, Gorn, Admin) — T#597
+  if (body.display_name !== undefined) {
+    const RESERVED_NAMES = new Set([
+      'karo','rax','mara','leonard','bertus','gnarl','zaghnal','pip','nyx','dex',
+      'flint','quill','snap','vigil','talon','sable','gorn','admin','administrator','system',
+    ]);
+    if (RESERVED_NAMES.has(body.display_name.toLowerCase().trim())) {
+      return c.json({ error: 'That display name is reserved' }, 400);
+    }
+  }
   // Validate bio length
   if (body.bio !== undefined && body.bio.length > 500) {
     return c.json({ error: 'Bio must be under 500 characters' }, 400);
@@ -3275,6 +3285,12 @@ app.post('/api/upload', async (c) => {
       if (ALLOWED_EXTENSIONS[secondToLast] && secondToLast !== ext) {
         return c.json({ error: 'Double extensions not allowed' }, 400);
       }
+    }
+
+    // Guests: images only — no documents
+    const isGuest = (c.get as any)('role') === 'guest';
+    if (isGuest && !isImage) {
+      return c.json({ error: 'Guests can only upload images (jpg, png, webp, gif)' }, 403);
     }
 
     // For images: validate via magic bytes (existing behavior)

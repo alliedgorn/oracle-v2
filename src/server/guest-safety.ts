@@ -67,7 +67,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const LIMITS = {
   postsPerHour: 10,
   postsPerDay: 50,
-  dmsPerHour: 20,
+  dmsPerHour: 100,
 };
 
 function checkRate(map: Map<string, RateWindow>, key: string, limit: number, windowMs: number): { allowed: boolean; remaining: number; retryAfterMs?: number } {
@@ -111,7 +111,7 @@ export function checkGuestPostRate(username: string): { allowed: boolean; error?
 export function checkGuestDmRate(username: string): { allowed: boolean; error?: string } {
   const hourly = checkRate(guestDmRates, username, LIMITS.dmsPerHour, HOUR_MS);
   if (!hourly.allowed) {
-    return { allowed: false, error: `DM rate limit exceeded (${LIMITS.dmsPerHour}/hour). Try again in ${Math.ceil((hourly.retryAfterMs || 0) / 60000)} minutes.` };
+    return { allowed: false, error: `You're sending messages a bit fast! Take a breather and try again in ${Math.ceil((hourly.retryAfterMs || 0) / 60000)} minutes.` };
   }
   return { allowed: true };
 }

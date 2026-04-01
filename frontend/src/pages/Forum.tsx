@@ -266,11 +266,12 @@ export function Forum() {
     return () => window.removeEventListener('scroll', handler);
   }, []);
 
-  // Load unread counts for gorn (skip for guests)
+  // Load unread counts (owner uses 'gorn', guests use 'guest:<name>')
+  const unreadIdentity = isGuest ? `guest:${guestName}` : 'gorn';
+
   async function loadUnreadCounts() {
-    if (isGuest) return;
     try {
-      const res = await fetch(`${API_BASE}/forum/unread/gorn`);
+      const res = await fetch(`${API_BASE}/forum/unread/${encodeURIComponent(unreadIdentity)}`);
       const data = await res.json();
       const counts: Record<number, number> = {};
       for (const t of data.threads || []) {
@@ -280,14 +281,13 @@ export function Forum() {
     } catch { /* ignore */ }
   }
 
-  // Mark thread as read for gorn (skip for guests)
+  // Mark thread as read
   async function markThreadRead(threadId: number, lastMessageId: number) {
-    if (isGuest) return;
     try {
       await fetch(`${API_BASE}/forum/read`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beast: 'gorn', threadId, messageId: lastMessageId }),
+        body: JSON.stringify({ beast: unreadIdentity, threadId, messageId: lastMessageId }),
       });
       setUnreadCounts(prev => {
         const next = { ...prev };

@@ -27,6 +27,7 @@ export function GuestChatOverlay({ beastName, displayName, collapsed, onToggleCo
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const userSentRef = useRef(false);
@@ -75,10 +76,18 @@ export function GuestChatOverlay({ beastName, displayName, collapsed, onToggleCo
     if (!newMessage.trim()) return;
     setLoading(true);
     userSentRef.current = true;
+    setError(null);
     try {
-      await sendGuestDm(beastName, newMessage);
-      setNewMessage('');
-      await loadMessages();
+      const res = await sendGuestDm(beastName, newMessage);
+      if (res?.error) {
+        setError(res.error);
+        setTimeout(() => setError(null), 5000);
+      } else {
+        setNewMessage('');
+        await loadMessages();
+      }
+    } catch {
+      setError('Could not send message. Please try again in a bit.');
     } finally { setLoading(false); }
   }
 
@@ -130,6 +139,9 @@ export function GuestChatOverlay({ beastName, displayName, collapsed, onToggleCo
         })}
       </div>
 
+      {error && (
+        <div className={styles.rateLimitNotice}>{error}</div>
+      )}
       <form onSubmit={handleSend} className={styles.inputArea}>
         <input
           type="text"

@@ -111,7 +111,7 @@ export function checkGuestPostRate(username: string): { allowed: boolean; error?
 export function checkGuestDmRate(username: string): { allowed: boolean; error?: string } {
   const hourly = checkRate(guestDmRates, username, LIMITS.dmsPerHour, HOUR_MS);
   if (!hourly.allowed) {
-    return { allowed: false, error: `You're sending messages a bit fast! Take a breather and try again in ${Math.ceil((hourly.retryAfterMs || 0) / 60000)} minutes.` };
+    return { allowed: false, error: `You're sending messages a bit fast! Take a breather and try again shortly.` };
   }
   return { allowed: true };
 }

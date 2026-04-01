@@ -86,7 +86,7 @@ import {
 
 
 import { enqueueNotification } from './notify.ts';
-import { rbacMiddleware } from './server/rbac.ts';
+import { rbacMiddleware, getGuestAllowlist } from './server/rbac.ts';
 import type { Role } from './server/rbac.ts';
 import {
   initGuestTables,
@@ -407,7 +407,6 @@ app.use('/api/*', async (c, next) => {
     '/api/auth/status',
     '/api/auth/login',
     '/api/health',
-    '/api/help'
   ];
   if (publicPaths.some(p => path === p)) {
     return next();
@@ -648,17 +647,37 @@ app.get('/api/auth/status', (c) => {
 
 // Login
 // Login rate limiting: max 5 attempts per IP per 15 minutes
-const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
+// Persisted to SQLite so restarts don't reset the window (T#594)
 const LOGIN_RATE_LIMIT = 5;
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
+
+sqlite.exec(`CREATE TABLE IF NOT EXISTS login_rate_limits (
+  ip TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  first_attempt_at INTEGER NOT NULL
+)`);
+
+function getRateLimit(ip: string): { count: number; firstAttempt: number } | null {
+  const row = sqlite.prepare('SELECT count, first_attempt_at FROM login_rate_limits WHERE ip = ?').get(ip) as any;
+  if (!row) return null;
+  return { count: row.count, firstAttempt: row.first_attempt_at };
+}
+
+function setRateLimit(ip: string, count: number, firstAttempt: number): void {
+  sqlite.prepare('INSERT OR REPLACE INTO login_rate_limits (ip, count, first_attempt_at) VALUES (?, ?, ?)').run(ip, count, firstAttempt);
+}
+
+function clearRateLimit(ip: string): void {
+  sqlite.prepare('DELETE FROM login_rate_limits WHERE ip = ?').run(ip);
+}
 
 app.post('/api/auth/login', async (c) => {
   const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
   const now = Date.now();
-  const attempts = loginAttempts.get(ip);
+  const attempts = getRateLimit(ip);
   if (attempts) {
     if (now - attempts.firstAttempt > LOGIN_RATE_WINDOW_MS) {
-      loginAttempts.delete(ip);
+      clearRateLimit(ip);
     } else if (attempts.count >= LOGIN_RATE_LIMIT) {
       const retryAfter = Math.ceil((attempts.firstAttempt + LOGIN_RATE_WINDOW_MS - now) / 1000);
       logSecurityEvent({
@@ -692,9 +711,9 @@ app.post('/api/auth/login', async (c) => {
     const validPassword = await Bun.password.verify(password, hashToVerify);
 
     if (!guest || !validPassword) {
-      const entry = loginAttempts.get(ip) || { count: 0, firstAttempt: now };
-      entry.count++;
-      loginAttempts.set(ip, entry);
+      const existing = getRateLimit(ip);
+      const newCount = (existing?.count || 0) + 1;
+      setRateLimit(ip, newCount, existing?.firstAttempt || now);
       if (guest) recordFailedAttempt(sqlite, guest);
       logSecurityEvent({
         eventType: 'auth_failure',
@@ -702,7 +721,7 @@ app.post('/api/auth/login', async (c) => {
         actor: username,
         actorType: 'guest',
         target: '/api/auth/login',
-        details: { attempt_number: (loginAttempts.get(ip)?.count || 1), auth_type: 'guest' },
+        details: { attempt_number: newCount, auth_type: 'guest' },
         ipSource: ip,
         requestId: (c.get as any)('requestId'),
       });
@@ -716,7 +735,7 @@ app.post('/api/auth/login', async (c) => {
     }
 
     // Successful guest login
-    loginAttempts.delete(ip);
+    clearRateLimit(ip);
     recordSuccessfulLogin(sqlite, guest.id);
     logSecurityEvent({
       eventType: 'auth_success',
@@ -750,15 +769,15 @@ app.post('/api/auth/login', async (c) => {
   // Verify password using Bun's built-in password functions
   const valid = await Bun.password.verify(password, storedHash);
   if (!valid) {
-    const entry = loginAttempts.get(ip) || { count: 0, firstAttempt: now };
-    entry.count++;
-    loginAttempts.set(ip, entry);
+    const existing = getRateLimit(ip);
+    const newCount = (existing?.count || 0) + 1;
+    setRateLimit(ip, newCount, existing?.firstAttempt || now);
     logSecurityEvent({
       eventType: 'auth_failure',
       severity: 'warning',
       actorType: 'unknown',
       target: '/api/auth/login',
-      details: { attempt_number: entry.count },
+      details: { attempt_number: newCount },
       ipSource: ip,
       requestId: (c.get as any)('requestId'),
     });
@@ -766,7 +785,7 @@ app.post('/api/auth/login', async (c) => {
   }
 
   // Successful owner login clears rate limit
-  loginAttempts.delete(ip);
+  clearRateLimit(ip);
   logSecurityEvent({
     eventType: 'auth_success',
     severity: 'info',
@@ -1473,11 +1492,23 @@ const HELP_ENDPOINTS = [
 
 // API Help — machine-readable endpoint catalog for Beast self-correction
 app.get('/api/help', (c) => {
+  const role = (c.get as any)('role') as Role | undefined;
   const filter = c.req.query('q')?.toLowerCase();
 
+  // Guests see only their allowed endpoints; owner/beast see everything
   let result = HELP_ENDPOINTS;
-  if (filter) {
+  if (role === 'guest') {
+    const allowlist = getGuestAllowlist();
     result = HELP_ENDPOINTS.filter(e =>
+      allowlist.some(a =>
+        (a.method === '*' || a.method === e.method) &&
+        new RegExp(a.pattern).test(e.path)
+      )
+    );
+  }
+
+  if (filter) {
+    result = result.filter(e =>
       e.path.toLowerCase().includes(filter) ||
       e.desc.toLowerCase().includes(filter) ||
       e.method.toLowerCase().includes(filter)

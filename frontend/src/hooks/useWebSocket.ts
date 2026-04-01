@@ -9,6 +9,24 @@ let reconnectDelay = 1000; // Start at 1s, exponential backoff
 const RECONNECT_MAX = 30000; // Cap at 30s
 const RECONNECT_BASE = 1000;
 let hasConnectedBefore = false;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+const HEARTBEAT_INTERVAL = 30000; // 30s
+
+function startHeartbeat() {
+  if (heartbeatTimer) return;
+  heartbeatTimer = setInterval(() => {
+    if (globalWs?.readyState === WebSocket.OPEN && !document.hidden) {
+      globalWs.send(JSON.stringify({ type: 'heartbeat' }));
+    }
+  }, HEARTBEAT_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
 
 function connect() {
   if (globalWs?.readyState === WebSocket.OPEN) return;
@@ -30,6 +48,7 @@ function connect() {
         }
       }
       hasConnectedBefore = true;
+      startHeartbeat();
     };
 
     globalWs.onmessage = (e) => {
@@ -49,6 +68,7 @@ function connect() {
 
     globalWs.onclose = () => {
       globalWs = null;
+      stopHeartbeat();
       // Reconnect with exponential backoff, only if page is visible
       if (!reconnectTimer) {
         reconnectTimer = setTimeout(() => {

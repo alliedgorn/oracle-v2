@@ -40,14 +40,16 @@ const FALLBACK_MAP: Record<string, { name: string; emoji: string }> = {
 function resolveAuthor(
   role: string,
   author: string | null,
-  profiles: Map<string, BeastProfile>
+  profiles: Map<string, BeastProfile>,
+  guestAvatars?: Map<string, string | null>
 ): { name: string; emoji: string; avatarUrl: string | null; themeColor: string | null } {
   // Check author field first — role alone is unreliable (Beasts post with role: human)
   if (author) {
     // Guest authors: "[Guest] username" — display as guest, don't match beast profiles
     if (author.startsWith('[Guest]')) {
       const guestName = author.replace('[Guest] ', '').replace('[Guest]', '') || 'Guest';
-      return { name: guestName, emoji: '👤', avatarUrl: null, themeColor: null };
+      const avatarUrl = guestAvatars?.get(guestName.toLowerCase()) || null;
+      return { name: guestName, emoji: '👤', avatarUrl, themeColor: null };
     }
 
     const authorLower = author.toLowerCase();
@@ -180,6 +182,7 @@ export function Forum() {
   const [newTitle, setNewTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [beastProfiles, setBeastProfiles] = useState<Map<string, BeastProfile>>(new Map());
+  const [guestAvatars, setGuestAvatars] = useState<Map<string, string | null>>(new Map());
   const [reactions, setReactions] = useState<Record<number, { emoji: string; beasts: string[]; count: number }[]>>({});
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
   const [supportedEmoji, setSupportedEmoji] = useState<string[]>([]);
@@ -292,7 +295,7 @@ export function Forum() {
     } catch { /* ignore */ }
   }
 
-  // Load beast profiles
+  // Load beast profiles + guest avatars
   useEffect(() => {
     (isGuest ? getGuestPack() : fetch(`${API_BASE}/beasts`).then(res => res.json()))
       .then(data => {
@@ -303,6 +306,19 @@ export function Forum() {
         setBeastProfiles(map);
       })
       .catch(() => {});
+    // Load guest avatars (owner only — /api/guests requires owner session)
+    if (!isGuest) {
+      fetch(`${API_BASE}/guests`).then(r => r.json())
+        .then(data => {
+          const map = new Map<string, string | null>();
+          for (const g of data.guests || []) {
+            map.set(g.username?.toLowerCase(), g.avatar_url || null);
+            if (g.display_name) map.set(g.display_name.toLowerCase(), g.avatar_url || null);
+          }
+          setGuestAvatars(map);
+        })
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -819,7 +835,7 @@ export function Forum() {
                 </div>
               )}
               {selectedThread.messages.map(msg => {
-                const identity = resolveAuthor(msg.role, msg.author, beastProfiles);
+                const identity = resolveAuthor(msg.role, msg.author, beastProfiles, guestAvatars);
                 return (
                 <div
                   key={msg.id}

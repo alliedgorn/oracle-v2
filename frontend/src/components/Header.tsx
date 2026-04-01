@@ -166,11 +166,10 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   const loadBadges = useCallback(async () => {
     if (authLoading) return;
     if (isGuest) {
-      // Guest badge: count DM conversations
+      // Guest badge: unread DM count
       try {
         const data = await getGuestDashboard();
-        const dmCount = (data.dmSummary || []).length;
-        setBadges({ specs: 0, prowl: 0, dms: dmCount, rules: 0 });
+        setBadges({ specs: 0, prowl: 0, dms: data.dmUnreadTotal || 0, rules: 0 });
       } catch {}
       return;
     }
@@ -273,8 +272,9 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   // Focus input when opened
   useEffect(() => { if (searchOpen) searchInputRef.current?.focus(); }, [searchOpen]);
 
-  // Ctrl+K shortcut
+  // Ctrl+K shortcut (owner only — guests have no search)
   useEffect(() => {
+    if (isGuest) return;
     function handleKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setSearchOpen(true); }
     }
@@ -395,7 +395,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
         ))}
       </nav>
 
-      <div className={styles.quickSearch} ref={searchRef}>
+      {!isGuest && <div className={styles.quickSearch} ref={searchRef}>
         {searchOpen ? (
           <>
             <input
@@ -432,7 +432,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
             🔍 <span className={styles.quickSearchHint}>Ctrl+K</span>
           </button>
         )}
-      </div>
+      </div>}
 
       <div className={styles.sessionStats}>
         {isGuest ? (

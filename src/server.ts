@@ -1918,14 +1918,22 @@ app.get('/api/guest/dashboard', (c) => {
     "SELECT name, display_name, animal, role, bio, theme_color FROM beast_profiles ORDER BY name"
   ).all() as any[];
 
-  // Guest DM summary (own conversations only)
+  // Guest DM summary (own conversations only) with unread counts
   let dmSummary: any[] = [];
+  let dmUnreadTotal = 0;
   if (guestUsername) {
     const guestDisplayName = getGuestDisplayName(guestUsername);
-  const guestTag = `[Guest] ${guestDisplayName}`;
-    dmSummary = sqlite.prepare(
-      "SELECT DISTINCT CASE WHEN participant1 = ? THEN participant2 ELSE participant1 END as other, (SELECT content FROM dm_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message, (SELECT created_at FROM dm_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_at FROM dm_conversations c WHERE participant1 = ? OR participant2 = ? ORDER BY last_at DESC LIMIT 10"
+    const guestTag = `[Guest] ${guestDisplayName}`;
+    const convos = sqlite.prepare(
+      "SELECT c.id, CASE WHEN participant1 = ? THEN participant2 ELSE participant1 END as other, (SELECT content FROM dm_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message, (SELECT created_at FROM dm_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_at FROM dm_conversations c WHERE participant1 = ? OR participant2 = ? ORDER BY last_at DESC LIMIT 10"
     ).all(guestTag, guestTag, guestTag) as any[];
+    for (const conv of convos) {
+      const unread = (sqlite.prepare(
+        "SELECT COUNT(*) as c FROM dm_messages WHERE conversation_id = ? AND LOWER(sender) != ? AND read_at IS NULL"
+      ).get(conv.id, guestTag.toLowerCase()) as any)?.c || 0;
+      dmSummary.push({ other: conv.other, last_message: conv.last_message, last_at: conv.last_at, unread });
+      dmUnreadTotal += unread;
+    }
   }
 
   return c.json({
@@ -1945,6 +1953,7 @@ app.get('/api/guest/dashboard', (c) => {
       themeColor: b.theme_color,
     })),
     dmSummary,
+    dmUnreadTotal,
   });
 });
 

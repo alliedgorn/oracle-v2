@@ -16,6 +16,7 @@ export interface GuestDashboard {
   publicThreads: { id: number; title: string; message_count: number; created_at: string }[];
   pack: GuestBeast[];
   dmSummary: { beast: string; unread: number }[];
+  dmUnreadTotal: number;
 }
 
 export async function getGuestDashboard(): Promise<GuestDashboard> {

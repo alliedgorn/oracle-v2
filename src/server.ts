@@ -3452,14 +3452,16 @@ app.get('/api/files/:id/download', (c) => {
   return c.body(content);
 });
 
-// GET /api/f/:hash — download by hash (requires login — no local bypass)
+// GET /api/f/:hash — download by hash (local bypass allowed, remote requires login)
 app.get('/api/f/:hash', (c) => {
-  // Require session or bearer token — local bypass not sufficient for file access
-  const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
-  const hasSession = sessionCookie && verifySessionToken(sessionCookie);
-  const hasBearer = c.req.header('Authorization')?.startsWith('Bearer den_');
-  if (!hasSession && !hasBearer) {
-    return c.json({ error: 'Authentication required — login to access files' }, 401);
+  // Allow local network access without auth (Beasts on CLI need file access)
+  if (!isLocalNetwork(c)) {
+    const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
+    const hasSession = sessionCookie && verifySessionToken(sessionCookie);
+    const hasBearer = c.req.header('Authorization')?.startsWith('Bearer den_');
+    if (!hasSession && !hasBearer) {
+      return c.json({ error: 'Authentication required — login to access files' }, 401);
+    }
   }
 
   const hash = c.req.param('hash');
@@ -3751,8 +3753,11 @@ app.get('/api/threads', (c) => {
 
   const rows = sqlite.prepare(query).all(...params) as any[];
   let countQuery = 'SELECT COUNT(*) as total FROM forum_threads WHERE deleted_at IS NULL';
+  const countParams: any[] = [];
+  if (status) { countQuery += ' AND status = ?'; countParams.push(status); }
+  if (category) { countQuery += ' AND category = ?'; countParams.push(category); }
   if (role === 'guest') { countQuery += " AND visibility = 'public'"; }
-  const total = (sqlite.prepare(countQuery).get() as any)?.total || 0;
+  const total = (sqlite.prepare(countQuery).get(...countParams) as any)?.total || 0;
 
   return c.json({
     threads: rows.map(t => ({

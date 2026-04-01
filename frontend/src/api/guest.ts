@@ -59,8 +59,12 @@ export interface GuestThread {
   visibility: 'public';
 }
 
-export async function getGuestThreads(): Promise<{ threads: GuestThread[]; total: number }> {
-  const res = await fetch(`${API_BASE}/threads`);
+export async function getGuestThreads(limit?: number, offset = 0): Promise<{ threads: GuestThread[]; total: number }> {
+  const params = new URLSearchParams();
+  if (limit !== undefined) params.set('limit', limit.toString());
+  if (offset) params.set('offset', offset.toString());
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE}/threads${qs ? '?' + qs : ''}`);
   return res.json();
 }
 

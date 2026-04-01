@@ -121,9 +121,14 @@ interface ThreadDetail {
 
 const API_BASE = '/api';
 
-async function fetchThreads(isGuest = false): Promise<{ threads: Thread[]; total: number }> {
-  if (isGuest) return getGuestThreads() as any;
-  const res = await fetch(`${API_BASE}/threads`);
+async function fetchThreads(isGuest = false, limit?: number, offset = 0, category?: string): Promise<{ threads: Thread[]; total: number }> {
+  if (isGuest) return getGuestThreads(limit, offset) as any;
+  const params = new URLSearchParams();
+  if (limit !== undefined) params.set('limit', limit.toString());
+  if (offset) params.set('offset', offset.toString());
+  if (category && category !== 'all') params.set('category', category);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE}/threads${qs ? '?' + qs : ''}`);
   return res.json();
 }
 
@@ -185,6 +190,9 @@ export function Forum() {
   const [replyTo, setReplyTo] = useState<{ id: number; author: string | null; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [totalMessages, setTotalMessages] = useState(0);
+  const [threadTotal, setThreadTotal] = useState(0);
+  const [isLoadingMoreThreads, setIsLoadingMoreThreads] = useState(false);
+  const THREAD_PAGE_SIZE = 20;
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -302,6 +310,11 @@ export function Forum() {
     loadUnreadCounts();
     fetch('/api/reactions/supported').then(r => r.json()).then(d => setSupportedEmoji(d.emoji || [])).catch(() => {});
   }, []);
+
+  // Reload threads when category filter changes
+  useEffect(() => {
+    loadThreads();
+  }, [categoryFilter]);
 
   // Load thread from URL param or auto-select first
   // Only react to threadIdParam changes (user navigation), NOT threads polling
@@ -441,9 +454,24 @@ export function Forum() {
 
 
   async function loadThreads() {
-    const data = await fetchThreads(isGuest);
+    const data = await fetchThreads(isGuest, THREAD_PAGE_SIZE, 0, categoryFilter);
     setThreads(data.threads);
+    setThreadTotal(data.total);
   }
+
+  const loadMoreThreads = useCallback(async () => {
+    if (isLoadingMoreThreads) return;
+    setIsLoadingMoreThreads(true);
+    try {
+      const data = await fetchThreads(isGuest, THREAD_PAGE_SIZE, threads.length, categoryFilter);
+      if (data.threads.length > 0) {
+        setThreads(prev => [...prev, ...data.threads]);
+        setThreadTotal(data.total);
+      }
+    } finally {
+      setIsLoadingMoreThreads(false);
+    }
+  }, [isGuest, threads.length, isLoadingMoreThreads, categoryFilter]);
 
   async function selectThread(id: number) {
     initialScrollDone.current = false;
@@ -628,7 +656,6 @@ export function Forum() {
 
         <div className={styles.threadList}>
           {threads
-            .filter(t => categoryFilter === 'all' || t.category === categoryFilter)
             .sort((a, b) => {
               if (sortOrder === 'most-msgs') return (b.message_count || 0) - (a.message_count || 0);
               // 'recent' and 'active' use default server order
@@ -662,6 +689,16 @@ export function Forum() {
 
           {threads.length === 0 && (
             <div className={styles.empty}>No threads yet</div>
+          )}
+          {threads.length < threadTotal && (
+            <button
+              onClick={loadMoreThreads}
+              disabled={isLoadingMoreThreads}
+              className={styles.loadMoreBtn}
+              style={{ margin: '12px auto', display: 'block' }}
+            >
+              {isLoadingMoreThreads ? 'Loading...' : `Load more (${threadTotal - threads.length} remaining)`}
+            </button>
           )}
         </div>
       </div>

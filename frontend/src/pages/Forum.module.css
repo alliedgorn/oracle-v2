@@ -97,6 +97,7 @@
 .filterRow {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 0 0 12px;
   margin-bottom: 4px;

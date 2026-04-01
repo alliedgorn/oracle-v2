@@ -2013,11 +2013,19 @@ app.get('/api/guest/thread/:id', (c) => {
       const reactionRows = sqlite.prepare(
         'SELECT emoji, GROUP_CONCAT(beast_name) as beasts, COUNT(*) as count FROM forum_reactions WHERE message_id = ? GROUP BY emoji'
       ).all(m.id) as any[];
+      // Resolve guest avatar URL from guest_accounts (T#602)
+      let authorAvatarUrl: string | null = null;
+      if (m.author?.startsWith('[Guest]')) {
+        const guestName = m.author.replace('[Guest] ', '').replace('[Guest]', '').trim();
+        const guest = sqlite.prepare('SELECT avatar_url FROM guest_accounts WHERE LOWER(display_name) = ? OR LOWER(username) = ?').get(guestName.toLowerCase(), guestName.toLowerCase()) as any;
+        authorAvatarUrl = guest?.avatar_url || null;
+      }
       return {
         id: m.id,
         role: m.role,
         content: m.content,
         author: m.author,
+        author_avatar_url: authorAvatarUrl,
         reply_to_id: raw?.reply_to_id || null,
         principles_found: m.principlesFound,
         patterns_found: m.patternsFound,
@@ -3995,11 +4003,19 @@ app.get('/api/thread/:id', (c) => {
       const reactionRows = sqlite.prepare(
         'SELECT emoji, GROUP_CONCAT(beast_name) as beasts, COUNT(*) as count FROM forum_reactions WHERE message_id = ? GROUP BY emoji'
       ).all(m.id) as any[];
+      // Resolve guest avatar URL from guest_accounts (T#602)
+      let authorAvatarUrl: string | null = null;
+      if (m.author?.startsWith('[Guest]')) {
+        const guestName = m.author.replace('[Guest] ', '').replace('[Guest]', '').trim();
+        const guest = sqlite.prepare('SELECT avatar_url FROM guest_accounts WHERE LOWER(display_name) = ? OR LOWER(username) = ?').get(guestName.toLowerCase(), guestName.toLowerCase()) as any;
+        authorAvatarUrl = guest?.avatar_url || null;
+      }
       return {
         id: m.id,
         role: m.role,
         content: m.content,
         author: m.author,
+        author_avatar_url: authorAvatarUrl,
         reply_to_id: raw?.reply_to_id || null,
         principles_found: m.principlesFound,
         patterns_found: m.patternsFound,

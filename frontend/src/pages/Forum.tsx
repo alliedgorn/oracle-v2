@@ -41,14 +41,15 @@ function resolveAuthor(
   role: string,
   author: string | null,
   profiles: Map<string, BeastProfile>,
-  guestAvatars?: Map<string, string | null>
+  guestAvatars?: Map<string, string | null>,
+  msgAvatarUrl?: string | null
 ): { name: string; emoji: string; avatarUrl: string | null; themeColor: string | null } {
   // Check author field first — role alone is unreliable (Beasts post with role: human)
   if (author) {
     // Guest authors: "[Guest] username" — display as guest, don't match beast profiles
     if (author.startsWith('[Guest]')) {
       const guestName = author.replace('[Guest] ', '').replace('[Guest]', '') || 'Guest';
-      const avatarUrl = guestAvatars?.get(guestName.toLowerCase()) || null;
+      const avatarUrl = msgAvatarUrl || guestAvatars?.get(guestName.toLowerCase()) || null;
       return { name: guestName, emoji: '👤', avatarUrl, themeColor: null };
     }
 
@@ -103,6 +104,7 @@ interface Message {
   content: string;
   author: string | null;
   author_role?: 'owner' | 'beast' | 'guest';
+  author_avatar_url?: string | null;
   reply_to_id: number | null;
   principles_found: number | null;
   patterns_found: number | null;
@@ -835,7 +837,7 @@ export function Forum() {
                 </div>
               )}
               {selectedThread.messages.map(msg => {
-                const identity = resolveAuthor(msg.role, msg.author, beastProfiles, guestAvatars);
+                const identity = resolveAuthor(msg.role, msg.author, beastProfiles, guestAvatars, msg.author_avatar_url);
                 return (
                 <div
                   key={msg.id}

@@ -2293,6 +2293,16 @@ app.post('/api/guest/reset-password', async (c) => {
       passwordChangeAttempts.delete(guestUsername);
     } else if (attempts.count >= PASSWORD_CHANGE_RATE_LIMIT) {
       const retryAfter = Math.ceil((attempts.firstAttempt + PASSWORD_CHANGE_RATE_WINDOW_MS - now) / 1000);
+      logSecurityEvent({
+        eventType: 'rate_limited',
+        severity: 'warning',
+        actor: guestUsername,
+        actorType: 'guest',
+        target: '/api/guest/reset-password',
+        details: { attempts: attempts.count, window_ms: PASSWORD_CHANGE_RATE_WINDOW_MS },
+        ipSource: c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1',
+        requestId: (c.get as any)('requestId'),
+      });
       return c.json({ error: `Too many password change attempts. Try again in ${Math.ceil(retryAfter / 60)} minutes.` }, 429);
     }
   }

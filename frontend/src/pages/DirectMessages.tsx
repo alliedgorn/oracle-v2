@@ -107,7 +107,7 @@ export function DirectMessages() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [showNewDm, setShowNewDm] = useState(false);
-  const [viewMode, setViewMode] = useState<'my' | 'beast'>('my');
+  // viewMode removed — owner only sees own conversations (no Beast DM toggle)
   const [beasts, setBeasts] = useState<{ name: string; displayName: string }[]>([]);
   const [totalMessages, setTotalMessages] = useState(0);
   const totalMessagesRef = useRef(0);
@@ -445,16 +445,7 @@ export function DirectMessages() {
           </div>
         )}
 
-        <div className={styles.viewToggle}>
-          <button
-            className={`${styles.viewToggleBtn} ${viewMode === 'my' ? styles.viewToggleActive : ''}`}
-            onClick={() => setViewMode('my')}
-          >My Chats</button>
-          <button
-            className={`${styles.viewToggleBtn} ${viewMode === 'beast' ? styles.viewToggleActive : ''}`}
-            onClick={() => setViewMode('beast')}
-          >Beast Chats</button>
-        </div>
+        {/* Beast Chats toggle removed — owner only sees own conversations */}
 
         <SearchInput
           value={search}
@@ -464,9 +455,8 @@ export function DirectMessages() {
 
         <div className={styles.conversationList}>
           {dashboard?.conversations.filter(conv => {
-            const hasGorn = conv.participants.includes('gorn');
-            if (viewMode === 'my' && !hasGorn) return false;
-            if (viewMode === 'beast' && hasGorn) return false;
+            // Owner only sees own conversations (no Beast-to-Beast DMs)
+            if (!conv.participants.includes('gorn')) return false;
             if (!search.trim()) return true;
             const q = search.toLowerCase();
             return conv.participants[0].includes(q) || conv.participants[1].includes(q);

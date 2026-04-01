@@ -10656,6 +10656,10 @@ function fts5Search(q: string, type: string | undefined, limit: number, offset: 
 
 // GET /api/search — global search (Meilisearch with FTS5 fallback)
 app.get('/api/search', async (c) => {
+  // Guests cannot use global search (T#605)
+  if ((c.get as any)('role') === 'guest') {
+    return c.json({ error: 'Search is not available in guest mode' }, 403);
+  }
   const requester = c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '');
   if (!requester && !isTrustedRequest(c)) {
     return c.json({ error: 'Authentication required' }, 401);

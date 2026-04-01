@@ -48,6 +48,8 @@ function connect() {
         }
       }
       hasConnectedBefore = true;
+      // Send immediate heartbeat on connect so presence registers instantly
+      globalWs?.send(JSON.stringify({ type: 'heartbeat' }));
       startHeartbeat();
     };
 

@@ -10656,14 +10656,17 @@ function fts5Search(q: string, type: string | undefined, limit: number, offset: 
 
 // GET /api/search — global search (Meilisearch with FTS5 fallback)
 app.get('/api/search', async (c) => {
-  // Guests cannot use global search (T#605)
-  if ((c.get as any)('role') === 'guest') {
+  // Search requires owner session or local Beast request (T#605)
+  const role = (c.get as any)('role');
+  if (role === 'guest') {
     return c.json({ error: 'Search is not available in guest mode' }, 403);
   }
-  const requester = c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '');
-  if (!requester && !isTrustedRequest(c)) {
+  const hasSession = hasSessionAuth(c);
+  const isLocalBeast = isLocalNetwork(c) && c.req.query('as');
+  if (!hasSession && !isLocalBeast) {
     return c.json({ error: 'Authentication required' }, 401);
   }
+  const requester = c.req.query('as') || 'gorn';
 
   let q = c.req.query('q')?.trim();
   if (!q) return c.json({ results: [], total: 0, query: '' });

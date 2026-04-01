@@ -100,6 +100,19 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /**
+ * Force reconnect the WebSocket (e.g. after login to pick up session cookie).
+ */
+export function wsReconnect() {
+  if (globalWs) {
+    globalWs.close();
+    globalWs = null;
+  }
+  stopHeartbeat();
+  reconnectDelay = RECONNECT_BASE;
+  connect();
+}
+
+/**
  * Hook to subscribe to WebSocket events.
  * Returns nothing — just registers a callback for the given event.
  */

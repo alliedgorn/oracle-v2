@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { getAuthStatus, login as apiLogin, logout as apiLogout, type AuthStatus } from '../api/oracle';
+import { wsReconnect } from '../hooks/useWebSocket';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -50,6 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await apiLogin(password, username);
     if (result.success) {
       await checkAuth();
+      // Reconnect WebSocket to pick up new session cookie for presence tracking
+      wsReconnect();
     }
     return result;
   }

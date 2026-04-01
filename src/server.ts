@@ -861,15 +861,20 @@ app.get('/api/guests', (c) => {
     return c.json({ error: 'Guest account management requires owner session' }, 403);
   }
 
-  const GUEST_ONLINE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
   const guests = listGuests(sqlite).map(g => {
     const displayName = g.display_name || g.username;
     const guestTag = `[guest] ${displayName}`.toLowerCase();
     const msgCount = (sqlite.prepare('SELECT COUNT(*) as c FROM dm_messages WHERE LOWER(sender) = ?').get(guestTag) as any)?.c || 0;
     const threadCount = (sqlite.prepare("SELECT COUNT(DISTINCT thread_id) as c FROM forum_messages WHERE LOWER(author) LIKE '%[guest]%' AND LOWER(author) LIKE ?").get(`%${g.username}%`) as any)?.c || 0;
+    // Use WS presence map for real-time status; fall back to last_active_at DB window
+    const presence = webPresence.get(g.username);
+    const nowMs = Date.now();
+    const online = presence
+      ? (nowMs - presence.lastSeen) < WEB_PRESENCE_TIMEOUT_MS
+      : (g.last_active_at ? (nowMs - new Date(g.last_active_at + 'Z').getTime()) < 5 * 60 * 1000 : false);
     return {
       ...g,
-      online: g.last_active_at ? (Date.now() - new Date(g.last_active_at + 'Z').getTime()) < GUEST_ONLINE_THRESHOLD_MS : false,
+      online,
       message_count: msgCount,
       threads_participated: threadCount,
     };
@@ -2728,7 +2733,18 @@ app.get('/api/pack', (c) => {
     };
   });
 
-  return c.json({ beasts });
+  // Owner (Gorn) presence from WS heartbeat map
+  const now = Date.now();
+  const ownerPresence = webPresence.get('gorn');
+  const ownerOnline = !!ownerPresence && (now - ownerPresence.lastSeen) < WEB_PRESENCE_TIMEOUT_MS;
+  const owner = {
+    name: 'gorn',
+    online: ownerOnline,
+    status: ownerOnline ? 'active' : 'offline',
+    last_active_at: ownerPresence ? new Date(ownerPresence.lastSeen).toISOString() : null,
+  };
+
+  return c.json({ beasts, owner });
 });
 
 // Get all configured spinner verbs across all Beasts
@@ -10856,6 +10872,11 @@ if (fs.existsSync(FRONTEND_DIST)) {
 
 const wsClients = new Set<any>();
 
+// Web presence tracking — in-memory, ephemeral (T#595)
+// Keyed by identity (e.g. 'gorn', 'gorn_guest'). Rebuilt on server restart.
+const webPresence = new Map<string, { identity: string; role: string; lastSeen: number }>();
+const WEB_PRESENCE_TIMEOUT_MS = 90_000; // 90s — 3 missed heartbeats
+
 // Allowed origins for WebSocket connections
 const WS_ALLOWED_ORIGINS = new Set([
   'http://localhost:47778',
@@ -10984,7 +11005,13 @@ export default {
         } catch (e) { console.error('[WS audit]', e); }
         return new Response(validation.reason || 'Forbidden', { status: 403 });
       }
-      const success = server.upgrade(req, { data: { identity: validation.identity } });
+      // Derive role from session cookie for WS data
+      const wsCookies = req.headers.get('cookie') || '';
+      const wsSessionMatch = wsCookies.match(/(?:^|;\s*)oracle_session=([^;]+)/);
+      const wsParsed = parseSessionToken(wsSessionMatch?.[1] || '');
+      const wsRole = wsParsed.valid ? (wsParsed.role || 'owner') : (validation.identity === 'local' ? 'beast' : 'unknown');
+      const wsData = wsParsed.valid && wsParsed.role === 'guest' ? wsParsed.data : undefined;
+      const success = server.upgrade(req, { data: { identity: validation.identity, role: wsRole, username: wsData } });
       if (success) return undefined;
       return new Response('WebSocket upgrade failed', { status: 400 });
     }
@@ -10999,9 +11026,33 @@ export default {
     message(ws: any, message: string) {
       // Clients can send ping, we respond pong
       if (message === 'ping') ws.send('pong');
+
+      // Presence heartbeat — update in-memory map
+      try {
+        const parsed = typeof message === 'string' ? JSON.parse(message) : message;
+        if (parsed?.type === 'heartbeat') {
+          const identity = ws.data?.identity;
+          const role = ws.data?.role || 'unknown';
+          if (identity && identity !== 'unknown') {
+            const key = ws.data?.username || identity; // guest username or 'gorn'/'local'
+            const wasOnline = webPresence.has(key);
+            webPresence.set(key, { identity, role, lastSeen: Date.now() });
+            if (!wasOnline) {
+              wsBroadcast('presence_update', { identity: key, role, online: true });
+            }
+          }
+        }
+      } catch { /* not JSON — ignore */ }
     },
     close(ws: any) {
       wsClients.delete(ws);
+      // Remove from presence map and broadcast offline if they were online
+      const key = ws.data?.username || ws.data?.identity;
+      if (key && webPresence.has(key)) {
+        const entry = webPresence.get(key)!;
+        webPresence.delete(key);
+        wsBroadcast('presence_update', { identity: key, role: entry.role, online: false });
+      }
     },
   },
 };

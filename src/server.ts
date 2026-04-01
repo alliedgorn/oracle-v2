@@ -2456,7 +2456,7 @@ app.post('/api/guest/avatar', async (c) => {
   // Save file
   const ext = file.type.split('/')[1] === 'jpeg' ? 'jpg' : file.type.split('/')[1];
   const filename = `guest-${guestUsername}-avatar.${ext}`;
-  const filePath = `${process.cwd()}/data/uploads/${filename}`;
+  const filePath = path.join(UPLOADS_DIR, filename);
   await Bun.write(filePath, buffer);
 
   const avatarUrl = `/api/f/${filename}`;

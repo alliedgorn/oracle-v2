@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import styles from './Login.module.css';
 
@@ -13,6 +13,8 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as any)?.from;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,7 +29,11 @@ export function Login() {
         ? await login(password, username)
         : await login(password);
       if (result.success) {
-        navigate(tab === 'guest' ? '/welcome' : '/');
+        if (tab === 'guest') {
+          navigate(from && from.pathname !== '/login' ? `${from.pathname}${from.search || ''}` : '/welcome');
+        } else {
+          navigate(from && from.pathname !== '/login' ? `${from.pathname}${from.search || ''}` : '/');
+        }
       } else {
         setError(result.error || 'Login failed');
       }

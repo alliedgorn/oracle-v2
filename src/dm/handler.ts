@@ -138,7 +138,7 @@ function notifyDmRecipient(from: string, to: string, content: string): boolean {
   const isGuestDm = from.startsWith('[Guest] ');
   const guestUsername = isGuestDm ? from.slice(8) : null;
   const dmLabel = isGuestDm ? `[DM [Guest] from ${guestUsername}]` : `[DM from ${from}]`;
-  const replyHint = isGuestDm ? `Use /dm to read.` : `Use /dm to read and /dm ${from} <message> to reply.`;
+  const replyHint = isGuestDm ? `Use /dm to read. use /dm ${guestUsername} <message> to reply.` : `Use /dm to read and /dm ${from} <message> to reply.`;
   const message = `${dmLabel}: ${preview}...\n\n${replyHint}`;
 
   try {

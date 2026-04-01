@@ -11005,13 +11005,19 @@ export default {
         } catch (e) { console.error('[WS audit]', e); }
         return new Response(validation.reason || 'Forbidden', { status: 403 });
       }
-      // Derive role from session cookie for WS data
+      // Derive role and identity from session cookie using the full parser
+      // validateWsUpgrade uses a simplified token check that fails on 4-part tokens —
+      // use parseSessionToken here to get accurate role and identity for presence tracking.
       const wsCookies = req.headers.get('cookie') || '';
       const wsSessionMatch = wsCookies.match(/(?:^|;\s*)oracle_session=([^;]+)/);
       const wsParsed = parseSessionToken(wsSessionMatch?.[1] || '');
       const wsRole = wsParsed.valid ? (wsParsed.role || 'owner') : (validation.identity === 'local' ? 'beast' : 'unknown');
       const wsData = wsParsed.valid && wsParsed.role === 'guest' ? wsParsed.data : undefined;
-      const success = server.upgrade(req, { data: { identity: validation.identity, role: wsRole, username: wsData } });
+      // Identity for presence: use parsed session result, fall back to validateWsUpgrade's value
+      const wsIdentity = wsParsed.valid
+        ? (wsParsed.role === 'guest' ? (wsParsed.data || 'guest') : 'gorn')
+        : validation.identity;
+      const success = server.upgrade(req, { data: { identity: wsIdentity, role: wsRole, username: wsData } });
       if (success) return undefined;
       return new Response('WebSocket upgrade failed', { status: 400 });
     }

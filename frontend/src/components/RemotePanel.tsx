@@ -21,6 +21,7 @@ interface GuestInfo {
   id: number;
   username: string;
   display_name: string | null;
+  avatar_url: string | null;
   online: boolean;
   last_active_at: string | null;
 }
@@ -190,8 +191,10 @@ export function RemotePanel({ isOpen, onClose, collapsed = false, onToggleCollap
               <div className={styles.noAttached}>No guest accounts</div>
             ) : guests.map(guest => (
               <div key={guest.id} className={styles.guestCard}>
-                <div className={styles.guestAvatar} style={{ background: getGuestColor(guest.username) }}>
-                  {(guest.display_name || guest.username).charAt(0).toUpperCase()}
+                <div className={styles.guestAvatar} style={{ background: guest.avatar_url ? 'transparent' : getGuestColor(guest.username) }}>
+                  {guest.avatar_url
+                    ? <img src={guest.avatar_url} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    : (guest.display_name || guest.username).charAt(0).toUpperCase()}
                 </div>
                 <div className={styles.guestInfo}>
                   <div className={styles.guestName}>

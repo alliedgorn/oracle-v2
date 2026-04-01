@@ -30,7 +30,9 @@ export function Login() {
         : await login(password);
       if (result.success) {
         if (tab === 'guest') {
-          navigate(from && from.pathname !== '/login' ? `${from.pathname}${from.search || ''}` : '/welcome');
+          // Guests go to /welcome unless they deep-linked to a specific page (not / or /login)
+          const hasDeepLink = from && from.pathname !== '/login' && from.pathname !== '/';
+          navigate(hasDeepLink ? `${from.pathname}${from.search || ''}` : '/welcome');
         } else {
           navigate(from && from.pathname !== '/login' ? `${from.pathname}${from.search || ''}` : '/');
         }

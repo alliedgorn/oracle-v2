@@ -125,12 +125,13 @@ interface ThreadDetail {
 
 const API_BASE = '/api';
 
-async function fetchThreads(isGuest = false, limit?: number, offset = 0, category?: string): Promise<{ threads: Thread[]; total: number }> {
+async function fetchThreads(isGuest = false, limit?: number, offset = 0, category?: string, visibility?: string): Promise<{ threads: Thread[]; total: number }> {
   if (isGuest) return getGuestThreads(limit, offset) as any;
   const params = new URLSearchParams();
   if (limit !== undefined) params.set('limit', limit.toString());
   if (offset) params.set('offset', offset.toString());
   if (category && category !== 'all') params.set('category', category);
+  if (visibility && visibility !== 'all') params.set('visibility', visibility);
   const qs = params.toString();
   const res = await fetch(`${API_BASE}/threads${qs ? '?' + qs : ''}`);
   return res.json();
@@ -189,6 +190,7 @@ export function Forum() {
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
   const [supportedEmoji, setSupportedEmoji] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [visibilityFilter, setVisibilityFilter] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<'recent' | 'active' | 'most-msgs'>('recent');
   const [newCategory, setNewCategory] = useState<string>('discussion');
   const [newVisibility, setNewVisibility] = useState<'internal' | 'public'>('internal');
@@ -329,10 +331,10 @@ export function Forum() {
     fetch('/api/reactions/supported').then(r => r.json()).then(d => setSupportedEmoji(d.emoji || [])).catch(() => {});
   }, []);
 
-  // Reload threads when category filter changes
+  // Reload threads when category or visibility filter changes
   useEffect(() => {
     loadThreads();
-  }, [categoryFilter]);
+  }, [categoryFilter, visibilityFilter]);
 
   // Load thread from URL param or auto-select first
   // Only react to threadIdParam changes (user navigation), NOT threads polling
@@ -472,7 +474,7 @@ export function Forum() {
 
 
   async function loadThreads() {
-    const data = await fetchThreads(isGuest, THREAD_PAGE_SIZE, 0, categoryFilter);
+    const data = await fetchThreads(isGuest, THREAD_PAGE_SIZE, 0, categoryFilter, visibilityFilter);
     setThreads(data.threads);
     setThreadTotal(data.total);
   }
@@ -481,7 +483,7 @@ export function Forum() {
     if (isLoadingMoreThreads) return;
     setIsLoadingMoreThreads(true);
     try {
-      const data = await fetchThreads(isGuest, THREAD_PAGE_SIZE, threads.length, categoryFilter);
+      const data = await fetchThreads(isGuest, THREAD_PAGE_SIZE, threads.length, categoryFilter, visibilityFilter);
       if (data.threads.length > 0) {
         setThreads(prev => [...prev, ...data.threads]);
         setThreadTotal(data.total);
@@ -489,7 +491,7 @@ export function Forum() {
     } finally {
       setIsLoadingMoreThreads(false);
     }
-  }, [isGuest, threads.length, isLoadingMoreThreads, categoryFilter]);
+  }, [isGuest, threads.length, isLoadingMoreThreads, categoryFilter, visibilityFilter]);
 
   async function selectThread(id: number) {
     initialScrollDone.current = false;
@@ -661,6 +663,17 @@ export function Forum() {
             <option value="decision">Decision</option>
             <option value="question">Question</option>
           </select>
+          {!isGuest && (
+            <select
+              value={visibilityFilter}
+              onChange={e => setVisibilityFilter(e.target.value)}
+              className={styles.filterSelect}
+            >
+              <option value="all">All threads</option>
+              <option value="internal">Internal only</option>
+              <option value="public">Public only</option>
+            </select>
+          )}
           <select
             value={sortOrder}
             onChange={e => setSortOrder(e.target.value as typeof sortOrder)}

@@ -3823,6 +3823,7 @@ app.get('/api/forum/search', (c) => {
 app.get('/api/threads', (c) => {
   const status = c.req.query('status');
   const category = c.req.query('category');
+  const visibility = c.req.query('visibility');
   const limit = parseInt(c.req.query('limit') || '50');
   const offset = parseInt(c.req.query('offset') || '0');
   const role = (c.get as any)('role') as Role | undefined;
@@ -3831,8 +3832,9 @@ app.get('/api/threads', (c) => {
   const params: any[] = [];
   if (status) { query += ' AND status = ?'; params.push(status); }
   if (category) { query += ' AND category = ?'; params.push(category); }
-  // Guests only see public threads
+  // Guests only see public threads; owner can filter by visibility
   if (role === 'guest') { query += " AND visibility = 'public'"; }
+  else if (visibility === 'public' || visibility === 'internal') { query += ' AND visibility = ?'; params.push(visibility); }
   query += ' ORDER BY COALESCE(pinned, 0) DESC, updated_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
@@ -3842,6 +3844,7 @@ app.get('/api/threads', (c) => {
   if (status) { countQuery += ' AND status = ?'; countParams.push(status); }
   if (category) { countQuery += ' AND category = ?'; countParams.push(category); }
   if (role === 'guest') { countQuery += " AND visibility = 'public'"; }
+  else if (visibility === 'public' || visibility === 'internal') { countQuery += ' AND visibility = ?'; countParams.push(visibility); }
   const total = (sqlite.prepare(countQuery).get(...countParams) as any)?.total || 0;
 
   return c.json({

@@ -5107,9 +5107,13 @@ try {
   try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN spec_id INTEGER`).run(); } catch { /* exists */ }
   // v4: reviewer field for in_review workflow (T#418)
   try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN reviewer TEXT`).run(); } catch { /* exists */ }
+  // v5: risk_level for QA triage (T#617)
+  try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN risk_level TEXT DEFAULT 'medium'`).run(); } catch { /* exists */ }
+  sqlite.prepare(`UPDATE tasks SET risk_level = 'medium' WHERE risk_level IS NULL`).run();
 } catch { /* already exists */ }
 
 const VALID_TASK_TYPES = ['bug', 'feature', 'improvement', 'chore', 'task'];
+const VALID_RISK_LEVELS = ['high', 'medium', 'low'];
 
 // SDD enforcement: check if task can transition to in_progress or done
 function checkApprovalGate(task: any): string | null {
@@ -5229,6 +5233,8 @@ app.get('/api/tasks', (c) => {
   if (priority) { query += ' AND t.priority = ?'; params.push(priority); }
   const type = c.req.query('type');
   if (type) { query += ' AND t.type = ?'; params.push(type); }
+  const riskLevel = c.req.query('risk_level');
+  if (riskLevel) { query += ' AND t.risk_level = ?'; params.push(riskLevel); }
 
   const countQuery = query.replace('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id', 'SELECT COUNT(*) as total FROM tasks t');
   const total = (sqlite.prepare(countQuery).get(...params) as any)?.total || 0;
@@ -5249,7 +5255,7 @@ app.get('/api/tasks', (c) => {
 // POST /api/tasks — create task
 app.post('/api/tasks', async (c) => {
   const data = await c.req.json();
-  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type, reviewer } = data;
+  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type, reviewer, risk_level } = data;
   if (!title || !created_by) return c.json({ error: 'title and created_by required' }, 400);
   if (!project_id) return c.json({ error: 'project_id required — every task must belong to a project' }, 400);
   if (!assigned_to) return c.json({ error: 'assigned_to required — every task must have an assignee' }, 400);
@@ -5261,12 +5267,14 @@ app.post('/api/tasks', async (c) => {
   const taskPriority = validPriorities.includes(priority) ? priority : 'medium';
   if (type && !VALID_TASK_TYPES.includes(type)) return c.json({ error: `Invalid type. Valid: ${VALID_TASK_TYPES.join(', ')}` }, 400);
   const taskType = type || 'task';
+  if (risk_level && !VALID_RISK_LEVELS.includes(risk_level)) return c.json({ error: `Invalid risk_level. Valid: ${VALID_RISK_LEVELS.join(', ')}` }, 400);
+  const taskRiskLevel = VALID_RISK_LEVELS.includes(risk_level) ? risk_level : 'medium';
 
   const now = new Date().toISOString();
   const approvalRequired = data.approval_required ? 1 : 0;
   const result = sqlite.prepare(
-    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, approval_required, reviewer, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, reviewer, now, now);
+    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, approval_required, reviewer, risk_level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, reviewer, taskRiskLevel, now, now);
 
   const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid) as any;
   searchIndexUpsert('task', task.id, task.title, task.description || '', task.assigned_to || '', now, `/board?task=${task.id}`);
@@ -5327,6 +5335,7 @@ app.patch('/api/tasks/:id', async (c) => {
   if (data.status && !validStatuses.includes(data.status)) return c.json({ error: `Invalid status. Valid: ${validStatuses.join(', ')}` }, 400);
   if (data.priority && !validPriorities.includes(data.priority)) return c.json({ error: `Invalid priority. Valid: ${validPriorities.join(', ')}` }, 400);
   if (data.type && !VALID_TASK_TYPES.includes(data.type)) return c.json({ error: `Invalid type. Valid: ${VALID_TASK_TYPES.join(', ')}` }, 400);
+  if (data.risk_level && !VALID_RISK_LEVELS.includes(data.risk_level)) return c.json({ error: `Invalid risk_level. Valid: ${VALID_RISK_LEVELS.join(', ')}` }, 400);
 
   // Terminal status enforcement (T#529) — Done and Cancelled are final
   const terminalStatuses = ['done', 'cancelled'];
@@ -5348,7 +5357,7 @@ app.patch('/api/tasks/:id', async (c) => {
 
   const updates: string[] = [];
   const params: any[] = [];
-  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type', 'approval_required', 'spec_id', 'reviewer']) {
+  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type', 'approval_required', 'spec_id', 'reviewer', 'risk_level']) {
     if (data[field] !== undefined) { updates.push(`${field} = ?`); params.push(data[field]); }
   }
   if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);

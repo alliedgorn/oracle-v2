@@ -5876,8 +5876,10 @@ app.get('/api/teams/beast/:beast', (c) => {
 });
 
 const VALID_INTERVALS: Record<string, number> = {
-  '10m': 600, '30m': 1800, '1h': 3600, '3h': 10800,
-  '6h': 21600, '12h': 43200, '1d': 86400, '7d': 604800,
+  '10m': 600, '15m': 900, '20m': 1200, '30m': 1800, '45m': 2700,
+  '1h': 3600, '2h': 7200, '3h': 10800, '4h': 14400,
+  '6h': 21600, '8h': 28800, '12h': 43200,
+  '1d': 86400, '2d': 172800, '3d': 259200, '7d': 604800,
 };
 
 // Compute next occurrence of schedule_time (HH:MM) in UTC+7

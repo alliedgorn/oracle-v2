@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
+import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './Guests.module.css';
 
 interface Guest {
@@ -54,6 +55,9 @@ export function Guests() {
     }, 10000);
     return () => clearInterval(interval);
   }, [loadGuests]);
+
+  // Real-time presence updates via WebSocket
+  useWebSocket('presence_update', loadGuests);
 
   // Keep selected guest data fresh
   useEffect(() => {

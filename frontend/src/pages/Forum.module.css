@@ -104,6 +104,7 @@
 }
 
 .filterSelect {
+  flex: 1;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -120,6 +121,7 @@
 }
 
 .sortSelect {
+  flex: 1;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 8px;

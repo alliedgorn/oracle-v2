@@ -7,6 +7,7 @@ interface Guest {
   id: number;
   username: string;
   display_name: string | null;
+  avatar_url: string | null;
   expires_at: string | null;
   disabled_at: string | null;
   created_at: string;
@@ -272,8 +273,8 @@ export function Guests() {
                     onClick={() => setSelected(guest)}
                   >
                     <div className={styles.cardBody}>
-                      <div className={styles.avatar} style={{ background: getAvatarColor(guest.username) }}>
-                        {getInitial(guest)}
+                      <div className={styles.avatar} style={{ background: guest.avatar_url ? 'transparent' : getAvatarColor(guest.username) }}>
+                        {guest.avatar_url ? <img src={guest.avatar_url} alt="" className={styles.avatarImg} /> : getInitial(guest)}
                       </div>
                       <div className={styles.cardInfo}>
                         <div className={styles.nameRow}>
@@ -303,8 +304,8 @@ export function Guests() {
           {selected ? (
             <div className={styles.detailContent}>
               <div className={styles.detailHero}>
-                <div className={styles.detailAvatar} style={{ background: getAvatarColor(selected.username) }}>
-                  {getInitial(selected)}
+                <div className={styles.detailAvatar} style={{ background: selected.avatar_url ? 'transparent' : getAvatarColor(selected.username) }}>
+                  {selected.avatar_url ? <img src={selected.avatar_url} alt="" className={styles.avatarImg} /> : getInitial(selected)}
                 </div>
                 <h2 className={styles.detailName}>{selected.display_name || selected.username}</h2>
                 {selected.display_name && selected.display_name !== selected.username && (

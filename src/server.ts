@@ -3473,6 +3473,12 @@ app.get('/api/f/:hash', (c) => {
   const file = sqlite.prepare('SELECT * FROM files WHERE filename = ? AND deleted_at IS NULL').get(hash) as any;
   const filePath = path.join(UPLOADS_DIR, hash);
 
+  // If not in active files, check if it was soft-deleted — return 404 rather than serving it from disk
+  if (!file) {
+    const deleted = sqlite.prepare('SELECT id FROM files WHERE filename = ? AND deleted_at IS NOT NULL').get(hash);
+    if (deleted) return c.json({ error: 'File not found' }, 404);
+  }
+
   if (!file && !fs.existsSync(filePath)) return c.json({ error: 'File not found' }, 404);
   if (file && !fs.existsSync(filePath)) return c.json({ error: 'File not found on disk' }, 404);
 

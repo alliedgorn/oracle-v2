@@ -1521,6 +1521,11 @@ const HELP_ENDPOINTS = [
     { method: 'PATCH', path: '/api/prowl/:id/status', desc: 'Update Prowl task status', params: 'body: { status }' },
     { method: 'POST', path: '/api/prowl/:id/toggle', desc: 'Toggle Prowl task done/undone', params: null },
     { method: 'DELETE', path: '/api/prowl/:id', desc: 'Delete Prowl task', params: null },
+    { method: 'GET', path: '/api/prowl/:id/checklist', desc: 'List checklist items for a Prowl task', params: null },
+    { method: 'POST', path: '/api/prowl/:id/checklist', desc: 'Add checklist item', params: 'body: { text }' },
+    { method: 'PATCH', path: '/api/prowl/:id/checklist/:itemId', desc: 'Update checklist item', params: 'body: { text?, checked?, sort_order? }' },
+    { method: 'POST', path: '/api/prowl/:id/checklist/:itemId/toggle', desc: 'Toggle checklist item checked', params: null },
+    { method: 'DELETE', path: '/api/prowl/:id/checklist/:itemId', desc: 'Delete checklist item', params: null },
     { method: 'POST', path: '/api/prowl/notify-test', desc: 'Test Prowl notification pipeline (Gorn-only)', params: null },
     // Routine (Forge)
     { method: 'GET', path: '/api/routine/logs', desc: 'List routine logs', params: '?type=&date=&limit=20&offset=0' },
@@ -10528,7 +10533,13 @@ app.get('/api/prowl', (c) => {
 
   query += ' ORDER BY CASE priority WHEN \'high\' THEN 0 WHEN \'medium\' THEN 1 WHEN \'low\' THEN 2 END, created_at DESC';
 
-  const tasks = sqlite.prepare(query).all(...params);
+  const rawTasks = sqlite.prepare(query).all(...params) as any[];
+
+  // Attach checklist items to each task
+  const tasks = rawTasks.map(t => {
+    const checklist = sqlite.prepare('SELECT * FROM checklist_items WHERE task_id = ? ORDER BY sort_order, id').all(t.id);
+    return { ...t, checklist };
+  });
 
   // Counts
   const counts = {
@@ -10694,6 +10705,115 @@ app.delete('/api/prowl/:id', async (c) => {
   sqlite.prepare('DELETE FROM prowl_tasks WHERE id = ?').run(id);
   wsBroadcast('prowl_update', { action: 'delete' });
   return c.json({ deleted: true, id });
+});
+
+// --- Prowl Checklist Items (T#628) ---
+
+try { sqlite.prepare(`
+  CREATE TABLE IF NOT EXISTS checklist_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES prowl_tasks(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    checked INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )
+`).run(); } catch { /* exists */ }
+
+// GET /api/prowl/:id/checklist — list checklist items for a task
+app.get('/api/prowl/:id/checklist', (c) => {
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
+  const taskId = parseInt(c.req.param('id'), 10);
+  if (isNaN(taskId)) return c.json({ error: 'Invalid ID' }, 400);
+  const task = sqlite.prepare('SELECT id FROM prowl_tasks WHERE id = ?').get(taskId);
+  if (!task) return c.json({ error: 'Task not found' }, 404);
+  const items = sqlite.prepare('SELECT * FROM checklist_items WHERE task_id = ? ORDER BY sort_order, id').all(taskId);
+  return c.json({ items });
+});
+
+// POST /api/prowl/:id/checklist — add checklist item
+app.post('/api/prowl/:id/checklist', async (c) => {
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
+  const taskId = parseInt(c.req.param('id'), 10);
+  if (isNaN(taskId)) return c.json({ error: 'Invalid ID' }, 400);
+  const task = sqlite.prepare('SELECT id FROM prowl_tasks WHERE id = ?').get(taskId);
+  if (!task) return c.json({ error: 'Task not found' }, 404);
+  try {
+    const data = await c.req.json();
+    if (!data.text?.trim()) return c.json({ error: 'text required' }, 400);
+    const now = new Date().toISOString();
+    const maxOrder = (sqlite.prepare('SELECT MAX(sort_order) as m FROM checklist_items WHERE task_id = ?').get(taskId) as any)?.m || 0;
+    const result = sqlite.prepare(
+      'INSERT INTO checklist_items (task_id, text, checked, sort_order, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?)'
+    ).run(taskId, data.text.trim(), maxOrder + 1, now, now);
+    const item = sqlite.prepare('SELECT * FROM checklist_items WHERE id = ?').get((result as any).lastInsertRowid);
+    wsBroadcast('prowl_update', { action: 'checklist' });
+    return c.json(item, 201);
+  } catch {
+    return c.json({ error: 'Invalid request' }, 400);
+  }
+});
+
+// PATCH /api/prowl/:id/checklist/:itemId — update checklist item (text, checked, sort_order)
+app.patch('/api/prowl/:id/checklist/:itemId', async (c) => {
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
+  const taskId = parseInt(c.req.param('id'), 10);
+  const itemId = parseInt(c.req.param('itemId'), 10);
+  if (isNaN(taskId) || isNaN(itemId)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM checklist_items WHERE id = ? AND task_id = ?').get(itemId, taskId);
+  if (!existing) return c.json({ error: 'Checklist item not found' }, 404);
+  try {
+    const data = await c.req.json();
+    const allowed = ['text', 'checked', 'sort_order'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const field of allowed) {
+      if (field in data) {
+        updates.push(`${field} = ?`);
+        values.push(field === 'checked' ? (data[field] ? 1 : 0) : data[field]);
+      }
+    }
+    if (updates.length === 0) return c.json({ error: 'No valid fields to update' }, 400);
+    updates.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(itemId);
+    sqlite.prepare(`UPDATE checklist_items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    const item = sqlite.prepare('SELECT * FROM checklist_items WHERE id = ?').get(itemId);
+    wsBroadcast('prowl_update', { action: 'checklist' });
+    return c.json(item);
+  } catch {
+    return c.json({ error: 'Invalid request' }, 400);
+  }
+});
+
+// POST /api/prowl/:id/checklist/:itemId/toggle — quick toggle checked
+app.post('/api/prowl/:id/checklist/:itemId/toggle', (c) => {
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
+  const taskId = parseInt(c.req.param('id'), 10);
+  const itemId = parseInt(c.req.param('itemId'), 10);
+  if (isNaN(taskId) || isNaN(itemId)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM checklist_items WHERE id = ? AND task_id = ?').get(itemId, taskId) as any;
+  if (!existing) return c.json({ error: 'Checklist item not found' }, 404);
+  const now = new Date().toISOString();
+  const newChecked = existing.checked ? 0 : 1;
+  sqlite.prepare('UPDATE checklist_items SET checked = ?, updated_at = ? WHERE id = ?').run(newChecked, now, itemId);
+  const item = sqlite.prepare('SELECT * FROM checklist_items WHERE id = ?').get(itemId);
+  wsBroadcast('prowl_update', { action: 'checklist' });
+  return c.json(item);
+});
+
+// DELETE /api/prowl/:id/checklist/:itemId — delete checklist item
+app.delete('/api/prowl/:id/checklist/:itemId', (c) => {
+  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
+  const taskId = parseInt(c.req.param('id'), 10);
+  const itemId = parseInt(c.req.param('itemId'), 10);
+  if (isNaN(taskId) || isNaN(itemId)) return c.json({ error: 'Invalid ID' }, 400);
+  const existing = sqlite.prepare('SELECT * FROM checklist_items WHERE id = ? AND task_id = ?').get(itemId, taskId);
+  if (!existing) return c.json({ error: 'Checklist item not found' }, 404);
+  sqlite.prepare('DELETE FROM checklist_items WHERE id = ?').run(itemId);
+  wsBroadcast('prowl_update', { action: 'checklist' });
+  return c.json({ deleted: true, id: itemId });
 });
 
 // POST /api/prowl/notify-test — test notification pipeline (Gorn-only)

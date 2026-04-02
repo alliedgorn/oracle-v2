@@ -10734,7 +10734,8 @@ app.get('/api/prowl/:id/checklist', (c) => {
 
 // POST /api/prowl/:id/checklist — add checklist item
 app.post('/api/prowl/:id/checklist', async (c) => {
-  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
+  const requester = c.req.query('as')?.toLowerCase();
+  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester && ALLOWED_PROWL_MANAGERS.includes(requester))) return c.json({ error: `Only ${ALLOWED_PROWL_MANAGERS.join(', ')} can modify Prowl checklists` }, 403);
   const taskId = parseInt(c.req.param('id'), 10);
   if (isNaN(taskId)) return c.json({ error: 'Invalid ID' }, 400);
   const task = sqlite.prepare('SELECT id FROM prowl_tasks WHERE id = ?').get(taskId);
@@ -10757,7 +10758,8 @@ app.post('/api/prowl/:id/checklist', async (c) => {
 
 // PATCH /api/prowl/:id/checklist/:itemId — update checklist item (text, checked, sort_order)
 app.patch('/api/prowl/:id/checklist/:itemId', async (c) => {
-  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
+  const requester = c.req.query('as')?.toLowerCase();
+  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester && ALLOWED_PROWL_MANAGERS.includes(requester))) return c.json({ error: `Only ${ALLOWED_PROWL_MANAGERS.join(', ')} can modify Prowl checklists` }, 403);
   const taskId = parseInt(c.req.param('id'), 10);
   const itemId = parseInt(c.req.param('itemId'), 10);
   if (isNaN(taskId) || isNaN(itemId)) return c.json({ error: 'Invalid ID' }, 400);
@@ -10789,7 +10791,8 @@ app.patch('/api/prowl/:id/checklist/:itemId', async (c) => {
 
 // POST /api/prowl/:id/checklist/:itemId/toggle — quick toggle checked
 app.post('/api/prowl/:id/checklist/:itemId/toggle', (c) => {
-  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
+  const requester = c.req.query('as')?.toLowerCase();
+  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester && ALLOWED_PROWL_MANAGERS.includes(requester))) return c.json({ error: `Only ${ALLOWED_PROWL_MANAGERS.join(', ')} can modify Prowl checklists` }, 403);
   const taskId = parseInt(c.req.param('id'), 10);
   const itemId = parseInt(c.req.param('itemId'), 10);
   if (isNaN(taskId) || isNaN(itemId)) return c.json({ error: 'Invalid ID' }, 400);
@@ -10805,7 +10808,8 @@ app.post('/api/prowl/:id/checklist/:itemId/toggle', (c) => {
 
 // DELETE /api/prowl/:id/checklist/:itemId — delete checklist item
 app.delete('/api/prowl/:id/checklist/:itemId', (c) => {
-  if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Authentication required' }, 403);
+  const requester = (c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester && ALLOWED_PROWL_MANAGERS.includes(requester))) return c.json({ error: `Only ${ALLOWED_PROWL_MANAGERS.join(', ')} can modify Prowl checklists` }, 403);
   const taskId = parseInt(c.req.param('id'), 10);
   const itemId = parseInt(c.req.param('itemId'), 10);
   if (isNaN(taskId) || isNaN(itemId)) return c.json({ error: 'Invalid ID' }, 400);

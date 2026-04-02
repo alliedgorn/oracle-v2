@@ -9,7 +9,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { autolinkIds } from '../utils/autolink';
 import styles from './Forum.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
-import { categorizeEmojis } from '../utils/emojis';
+import { EMOJI_GROUPS } from '../utils/emojis';
 import { useAuth } from '../contexts/AuthContext';
 import { getGuestThreads, getGuestThread, postGuestThreadReply, createGuestThread, getGuestPack } from '../api/guest';
 import { FileUpload } from '../components/FileUpload';
@@ -189,7 +189,6 @@ export function Forum() {
   const [guestAvatars, setGuestAvatars] = useState<Map<string, string | null>>(new Map());
   const [reactions, setReactions] = useState<Record<number, { emoji: string; beasts: string[]; count: number }[]>>({});
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
-  const [supportedEmoji, setSupportedEmoji] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [visibilityFilter, setVisibilityFilter] = useState<string>('all');
   const [sortOrder, setSortOrder] = useState<'recent' | 'active' | 'most-msgs'>('recent');
@@ -331,7 +330,6 @@ export function Forum() {
   useEffect(() => {
     loadThreads();
     loadUnreadCounts();
-    fetch('/api/reactions/supported').then(r => r.json()).then(d => setSupportedEmoji(d.emoji || [])).catch(() => {});
   }, []);
 
   // Reload threads when category or visibility filter changes
@@ -950,7 +948,7 @@ export function Forum() {
                     >+</button>
                     {emojiPickerMsgId === msg.id && (
                       <div className={styles.emojiPicker}>
-                        {categorizeEmojis(supportedEmoji).map(g => (
+                        {EMOJI_GROUPS.map(g => (
                           <div key={g.label}>
                             <div className={styles.emojiGroupLabel}>{g.label}</div>
                             <div className={styles.emojiGrid}>

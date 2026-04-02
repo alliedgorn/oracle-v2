@@ -1,36 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { EMOJI_GROUPS, categorizeEmojis } from '../utils/emojis';
+import { EMOJI_GROUPS } from '../utils/emojis';
 import styles from './EmojiButton.module.css';
-
-let cachedGroups: { label: string; emojis: string[] }[] | null = null;
 
 interface EmojiButtonProps {
   onSelect: (emoji: string) => void;
 }
 
 export function EmojiButton({ onSelect }: EmojiButtonProps) {
-  const { isGuest } = useAuth();
   const [open, setOpen] = useState(false);
-  const [groups, setGroups] = useState(cachedGroups || EMOJI_GROUPS);
+  const groups = EMOJI_GROUPS;
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [pickerStyle, setPickerStyle] = useState<React.CSSProperties>({});
-
-  useEffect(() => {
-    if (cachedGroups || isGuest) return;
-    fetch('/api/reactions/supported')
-      .then(r => r.json())
-      .then((data: any) => {
-        const emojis: string[] = (data.emoji || []).map((e: any) => typeof e === 'string' ? e : e.emoji);
-        if (emojis.length > 0) {
-          const g = categorizeEmojis(emojis);
-          cachedGroups = g;
-          setGroups(g);
-        }
-      })
-      .catch(() => { /* use fallback */ });
-  }, [isGuest]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

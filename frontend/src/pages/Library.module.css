@@ -169,6 +169,18 @@
   margin-left: 4px;
 }
 
+.shelfEdit {
+  font-size: 0.75em;
+  opacity: 0.4;
+  margin-left: 4px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.shelfEdit:hover {
+  opacity: 1;
+}
+
 .shelfBadge {
   font-size: 0.7em;
   padding: 1px 6px;

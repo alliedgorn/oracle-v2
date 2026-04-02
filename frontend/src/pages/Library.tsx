@@ -421,6 +421,7 @@ export function Library() {
             {s.icon ? `${s.icon} ` : ''}{s.name}
             {!isGuest && s.visibility === 'public' && <span className={styles.visibilityPublic} title="Public">pub</span>}
             <span className={styles.shelfCount}>{s.entry_count}</span>
+            {!isGuest && <span className={styles.shelfEdit} onClick={e => { e.stopPropagation(); openEditShelf(s); }} title="Edit shelf">✎</span>}
           </button>
         ))}
         {!isGuest && shelves.length > 0 && (

@@ -967,6 +967,25 @@ export function Forum() {
                       }}
                       title="Reply to this message"
                     >↩ Reply</button>
+                    {!isGuest && (
+                      <button
+                        className={styles.deleteMsgBtn}
+                        onClick={async () => {
+                          if (!confirm(`Delete message #${msg.id} by ${msg.author || 'unknown'}?`)) return;
+                          try {
+                            const res = await fetch(`${API_BASE}/message/${msg.id}`, { method: 'DELETE' });
+                            if (res.ok) {
+                              setSelectedThread(prev => prev ? {
+                                ...prev,
+                                messages: prev.messages.filter(m => m.id !== msg.id),
+                              } : prev);
+                              setTotalMessages(t => t - 1);
+                            }
+                          } catch {}
+                        }}
+                        title="Delete message"
+                      >Delete</button>
+                    )}
                   </div>
                 </div>
                 );

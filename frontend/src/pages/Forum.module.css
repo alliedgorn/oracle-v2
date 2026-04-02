@@ -1099,6 +1099,27 @@
   color: var(--accent);
 }
 
+.deleteMsgBtn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s;
+  font-family: inherit;
+  opacity: 0;
+}
+
+.message:hover .deleteMsgBtn {
+  opacity: 1;
+}
+
+.deleteMsgBtn:hover {
+  color: #ef4444;
+}
+
 /* Quote Preview */
 .quotePreview {
   display: flex;

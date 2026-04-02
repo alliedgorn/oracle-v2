@@ -3699,6 +3699,10 @@ app.get('/api/message/:id/attachments', (c) => {
 try { sqlite.exec("ALTER TABLE forum_notification_prefs ADD COLUMN level TEXT NOT NULL DEFAULT 'full'"); } catch { /* exists */ }
 try { sqlite.exec("UPDATE forum_notification_prefs SET level = 'muted' WHERE muted = 1 AND level = 'full'"); } catch { /* ignore */ }
 
+// T#622: Inline migration — add deleted_at column to forum_messages for soft delete
+try { sqlite.exec("ALTER TABLE forum_messages ADD COLUMN deleted_at TEXT DEFAULT NULL"); } catch { /* exists */ }
+try { sqlite.exec("ALTER TABLE forum_messages ADD COLUMN deleted_by TEXT DEFAULT NULL"); } catch { /* exists */ }
+
 // Mute/unmute thread notifications for a beast (alias for subscribe with level muted/full)
 app.post('/api/forum/mute', async (c) => {
   try {
@@ -4194,6 +4198,34 @@ app.patch('/api/message/:id', async (c) => {
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Unknown error' }, 500);
   }
+});
+
+// DELETE /api/message/:id — soft delete a forum message (Gorn-only, T#622)
+app.delete('/api/message/:id', async (c) => {
+  const messageId = parseInt(c.req.param('id'), 10);
+  if (isNaN(messageId)) return c.json({ error: 'Invalid message ID' }, 400);
+
+  const role = (c.get as any)('role') as string | undefined;
+  if (role === 'guest') return c.json({ error: 'Not found' }, 404);
+
+  const as = c.req.query('as')?.toLowerCase() || (hasSessionAuth(c) ? 'gorn' : '');
+  if (!as) return c.json({ error: 'as param required' }, 400);
+
+  // Only Gorn can delete messages (owner/admin operation)
+  if (as !== 'gorn' && !isTrustedRequest(c)) {
+    return c.json({ error: 'Only Gorn can delete forum messages' }, 403);
+  }
+
+  const msg = sqlite.prepare('SELECT id, thread_id, author, content, deleted_at FROM forum_messages WHERE id = ?').get(messageId) as any;
+  if (!msg) return c.json({ error: 'Message not found' }, 404);
+  if (msg.deleted_at) return c.json({ error: 'Message already deleted' }, 400);
+
+  // Soft delete — Nothing is Deleted principle
+  const now = new Date().toISOString();
+  sqlite.prepare('UPDATE forum_messages SET deleted_at = ?, deleted_by = ? WHERE id = ?')
+    .run(now, as, messageId);
+
+  return c.json({ deleted: messageId, thread_id: msg.thread_id, deleted_at: now, deleted_by: as, soft: true });
 });
 
 // Get edit history for a message

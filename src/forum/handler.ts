@@ -213,16 +213,17 @@ export function getMessages(
   offset: number = 0,
   order: 'asc' | 'desc' = 'asc',
 ): { messages: ForumMessage[]; total: number } {
+  const notDeleted = sql`deleted_at IS NULL`;
   const countResult = db.select({ count: sql<number>`count(*)` })
     .from(forumMessages)
-    .where(eq(forumMessages.threadId, threadId))
+    .where(and(eq(forumMessages.threadId, threadId), notDeleted))
     .get();
 
   const total = countResult?.count ?? 0;
 
   let query = db.select()
     .from(forumMessages)
-    .where(eq(forumMessages.threadId, threadId))
+    .where(and(eq(forumMessages.threadId, threadId), notDeleted))
     .orderBy(order === 'desc' ? desc(forumMessages.createdAt) : forumMessages.createdAt);
 
   if (limit !== undefined) {

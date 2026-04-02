@@ -12,7 +12,7 @@
 import { eq, desc, and, sql } from 'drizzle-orm';
 import { db, forumThreads, forumMessages } from '../db/index.ts';
 import { getProjectContext } from '../server/context.ts';
-import { parseMentions, notifyMentioned, setSubscription } from './mentions.ts';
+import { parseMentions, notifyMentioned, autoSubscribe } from './mentions.ts';
 import type {
   ForumThread,
   ForumMessage,
@@ -306,13 +306,13 @@ export async function handleThreadMessage(
   const mentions = parseMentions(message, thread.id);
   const directMentionSet = new Set(mentions); // These are explicitly @mentioned
 
-  // T#618: Auto-subscribe author and @mentioned Beasts to this thread
+  // T#618: Auto-subscribe author and @mentioned Beasts (only if no existing preference)
   const senderName = author?.split('@')[0]?.toLowerCase() || '';
   if (senderName) {
-    try { setSubscription(senderName, thread.id, 'full'); } catch { /* ignore */ }
+    try { autoSubscribe(senderName, thread.id); } catch { /* ignore */ }
   }
   for (const m of mentions) {
-    try { setSubscription(m, thread.id, 'full'); } catch { /* ignore */ }
+    try { autoSubscribe(m, thread.id); } catch { /* ignore */ }
   }
 
   const notified = notifyMentioned(mentions, thread.id, thread.title, author, message, undefined, directMentionSet);

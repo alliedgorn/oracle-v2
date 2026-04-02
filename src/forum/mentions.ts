@@ -180,6 +180,19 @@ export function setSubscription(beast: string, threadId: number, level: Subscrip
 }
 
 /**
+ * Auto-subscribe a Beast to a thread — only if no preference exists yet.
+ * Does NOT override existing preferences (e.g. won't reset muted to full).
+ */
+export function autoSubscribe(beast: string, threadId: number): void {
+  const now = Date.now();
+  sqlite.prepare(`
+    INSERT INTO forum_notification_prefs (beast_name, thread_id, muted, level, updated_at)
+    VALUES (?, ?, 0, 'full', ?)
+    ON CONFLICT(beast_name, thread_id) DO NOTHING
+  `).run(beast.toLowerCase(), threadId, now);
+}
+
+/**
  * Get all subscriptions for a Beast.
  */
 export function getSubscriptions(beast: string): Array<{ thread_id: number; level: SubscriptionLevel }> {

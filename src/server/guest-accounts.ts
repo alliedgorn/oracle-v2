@@ -203,7 +203,7 @@ export function banGuest(
  */
 export function unbanGuest(sqlite: Database, id: number): GuestAccount | null {
   sqlite.prepare(
-    `UPDATE guest_accounts SET banned_at = NULL, banned_by = NULL, ban_reason = NULL, disabled_at = NULL WHERE id = ?`
+    `UPDATE guest_accounts SET banned_at = NULL, banned_by = NULL, ban_reason = NULL WHERE id = ?`
   ).run(id);
   return getGuest(sqlite, id);
 }

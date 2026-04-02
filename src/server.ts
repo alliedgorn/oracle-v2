@@ -873,7 +873,8 @@ app.post('/api/guests/:id/ban', async (c) => {
   if (guest.banned_at) return c.json({ error: 'Guest is already banned' }, 409);
 
   const body = await c.req.json();
-  const bannedBy = body.banned_by || (c.get as any)('actor') || 'owner';
+  // Derive banned_by from authenticated session, not request body
+  const bannedBy = isBeast ? (c.get as any)('actor') : 'owner';
   const reason = body.reason || 'No reason provided';
 
   const updated = banGuest(sqlite, id, bannedBy, reason);

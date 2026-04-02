@@ -3747,6 +3747,38 @@ app.get('/api/forum/subscriptions/:beast', async (c) => {
   return c.json({ beast, subscriptions: getSubscriptions(beast) });
 });
 
+// GET /api/thread/:id/subscribers — list thread subscribers with profiles (T#621, owner-only)
+app.get('/api/thread/:id/subscribers', async (c) => {
+  const role = (c.get as any)('role') as string | undefined;
+  if (role === 'guest') return c.json({ error: 'Not found' }, 404);
+
+  const threadId = parseInt(c.req.param('id'), 10);
+  if (isNaN(threadId)) return c.json({ error: 'Invalid thread ID' }, 400);
+
+  const thread = sqlite.prepare('SELECT id FROM forum_threads WHERE id = ?').get(threadId) as any;
+  if (!thread) return c.json({ error: 'Thread not found' }, 404);
+
+  const { getThreadSubscribers } = await import('./forum/mentions.ts');
+  const subs = getThreadSubscribers(threadId);
+
+  // Enrich with beast profile data
+  const subscribers = subs.map(s => {
+    const profile = sqlite.prepare(
+      'SELECT display_name, animal, avatar_url, theme_color FROM beast_profiles WHERE name = ?'
+    ).get(s.beast_name) as any;
+    return {
+      name: s.beast_name,
+      display_name: profile?.display_name || s.beast_name,
+      animal: profile?.animal || null,
+      avatar_url: profile?.avatar_url || null,
+      theme_color: profile?.theme_color || null,
+      level: s.level,
+    };
+  });
+
+  return c.json({ thread_id: threadId, subscribers, total: subscribers.length });
+});
+
 // Link preview — fetch URL metadata
 app.get('/api/forum/link-preview', async (c) => {
   const url = c.req.query('url');

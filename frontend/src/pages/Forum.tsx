@@ -202,6 +202,8 @@ export function Forum() {
   const THREAD_PAGE_SIZE = 20;
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [subscribers, setSubscribers] = useState<Array<{ name: string; display_name: string; level: string; avatar_url: string | null; theme_color: string | null }>>([]);
+  const [showSubscribers, setShowSubscribers] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -512,6 +514,13 @@ export function Forum() {
     if (data.messages.length > 0) {
       markThreadRead(id, data.messages[data.messages.length - 1].id);
     }
+    // Fetch subscribers (owner view only, T#621)
+    if (!isGuest) {
+      fetch(`${API_BASE}/thread/${id}/subscribers`).then(r => r.json()).then(d => {
+        setSubscribers(d.subscribers || []);
+        setShowSubscribers(false);
+      }).catch(() => setSubscribers([]));
+    }
   }
 
   function openNewThread() {
@@ -813,6 +822,34 @@ export function Forum() {
               <button className={styles.mobileBack} onClick={() => { setSelectedThread(null); setSearchParams({}); }}>←</button>
               <h2><span className={styles.threadIdHeader}>#{selectedThread.thread.id}</span> {selectedThread.thread.title}</h2>
               <div className={styles.threadActions}>
+                {!isGuest && subscribers.length > 0 && (
+                  <div className={styles.subscribersWidget}>
+                    <button
+                      className={styles.subscribersToggle}
+                      onClick={() => setShowSubscribers(v => !v)}
+                      title={`${subscribers.length} subscriber${subscribers.length !== 1 ? 's' : ''}`}
+                    >
+                      {subscribers.filter(s => s.level !== 'muted').length} subscribed
+                    </button>
+                    {showSubscribers && (
+                      <div className={styles.subscribersDropdown}>
+                        {subscribers.map(s => (
+                          <div key={s.name} className={styles.subscriberRow}>
+                            {s.avatar_url ? (
+                              <img src={s.avatar_url} alt={s.display_name} className={styles.subscriberAvatar} />
+                            ) : (
+                              <span className={styles.subscriberAvatarPlaceholder} style={s.theme_color ? { background: s.theme_color } : undefined}>
+                                {s.display_name[0]?.toUpperCase()}
+                              </span>
+                            )}
+                            <span className={styles.subscriberName}>{s.display_name}</span>
+                            <span className={`${styles.subscriberLevel} ${styles['level_' + s.level]}`}>{s.level}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {!isGuest && (
                   <button
                     className={styles.deleteThreadBtn}

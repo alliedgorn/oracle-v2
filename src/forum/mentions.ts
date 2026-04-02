@@ -207,6 +207,21 @@ export function getSubscriptions(beast: string): Array<{ thread_id: number; leve
   } catch { return []; }
 }
 
+/**
+ * Get all subscribers for a thread (T#621).
+ */
+export function getThreadSubscribers(threadId: number): Array<{ beast_name: string; level: SubscriptionLevel }> {
+  try {
+    const rows = sqlite.prepare(
+      'SELECT beast_name, level FROM forum_notification_prefs WHERE thread_id = ?'
+    ).all(threadId) as any[];
+    return rows.map(r => ({
+      beast_name: r.beast_name,
+      level: (r.level === 'full' || r.level === 'summary' || r.level === 'muted') ? r.level : 'full',
+    }));
+  } catch { return []; }
+}
+
 // ============================================================================
 // Notification Dispatch
 // ============================================================================

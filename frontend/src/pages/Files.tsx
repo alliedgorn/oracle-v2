@@ -78,13 +78,7 @@ function contextLink(context: string | null, contextId: number | null): string |
   return null;
 }
 
-const ANIMAL_EMOJI: Record<string, string> = {
-  karo: '\u{1F43E}', gnarl: '\u{1F40A}', zaghnal: '\u{1F40E}', bertus: '\u{1F43B}',
-  leonard: '\u{1F981}', mara: '\u{1F998}', rax: '\u{1F99D}', pip: '\u{1F9A6}',
-  nyx: '\u{1F426}\u200D\u2B1B', dex: '\u{1F419}', flint: '\u{1F43A}',
-  quill: '\u{1F994}', snap: '\u{1F9A1}', vigil: '\u{1F989}', talon: '\u{1F985}',
-  sable: '\u{1F43E}', gorn: '\u{1F451}',
-};
+import { BEAST_EMOJI as ANIMAL_EMOJI } from '../utils/animals';
 
 export function Files() {
   const [files, setFiles] = useState<FileRecord[]>([]);

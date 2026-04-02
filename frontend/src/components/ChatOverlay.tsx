@@ -67,12 +67,7 @@ const ChatMessage = memo(function ChatMessage({ msg, onImgClick, isSent }: {
   );
 }, (prev, next) => prev.msg.id === next.msg.id && prev.msg.read_at === next.msg.read_at && prev.msg.message === next.msg.message && prev.isSent === next.isSent);
 
-const EMOJI_GROUPS = [
-  { label: 'Smileys', emojis: ['😊', '😂', '🤣', '😍', '🥰', '😘', '😎', '🤔', '😅', '😢', '😤', '🙄', '😴', '🤗', '😇', '🫡', '🫠'] },
-  { label: 'Gestures', emojis: ['👍', '👎', '👏', '🙏', '💪', '🤝', '✌️', '🤙', '👀', '🫶', '🦾'] },
-  { label: 'Animals', emojis: ['🐺', '🐻', '🦁', '🐊', '🐴', '🦘', '🦝', '🦦', '🐦‍⬛', '🐙', '🦔', '🐍', '🦅', '🦉', '🦍', '🐘', '🦏', '🐋', '🦬', '🐂', '🦣', '🫎', '🦈'] },
-  { label: 'Objects', emojis: ['🔥', '❤️', '⭐', '💯', '🎉', '🏆', '🚀', '💡', '⚡', '🎯', '🛡️', '⚠️', '✅', '❌', '🏋️', '🔨', '⚓', '🪨', '🗿', '🌋', '💣', '☄️', '🪐', '🥩', '🍖'] },
-];
+import { EMOJI_GROUPS } from '../utils/emojis';
 
 export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollapse, onClose, isGuest = false, guestName = null }: ChatOverlayProps) {
   const sender = isGuest ? (guestName || 'guest') : 'gorn';

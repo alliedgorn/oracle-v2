@@ -1,33 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { EMOJI_GROUPS, categorizeEmojis } from '../utils/emojis';
 import styles from './EmojiButton.module.css';
-
-const FALLBACK_GROUPS = [
-  { label: 'Faces', emojis: ['😀','😂','🥹','😍','🤔','😎','🫡','😤','🤯','🥳','😴','🤓'] },
-  { label: 'Hands', emojis: ['👍','👎','👏','🙌','🤝','✌️','🤞','💪','🫶','👋'] },
-  { label: 'Objects', emojis: ['🔥','✅','❌','⚠️','💡','🎯','🚀','🏆','📌','🔧','📋','🐛'] },
-  { label: 'Animals', emojis: ['🐾','🦛','🐊','🐻','🦝','🦘','🐺','🦉','🦅','🐍','🦔','🦨'] },
-];
-
-// Categorize emojis from the whitelist into display groups
-function categorizeEmojis(emojis: string[]): { label: string; emojis: string[] }[] {
-  const faces = new Set(['😀','😂','🥹','😍','🤔','😎','🫡','😤','🤯','🥳','😴','🤓','😏','🥲','😡','🤮','🫠','🤡','💀','👻']);
-  const hands = new Set(['👍','👎','👏','🙌','🤝','✌️','🤞','💪','🫶','👋','🦾','👊','🫡']);
-  const heavy = new Set(['🏋️','🦬','🐂','🏔️','🪨','🦣','🫎','🔨','🍖','🥩','🐻','💎','🦏','🐘','🦍','🐋','🦈','🗿','⚓','🛡️','🏰','🌋','💣','🧱','⛰️','🐃','💥','☄️','🏗️','⛓️','🪐','⚒️','🚂','🐗']);
-  const animals = new Set(['🐾','🦛','🐊','🐻','🦝','🦘','🐺','🦉','🦅','🐍','🦔','🦨','🫏']);
-
-  const grouped: Record<string, string[]> = { 'Heavy': [], 'Faces': [], 'Hands': [], 'Animals': [], 'Other': [] };
-  for (const e of emojis) {
-    if (heavy.has(e)) grouped['Heavy'].push(e);
-    else if (faces.has(e)) grouped['Faces'].push(e);
-    else if (hands.has(e)) grouped['Hands'].push(e);
-    else if (animals.has(e)) grouped['Animals'].push(e);
-    else grouped['Other'].push(e);
-  }
-  return Object.entries(grouped)
-    .filter(([, v]) => v.length > 0)
-    .map(([label, emojis]) => ({ label, emojis }));
-}
 
 let cachedGroups: { label: string; emojis: string[] }[] | null = null;
 
@@ -38,7 +12,7 @@ interface EmojiButtonProps {
 export function EmojiButton({ onSelect }: EmojiButtonProps) {
   const { isGuest } = useAuth();
   const [open, setOpen] = useState(false);
-  const [groups, setGroups] = useState(cachedGroups || FALLBACK_GROUPS);
+  const [groups, setGroups] = useState(cachedGroups || EMOJI_GROUPS);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [pickerStyle, setPickerStyle] = useState<React.CSSProperties>({});

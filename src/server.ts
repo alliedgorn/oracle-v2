@@ -4052,6 +4052,14 @@ app.post('/api/thread', async (c) => {
       data.author = `[Guest] ${guestUsername}`;
     }
 
+    // Block posting to deleted threads
+    if (data.thread_id) {
+      const threadCheck = sqlite.prepare('SELECT deleted_at FROM forum_threads WHERE id = ?').get(data.thread_id) as any;
+      if (threadCheck?.deleted_at) {
+        return c.json({ error: 'Cannot post to a deleted thread' }, 410);
+      }
+    }
+
     const result = await withRetry(() => handleThreadMessage({
       message: data.message,
       threadId: data.thread_id,
@@ -5433,7 +5441,7 @@ app.delete('/api/projects/:id', (c) => {
 app.get('/api/tasks', (c) => {
   const projectId = c.req.query('project_id');
   const status = c.req.query('status');
-  const assignedTo = c.req.query('assigned_to');
+  const assignedTo = c.req.query('assigned_to') || c.req.query('assignee');
   const priority = c.req.query('priority');
   const limit = Math.min(200, parseInt(c.req.query('limit') || '100', 10));
   const offset = parseInt(c.req.query('offset') || '0', 10);
@@ -5442,7 +5450,15 @@ app.get('/api/tasks', (c) => {
   const params: any[] = [];
 
   if (projectId) { query += ' AND t.project_id = ?'; params.push(parseInt(projectId, 10)); }
-  if (status) { query += ' AND t.status = ?'; params.push(status); }
+  if (status) {
+    const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      query += ' AND t.status = ?'; params.push(statuses[0]);
+    } else {
+      query += ` AND t.status IN (${statuses.map(() => '?').join(',')})`;
+      params.push(...statuses);
+    }
+  }
   if (assignedTo) { query += ' AND t.assigned_to = ?'; params.push(assignedTo); }
   if (priority) { query += ' AND t.priority = ?'; params.push(priority); }
   const type = c.req.query('type');
@@ -5701,7 +5717,7 @@ app.post('/api/tasks/:id/comments', async (c) => {
 // GET /api/board — grouped by status with project filter
 app.get('/api/board', (c) => {
   const projectId = c.req.query('project_id');
-  const assignedTo = c.req.query('assigned_to');
+  const assignedTo = c.req.query('assigned_to') || c.req.query('assignee');
 
   let query = 'SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.status != \'deleted\'';
   const params: any[] = [];

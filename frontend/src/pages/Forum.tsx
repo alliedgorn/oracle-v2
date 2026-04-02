@@ -9,6 +9,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { autolinkIds } from '../utils/autolink';
 import styles from './Forum.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
+import { categorizeEmojis } from '../utils/emojis';
 import { useAuth } from '../contexts/AuthContext';
 import { getGuestThreads, getGuestThread, postGuestThreadReply, createGuestThread, getGuestPack } from '../api/guest';
 import { FileUpload } from '../components/FileUpload';
@@ -949,12 +950,19 @@ export function Forum() {
                     >+</button>
                     {emojiPickerMsgId === msg.id && (
                       <div className={styles.emojiPicker}>
-                        {supportedEmoji.map(e => (
-                          <button
-                            key={e}
-                            className={styles.emojiOption}
-                            onClick={() => { toggleReaction(msg.id, e); setEmojiPickerMsgId(null); }}
-                          >{e}</button>
+                        {categorizeEmojis(supportedEmoji).map(g => (
+                          <div key={g.label}>
+                            <div className={styles.emojiGroupLabel}>{g.label}</div>
+                            <div className={styles.emojiGrid}>
+                              {g.emojis.map(e => (
+                                <button
+                                  key={e}
+                                  className={styles.emojiOption}
+                                  onClick={() => { toggleReaction(msg.id, e); setEmojiPickerMsgId(null); }}
+                                >{e}</button>
+                              ))}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     )}

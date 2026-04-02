@@ -1059,13 +1059,27 @@
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px;
+  padding: 8px;
+  max-width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.emojiGroupLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 4px 2px 2px;
+  letter-spacing: 0.5px;
+}
+
+.emojiGrid {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  max-width: 240px;
-  z-index: 10;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .emojiOption {

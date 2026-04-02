@@ -10311,6 +10311,7 @@ app.patch('/api/rules/:id/archive', async (c) => {
 // ============================================================================
 
 const ALLOWED_PROWL_CREATORS = ['gorn', 'sable', 'zaghnal', 'leonard', 'karo'];
+const ALLOWED_PROWL_MANAGERS = ['gorn', 'sable', 'karo']; // T#619: Karo gets full manage access
 
 try { sqlite.prepare(`
   CREATE TABLE IF NOT EXISTS prowl_tasks (
@@ -10435,10 +10436,10 @@ app.post('/api/prowl', async (c) => {
   }
 });
 
-// PATCH /api/prowl/:id — update task fields (Gorn or Sable, no status changes)
+// PATCH /api/prowl/:id — update task fields (T#619: Gorn, Sable, or Karo)
 app.patch('/api/prowl/:id', async (c) => {
   const requester = c.req.query('as')?.toLowerCase();
-  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester === 'sable')) return c.json({ error: 'Gorn or Sable only' }, 403);
+  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester && ALLOWED_PROWL_MANAGERS.includes(requester))) return c.json({ error: `Only ${ALLOWED_PROWL_MANAGERS.join(', ')} can update Prowl tasks` }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const existing = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id) as any;
@@ -10472,10 +10473,10 @@ app.patch('/api/prowl/:id', async (c) => {
   }
 });
 
-// PATCH /api/prowl/:id/status — change status (Gorn or Sable)
+// PATCH /api/prowl/:id/status — change status (T#619: Gorn, Sable, or Karo)
 app.patch('/api/prowl/:id/status', async (c) => {
   const requester = c.req.query('as')?.toLowerCase();
-  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester === 'sable')) return c.json({ error: 'Gorn or Sable only' }, 403);
+  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester && ALLOWED_PROWL_MANAGERS.includes(requester))) return c.json({ error: `Only ${ALLOWED_PROWL_MANAGERS.join(', ')} can change Prowl task status` }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const existing = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id) as any;
@@ -10499,10 +10500,10 @@ app.patch('/api/prowl/:id/status', async (c) => {
   }
 });
 
-// POST /api/prowl/:id/toggle — quick toggle pending ↔ done (Gorn or Sable)
+// POST /api/prowl/:id/toggle — quick toggle pending ↔ done (T#619: Gorn, Sable, or Karo)
 app.post('/api/prowl/:id/toggle', async (c) => {
   const requester = c.req.query('as')?.toLowerCase();
-  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester === 'sable')) return c.json({ error: 'Gorn or Sable only' }, 403);
+  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester && ALLOWED_PROWL_MANAGERS.includes(requester))) return c.json({ error: `Only ${ALLOWED_PROWL_MANAGERS.join(', ')} can toggle Prowl tasks` }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const existing = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id) as any;
@@ -10519,16 +10520,14 @@ app.post('/api/prowl/:id/toggle', async (c) => {
   return c.json(task);
 });
 
-// DELETE /api/prowl/:id — delete task (Gorn or Sable)
+// DELETE /api/prowl/:id — delete task (T#619: Gorn, Sable, or Karo)
 app.delete('/api/prowl/:id', async (c) => {
-  if (!hasSessionAuth(c)) return c.json({ error: 'Gorn-only' }, 403);
+  const requester = (c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+  if (!hasSessionAuth(c) && !(isTrustedRequest(c) && requester && ALLOWED_PROWL_MANAGERS.includes(requester))) {
+    return c.json({ error: `Only ${ALLOWED_PROWL_MANAGERS.join(', ')} can delete Prowl tasks` }, 403);
+  }
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
-
-  const requester = (c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
-  if (requester !== 'gorn' && requester !== 'sable') {
-    return c.json({ error: 'Only Gorn or Sable can delete Prowl tasks' }, 403);
-  }
 
   const existing = sqlite.prepare('SELECT * FROM prowl_tasks WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Task not found' }, 404);

@@ -44,6 +44,14 @@ const GUEST_ALLOWLIST: AllowlistEntry[] = [
   // File uploads and downloads — guests can attach and view files
   { method: 'POST', pattern: /^\/api\/upload$/ },
   { method: 'GET', pattern: /^\/api\/f\/[\w.-]+$/ },
+
+  // Library — guests can read public shelves and their entries (T#623)
+  { method: 'GET', pattern: /^\/api\/library$/ },
+  { method: 'GET', pattern: /^\/api\/library\/shelves$/ },
+  { method: 'GET', pattern: /^\/api\/library\/shelves\/\d+$/ },
+  { method: 'GET', pattern: /^\/api\/library\/search$/ },
+  { method: 'GET', pattern: /^\/api\/library\/types$/ },
+  { method: 'GET', pattern: /^\/api\/library\/\d+$/ },
 ];
 
 /**

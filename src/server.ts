@@ -5041,6 +5041,12 @@ app.patch('/api/library/shelves/:id', async (c) => {
           const dup = sqlite.prepare('SELECT id FROM library_shelves WHERE name = ? AND id != ?').get(data.name.trim(), id);
           if (dup) return c.json({ error: 'A shelf with this name already exists' }, 409);
         }
+        if (field === 'visibility') {
+          const val = data[field] === 'public' ? 'public' : 'internal';
+          updates.push(`${field} = ?`);
+          values.push(val);
+          continue;
+        }
         updates.push(`${field} = ?`);
         values.push(data[field]);
       }

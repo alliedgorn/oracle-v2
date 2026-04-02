@@ -3270,7 +3270,7 @@ app.post('/api/forum/read', async (c) => {
   }
 });
 
-// Get unread counts for a beast
+// Get unread counts for a beast (T#618: excludes muted threads)
 app.get('/api/forum/unread/:beast', (c) => {
   const beast = c.req.param('beast');
   const rows = sqlite.prepare(`
@@ -3281,10 +3281,12 @@ app.get('/api/forum/unread/:beast', (c) => {
     FROM forum_threads t
     LEFT JOIN forum_read_status r ON r.thread_id = t.id AND r.beast_name = ?
     LEFT JOIN forum_messages m ON m.thread_id = t.id
+    LEFT JOIN forum_notification_prefs p ON p.thread_id = t.id AND p.beast_name = ?
+    WHERE COALESCE(p.level, 'full') != 'muted'
     GROUP BY t.id
     HAVING unread_count > 0
     ORDER BY unread_count DESC
-  `).all(beast) as any[];
+  `).all(beast, beast) as any[];
 
   return c.json({
     beast,
@@ -3693,19 +3695,20 @@ app.get('/api/message/:id/attachments', (c) => {
   });
 });
 
-// Mute/unmute thread notifications for a beast
+// T#618: Inline migration — add level column to forum_notification_prefs
+try { sqlite.exec("ALTER TABLE forum_notification_prefs ADD COLUMN level TEXT NOT NULL DEFAULT 'full'"); } catch { /* exists */ }
+try { sqlite.exec("UPDATE forum_notification_prefs SET level = 'muted' WHERE muted = 1 AND level = 'full'"); } catch { /* ignore */ }
+
+// Mute/unmute thread notifications for a beast (alias for subscribe with level muted/full)
 app.post('/api/forum/mute', async (c) => {
   try {
     const body = await c.req.json();
     if (!body.beast || !body.threadId) return c.json({ error: 'beast and threadId required' }, 400);
-    const muted = body.muted !== false ? 1 : 0;
-    const now = Date.now();
-    sqlite.prepare(`
-      INSERT INTO forum_notification_prefs (beast_name, thread_id, muted, updated_at)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(beast_name, thread_id) DO UPDATE SET muted = excluded.muted, updated_at = excluded.updated_at
-    `).run(body.beast.toLowerCase(), body.threadId, muted, now);
-    return c.json({ success: true, beast: body.beast, thread_id: body.threadId, muted: !!muted });
+    const muted = body.muted !== false;
+    const level = muted ? 'muted' : 'full';
+    const { setSubscription } = await import('./forum/mentions.ts');
+    setSubscription(body.beast, body.threadId, level);
+    return c.json({ success: true, beast: body.beast, thread_id: body.threadId, muted, level });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Unknown error' }, 500);
   }
@@ -3715,9 +3718,33 @@ app.post('/api/forum/mute', async (c) => {
 app.get('/api/forum/muted/:beast', (c) => {
   const beast = c.req.param('beast').toLowerCase();
   const rows = sqlite.prepare(
-    'SELECT thread_id FROM forum_notification_prefs WHERE beast_name = ? AND muted = 1'
-  ).all(beast) as any[];
+    'SELECT thread_id FROM forum_notification_prefs WHERE beast_name = ? AND (muted = 1 OR level = ?)'
+  ).all(beast, 'muted') as any[];
   return c.json({ beast, muted_threads: rows.map(r => r.thread_id) });
+});
+
+// T#618: Subscribe to thread with level (full/summary/muted)
+app.post('/api/forum/subscribe', async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.beast || !body.threadId) return c.json({ error: 'beast and threadId required' }, 400);
+    const level = body.level || 'full';
+    if (!['full', 'summary', 'muted'].includes(level)) {
+      return c.json({ error: 'level must be full, summary, or muted' }, 400);
+    }
+    const { setSubscription } = await import('./forum/mentions.ts');
+    setSubscription(body.beast, body.threadId, level);
+    return c.json({ success: true, beast: body.beast, thread_id: body.threadId, level });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+// T#618: Get all subscriptions for a beast
+app.get('/api/forum/subscriptions/:beast', async (c) => {
+  const beast = c.req.param('beast').toLowerCase();
+  const { getSubscriptions } = await import('./forum/mentions.ts');
+  return c.json({ beast, subscriptions: getSubscriptions(beast) });
 });
 
 // Link preview — fetch URL metadata

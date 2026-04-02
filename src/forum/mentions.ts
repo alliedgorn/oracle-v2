@@ -143,6 +143,71 @@ export function parseMentions(content: string, threadId?: number): string[] {
 }
 
 // ============================================================================
+// Subscription Management (T#618)
+// ============================================================================
+
+export type SubscriptionLevel = 'full' | 'summary' | 'muted';
+
+/**
+ * Get a Beast's subscription level for a thread.
+ * Returns 'full' if no preference exists (default behavior preserved).
+ */
+export function getSubscriptionLevel(beast: string, threadId: number): SubscriptionLevel {
+  try {
+    const row = sqlite.prepare(
+      'SELECT level FROM forum_notification_prefs WHERE beast_name = ? AND thread_id = ?'
+    ).get(beast.toLowerCase(), threadId) as { level: string } | undefined;
+    if (row && (row.level === 'full' || row.level === 'summary' || row.level === 'muted')) {
+      return row.level;
+    }
+  } catch { /* table may not have level column yet */ }
+  return 'full';
+}
+
+/**
+ * Set a Beast's subscription level for a thread (upsert).
+ */
+export function setSubscription(beast: string, threadId: number, level: SubscriptionLevel): void {
+  const now = Date.now();
+  sqlite.prepare(`
+    INSERT INTO forum_notification_prefs (beast_name, thread_id, muted, level, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(beast_name, thread_id) DO UPDATE SET
+      level = excluded.level,
+      muted = CASE WHEN excluded.level = 'muted' THEN 1 ELSE 0 END,
+      updated_at = excluded.updated_at
+  `).run(beast.toLowerCase(), threadId, level === 'muted' ? 1 : 0, level, now);
+}
+
+/**
+ * Auto-subscribe a Beast to a thread — only if no preference exists yet.
+ * Does NOT override existing preferences (e.g. won't reset muted to full).
+ */
+export function autoSubscribe(beast: string, threadId: number): void {
+  const now = Date.now();
+  sqlite.prepare(`
+    INSERT INTO forum_notification_prefs (beast_name, thread_id, muted, level, updated_at)
+    VALUES (?, ?, 0, 'full', ?)
+    ON CONFLICT(beast_name, thread_id) DO NOTHING
+  `).run(beast.toLowerCase(), threadId, now);
+}
+
+/**
+ * Get all subscriptions for a Beast.
+ */
+export function getSubscriptions(beast: string): Array<{ thread_id: number; level: SubscriptionLevel }> {
+  try {
+    const rows = sqlite.prepare(
+      'SELECT thread_id, level FROM forum_notification_prefs WHERE beast_name = ?'
+    ).all(beast.toLowerCase()) as any[];
+    return rows.map(r => ({
+      thread_id: r.thread_id,
+      level: (r.level === 'full' || r.level === 'summary' || r.level === 'muted') ? r.level : 'full',
+    }));
+  } catch { return []; }
+}
+
+// ============================================================================
 // Notification Dispatch
 // ============================================================================
 
@@ -161,6 +226,10 @@ function sanitizeForTmux(text: string, maxLen: number = 200): string {
 /**
  * Notify mentioned Oracles via tmux send-keys.
  * Returns array of Oracle names that were successfully notified.
+ *
+ * T#618: Subscription-based filtering.
+ * - directMentions: Beasts explicitly @mentioned — always deliver full, even if muted
+ * - Other mentions (thread participants): respect subscription level
  */
 export function notifyMentioned(
   mentions: string[],
@@ -169,12 +238,14 @@ export function notifyMentioned(
   author: string,
   content: string,
   context?: { type: string; label: string; hint: string },
+  directMentions?: Set<string>,
 ): string[] {
   if (mentions.length === 0) return [];
 
   const registry = getOracleRegistry();
   const notified: string[] = [];
   const preview = sanitizeForTmux(content);
+  const summaryPreview = sanitizeForTmux(content, 50);
 
   // Extract the raw Oracle name from author (strip @project suffix)
   const authorName = author.split('@')[0].toLowerCase();
@@ -186,13 +257,24 @@ export function notifyMentioned(
     const entry = registry[name];
     if (!entry) continue;
 
+    // T#618: Check subscription level (direct @mentions always get full delivery)
+    const isDirect = directMentions?.has(name) ?? true; // default true for backward compat
+    let level: SubscriptionLevel = 'full';
+    if (!isDirect && threadId > 0) {
+      level = getSubscriptionLevel(name, threadId);
+      if (level === 'muted') continue; // Skip muted thread participants entirely
+    }
+
     // UTC+7 timestamp for Beast awareness
     const now = new Date();
     const utc7 = new Date(now.getTime() + 7 * 60 * 60 * 1000);
     const timeStr = `${utc7.getUTCHours().toString().padStart(2, '0')}:${utc7.getUTCMinutes().toString().padStart(2, '0')} UTC+7`;
 
     let message: string;
-    if (context) {
+    if (level === 'summary' && !isDirect) {
+      // Summary mode: one-liner with author + thread + truncated content
+      message = `[${timeStr}] [Forum summary] ${author} in thread #${threadId} ("${sanitizeForTmux(threadTitle, 50)}"): ${summaryPreview}...`;
+    } else if (context) {
       message = `[${timeStr}] [${context.type}] From ${author} in ${context.label} ("${sanitizeForTmux(threadTitle, 50)}"):\\n\\n${preview}\\n\\n${context.hint}`;
     } else {
       message = `[${timeStr}] [Forum message] From ${author} in thread #${threadId} ("${sanitizeForTmux(threadTitle, 50)}"):\\n\\n${preview}\\n\\nUse /forum thread ${threadId} to read and /forum post <message> (with thread_id ${threadId}) to reply.`;

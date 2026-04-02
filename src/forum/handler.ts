@@ -12,7 +12,7 @@
 import { eq, desc, and, sql } from 'drizzle-orm';
 import { db, forumThreads, forumMessages } from '../db/index.ts';
 import { getProjectContext } from '../server/context.ts';
-import { parseMentions, notifyMentioned } from './mentions.ts';
+import { parseMentions, notifyMentioned, autoSubscribe } from './mentions.ts';
 import type {
   ForumThread,
   ForumMessage,
@@ -304,15 +304,25 @@ export async function handleThreadMessage(
 
   // Parse @mentions and notify via tmux
   const mentions = parseMentions(message, thread.id);
-  const notified = notifyMentioned(mentions, thread.id, thread.title, author, message);
+  const directMentionSet = new Set(mentions); // These are explicitly @mentioned
+
+  // T#618: Auto-subscribe author and @mentioned Beasts (only if no existing preference)
+  const senderName = author?.split('@')[0]?.toLowerCase() || '';
+  if (senderName) {
+    try { autoSubscribe(senderName, thread.id); } catch { /* ignore */ }
+  }
+  for (const m of mentions) {
+    try { autoSubscribe(m, thread.id); } catch { /* ignore */ }
+  }
+
+  const notified = notifyMentioned(mentions, thread.id, thread.title, author, message, undefined, directMentionSet);
 
   // Notify all thread participants on new posts (not just @mentioned ones)
-  // Skip participants who were already notified via @mention
+  // T#618: Participants are filtered by subscription level in notifyMentioned
   {
     const { getOracleRegistry } = await import('./mentions.ts');
     const registry = getOracleRegistry();
     const alreadyNotified = new Set(notified);
-    const senderName = author?.split('@')[0]?.toLowerCase() || '';
     try {
       const rows = db.select({ author: forumMessages.author })
         .from(forumMessages)
@@ -328,7 +338,8 @@ export async function handleThreadMessage(
         }
       }
       if (participants.length > 0) {
-        const extra = notifyMentioned(participants, thread.id, thread.title, author || 'unknown', message);
+        // These are thread participants, NOT direct mentions — subscription filter applies
+        const extra = notifyMentioned(participants, thread.id, thread.title, author || 'unknown', message, undefined, new Set());
         notified.push(...extra);
       }
     } catch { /* ignore */ }

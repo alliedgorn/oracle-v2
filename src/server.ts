@@ -2212,6 +2212,17 @@ app.post('/api/guest/thread', async (c) => {
   // Force visibility to public and set author_role
   if (result.threadId) {
     sqlite.prepare('UPDATE forum_threads SET visibility = ? WHERE id = ?').run('public', result.threadId);
+
+    // T#629: Notify all Beasts when guest creates a new public thread
+    if (!data.thread_id) {
+      try {
+        const { getOracleRegistry, notifyMentioned } = await import('./forum/mentions.ts');
+        const registry = getOracleRegistry();
+        const threadTitle = data.title || data.message?.slice(0, 50) || 'New thread';
+        const allBeasts = Object.keys(registry).filter(name => name !== 'gorn');
+        notifyMentioned(allBeasts, result.threadId, threadTitle, author, `New public thread from guest: ${threadTitle}`, undefined, new Set(allBeasts));
+      } catch { /* best effort */ }
+    }
   }
   if (result.messageId) {
     sqlite.prepare('UPDATE forum_messages SET author_role = ? WHERE id = ?').run('guest', result.messageId);
@@ -4627,6 +4638,20 @@ app.patch('/api/thread/:id/visibility', async (c) => {
       return c.json({ error: "visibility must be 'public' or 'internal'" }, 400);
     }
     sqlite.prepare('UPDATE forum_threads SET visibility = ? WHERE id = ?').run(data.visibility, threadId);
+
+    // T#629: Notify all Beasts when a thread becomes public
+    if (data.visibility === 'public') {
+      try {
+        const thread = sqlite.prepare('SELECT title, created_by FROM forum_threads WHERE id = ?').get(threadId) as any;
+        if (thread) {
+          const { getOracleRegistry, notifyMentioned } = await import('./forum/mentions.ts');
+          const registry = getOracleRegistry();
+          const allBeasts = Object.keys(registry).filter(name => name !== 'gorn' && name !== (thread.created_by || '').toLowerCase());
+          notifyMentioned(allBeasts, threadId, thread.title, thread.created_by || 'unknown', `New public thread: ${thread.title}`, undefined, new Set(allBeasts));
+        }
+      } catch { /* best effort */ }
+    }
+
     return c.json({ success: true, thread_id: threadId, visibility: data.visibility });
   } catch (e) {
     return c.json({ error: 'Invalid JSON' }, 400);

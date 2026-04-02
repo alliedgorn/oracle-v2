@@ -96,6 +96,8 @@ import {
   getGuestByUsername,
   updateGuest,
   deleteGuest,
+  banGuest,
+  unbanGuest,
   isGuestActive,
   recordFailedAttempt,
   recordSuccessfulLogin,
@@ -854,6 +856,73 @@ app.delete('/api/guests/:id', (c) => {
   if (!deleted) return c.json({ error: 'Guest not found' }, 404);
 
   return c.json({ success: true });
+});
+
+// Ban guest account (T#616 — spec #36)
+app.post('/api/guests/:id/ban', async (c) => {
+  // Owner session OR Beast token (Bertus needs to ban directly)
+  const isOwner = hasSessionAuth(c) && (c.get as any)('role') !== 'guest';
+  const isBeast = (c.get as any)('authMethod') === 'token' && (c.get as any)('role') === 'beast';
+  if (!isOwner && !isBeast) {
+    return c.json({ error: 'Ban requires owner session or Beast token' }, 403);
+  }
+
+  const id = parseInt(c.req.param('id'), 10);
+  const guest = getGuest(sqlite, id);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+  if (guest.banned_at) return c.json({ error: 'Guest is already banned' }, 409);
+
+  const body = await c.req.json();
+  const bannedBy = body.banned_by || (c.get as any)('actor') || 'owner';
+  const reason = body.reason || 'No reason provided';
+
+  const updated = banGuest(sqlite, id, bannedBy, reason);
+  if (!updated) return c.json({ error: 'Failed to ban guest' }, 500);
+
+  logSecurityEvent({
+    eventType: 'guest_banned',
+    severity: 'warning',
+    actor: bannedBy,
+    actorType: isBeast ? 'beast' : 'human',
+    target: guest.username,
+    details: { guest_id: id, username: guest.username, reason, banned_by: bannedBy },
+    requestId: (c.get as any)('requestId'),
+  });
+
+  const { password_hash, ...safe } = updated;
+  return c.json(safe);
+});
+
+// Unban guest account (T#616 — spec #36)
+app.post('/api/guests/:id/unban', async (c) => {
+  // Owner session only — unbanning is a sensitive operation
+  if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
+    return c.json({ error: 'Unban requires owner session' }, 403);
+  }
+
+  const id = parseInt(c.req.param('id'), 10);
+  const guest = getGuest(sqlite, id);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+  if (!guest.banned_at) return c.json({ error: 'Guest is not banned' }, 409);
+
+  const body = await c.req.json();
+  const reason = body.reason || 'No reason provided';
+
+  const updated = unbanGuest(sqlite, id);
+  if (!updated) return c.json({ error: 'Failed to unban guest' }, 500);
+
+  logSecurityEvent({
+    eventType: 'guest_unbanned',
+    severity: 'info',
+    actor: 'owner',
+    actorType: 'human',
+    target: guest.username,
+    details: { guest_id: id, username: guest.username, reason },
+    requestId: (c.get as any)('requestId'),
+  });
+
+  const { password_hash, ...safe } = updated;
+  return c.json(safe);
 });
 
 // ============================================================================

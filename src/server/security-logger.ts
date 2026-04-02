@@ -27,7 +27,9 @@ export type SecurityEventType =
   | 'impersonation_blocked'  // ?as= spoofing blocked on protected endpoint
   | 'session_destroyed'      // Session logout
   | 'alert_triggered'        // Threshold alert fired by checkAlertThresholds
-  | 'token_validated';       // Beast token validated (sampled, T#546)
+  | 'token_validated'        // Beast token validated (sampled, T#546)
+  | 'guest_banned'           // Guest account banned (T#616)
+  | 'guest_unbanned';        // Guest account unbanned (T#616)
 
 export type SecuritySeverity = 'info' | 'warning' | 'critical';
 

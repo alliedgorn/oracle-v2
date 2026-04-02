@@ -4208,11 +4208,8 @@ app.delete('/api/message/:id', async (c) => {
   const role = (c.get as any)('role') as string | undefined;
   if (role === 'guest') return c.json({ error: 'Not found' }, 404);
 
-  const as = c.req.query('as')?.toLowerCase() || (hasSessionAuth(c) ? 'gorn' : '');
-  if (!as) return c.json({ error: 'as param required' }, 400);
-
-  // Only Gorn can delete messages (owner/admin operation)
-  if (as !== 'gorn' && !isTrustedRequest(c)) {
+  // Gorn-only: require session auth (not just trusted network)
+  if (!hasSessionAuth(c)) {
     return c.json({ error: 'Only Gorn can delete forum messages' }, 403);
   }
 
@@ -4222,10 +4219,27 @@ app.delete('/api/message/:id', async (c) => {
 
   // Soft delete — Nothing is Deleted principle
   const now = new Date().toISOString();
-  sqlite.prepare('UPDATE forum_messages SET deleted_at = ?, deleted_by = ? WHERE id = ?')
-    .run(now, as, messageId);
+  try {
+    sqlite.prepare('UPDATE forum_messages SET deleted_at = ?, deleted_by = ? WHERE id = ?')
+      .run(now, 'gorn', messageId);
+  } catch (error) {
+    return c.json({ error: 'Database error during deletion' }, 500);
+  }
 
-  return c.json({ deleted: messageId, thread_id: msg.thread_id, deleted_at: now, deleted_by: as, soft: true });
+  // Audit trail
+  const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+  logSecurityEvent({
+    eventType: 'message_delete',
+    severity: 'warning',
+    actor: 'gorn',
+    actorType: 'owner',
+    target: `message:${messageId}`,
+    details: { thread_id: msg.thread_id, author: msg.author, content_preview: msg.content?.slice(0, 100) },
+    ipSource: ip,
+    requestId: (c.get as any)('requestId'),
+  });
+
+  return c.json({ deleted: messageId, thread_id: msg.thread_id, deleted_at: now, deleted_by: 'gorn', soft: true });
 });
 
 // Get edit history for a message

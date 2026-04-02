@@ -626,7 +626,7 @@ export function Board() {
         <div className={styles.modalOverlay} onClick={() => setSelectedTask(null)}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <h2>{selectedTask.title}</h2>
+              <h2><span className={styles.modalTaskId}>T#{selectedTask.id}</span> {selectedTask.title}</h2>
               <button className={styles.modalClose} onClick={() => setSelectedTask(null)}>✕</button>
             </div>
             <div className={styles.modalBody}>

@@ -46,7 +46,7 @@ import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
 
 // Guest-accessible routes (no redirect for guests)
-const GUEST_ROUTES = new Set(['/', '/pack', '/forum', '/dms', '/beast', '/welcome', '/terminal', '/settings']);
+const GUEST_ROUTES = new Set(['/', '/pack', '/forum', '/dms', '/beast', '/welcome', '/terminal', '/settings', '/library']);
 
 function isGuestRoute(pathname: string): boolean {
   if (GUEST_ROUTES.has(pathname)) return true;

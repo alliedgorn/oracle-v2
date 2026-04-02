@@ -6,6 +6,7 @@ import { MermaidDiagram } from '../components/MermaidDiagram';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import styles from './Library.module.css';
+import { useAuth } from '../contexts/AuthContext';
 import { FilterTabs } from '../components/FilterTabs';
 import { EmojiButton } from '../components/EmojiButton';
 import { FileUpload } from '../components/FileUpload';
@@ -45,6 +46,7 @@ interface Shelf {
   color: string | null;
   entry_count: number;
   created_by: string;
+  visibility?: string;
 }
 
 const API_BASE = '/api';
@@ -59,6 +61,7 @@ const CATEGORIES = [
 ];
 
 export function Library() {
+  const { isGuest } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [docs, setDocs] = useState<LibraryDoc[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<LibraryDoc | null>(null);
@@ -82,6 +85,7 @@ export function Library() {
   const [shelfColor, setShelfColor] = useState('');
   const [shelfSaving, setShelfSaving] = useState(false);
   const [shelfError, setShelfError] = useState('');
+  const [shelfVisibility, setShelfVisibility] = useState('internal');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState(-1);
@@ -209,12 +213,13 @@ export function Library() {
   }
 
   function openCreateShelf() {
-    setShelfName(''); setShelfDesc(''); setShelfIcon(''); setShelfColor('');
+    setShelfName(''); setShelfDesc(''); setShelfIcon(''); setShelfColor(''); setShelfVisibility('internal');
     setShelfError(''); setEditingShelf(null); setShelfModal('create');
   }
 
   function openEditShelf(shelf: Shelf) {
     setShelfName(shelf.name); setShelfDesc(shelf.description || ''); setShelfIcon(shelf.icon || ''); setShelfColor(shelf.color || '');
+    setShelfVisibility(shelf.visibility || 'internal');
     setShelfError(''); setEditingShelf(shelf); setShelfModal('edit');
   }
 
@@ -222,7 +227,7 @@ export function Library() {
     if (!shelfName.trim()) { setShelfError('Name is required'); return; }
     setShelfSaving(true); setShelfError('');
     try {
-      const body = { name: shelfName.trim(), description: shelfDesc.trim() || null, icon: shelfIcon.trim() || null, color: shelfColor.trim() || null };
+      const body = { name: shelfName.trim(), description: shelfDesc.trim() || null, icon: shelfIcon.trim() || null, color: shelfColor.trim() || null, visibility: shelfVisibility };
       const url = shelfModal === 'edit' && editingShelf ? `${API_BASE}/library/shelves/${editingShelf.id}` : `${API_BASE}/library/shelves`;
       const method = shelfModal === 'edit' ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(shelfModal === 'create' ? { ...body, created_by: 'gorn' } : body) });
@@ -314,7 +319,7 @@ export function Library() {
             <div className={styles.detailHeader}>
               <div className={styles.detailTitleRow}>
                 <h1 className={styles.detailTitle}>{selectedDoc.title}</h1>
-                <button className={styles.editButton} onClick={startEditing}>Edit</button>
+                {!isGuest && <button className={styles.editButton} onClick={startEditing}>Edit</button>}
               </div>
               <div className={styles.detailMeta}>
                 <span className={styles.author}>
@@ -410,20 +415,21 @@ export function Library() {
             key={s.id}
             className={`${styles.shelfPill} ${shelfFilter === String(s.id) ? styles.shelfActive : ''}`}
             onClick={() => setShelfFilter(shelfFilter === String(s.id) ? '' : String(s.id))}
-            onContextMenu={e => { e.preventDefault(); openEditShelf(s); }}
+            onContextMenu={!isGuest ? (e => { e.preventDefault(); openEditShelf(s); }) : undefined}
             style={s.color ? { borderColor: shelfFilter === String(s.id) ? s.color : undefined } : undefined}
           >
             {s.icon ? `${s.icon} ` : ''}{s.name}
+            {!isGuest && s.visibility === 'public' && <span className={styles.visibilityPublic} title="Public">pub</span>}
             <span className={styles.shelfCount}>{s.entry_count}</span>
           </button>
         ))}
-        {shelves.length > 0 && (
+        {!isGuest && shelves.length > 0 && (
           <button
             className={`${styles.shelfPill} ${shelfFilter === 'ungrouped' ? styles.shelfActive : ''}`}
             onClick={() => setShelfFilter(shelfFilter === 'ungrouped' ? '' : 'ungrouped')}
           >Ungrouped</button>
         )}
-        <button className={styles.shelfAdd} onClick={openCreateShelf} title="Create shelf">+</button>
+        {!isGuest && <button className={styles.shelfAdd} onClick={openCreateShelf} title="Create shelf">+</button>}
       </div>
 
       {shelfModal && (
@@ -449,6 +455,11 @@ export function Library() {
                 </div>
               </div>
             </div>
+            <label className={styles.editLabel}>Visibility</label>
+            <select className={styles.editInput} value={shelfVisibility} onChange={e => setShelfVisibility(e.target.value)} style={{ width: 'auto' }}>
+              <option value="internal">Internal (Beasts only)</option>
+              <option value="public">Public (visible to guests)</option>
+            </select>
             <div className={styles.modalActions}>
               <button className={styles.editSave} onClick={saveShelf} disabled={shelfSaving}>{shelfSaving ? 'Saving...' : shelfModal === 'create' ? 'Create' : 'Save'}</button>
               <button className={styles.editCancel} onClick={() => setShelfModal(null)}>Cancel</button>

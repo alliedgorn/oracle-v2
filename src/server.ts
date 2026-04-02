@@ -4961,18 +4961,29 @@ try { sqlite.prepare(`
 try { sqlite.prepare(`ALTER TABLE library ADD COLUMN shelf_id INTEGER REFERENCES library_shelves(id) ON DELETE SET NULL`).run(); } catch { /* exists */ }
 // Index for efficient shelf filtering
 try { sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_library_shelf_id ON library(shelf_id)`).run(); } catch { /* exists */ }
+// T#623: Add visibility to shelves (public/internal, default internal)
+try { sqlite.prepare(`ALTER TABLE library_shelves ADD COLUMN visibility TEXT NOT NULL DEFAULT 'internal'`).run(); } catch { /* exists */ }
 
 // --- Shelf CRUD ---
 
 // GET /api/library/shelves — list all shelves with entry counts
 app.get('/api/library/shelves', (c) => {
-  const shelves = sqlite.prepare(`
+  const isGuest = (c.get as any)('role') === 'guest';
+  const visFilter = c.req.query('visibility');
+  let query = `
     SELECT s.*, COUNT(l.id) as entry_count
     FROM library_shelves s
     LEFT JOIN library l ON l.shelf_id = s.id
-    GROUP BY s.id
-    ORDER BY s.name
-  `).all();
+  `;
+  const params: any[] = [];
+  if (isGuest) {
+    query += ` WHERE s.visibility = 'public'`;
+  } else if (visFilter === 'public' || visFilter === 'internal') {
+    query += ` WHERE s.visibility = ?`;
+    params.push(visFilter);
+  }
+  query += ` GROUP BY s.id ORDER BY s.name`;
+  const shelves = sqlite.prepare(query).all(...params);
   return c.json({ shelves });
 });
 
@@ -4980,10 +4991,12 @@ app.get('/api/library/shelves', (c) => {
 app.get('/api/library/shelves/:id', (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
-  const shelf = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get(id);
+  const isGuest = (c.get as any)('role') === 'guest';
+  const shelf = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get(id) as any;
   if (!shelf) return c.json({ error: 'Shelf not found' }, 404);
+  if (isGuest && shelf.visibility !== 'public') return c.json({ error: 'Shelf not found' }, 404);
   const entryCount = (sqlite.prepare('SELECT COUNT(*) as c FROM library WHERE shelf_id = ?').get(id) as any).c;
-  return c.json({ ...shelf as any, entry_count: entryCount });
+  return c.json({ ...shelf, entry_count: entryCount });
 });
 
 // POST /api/library/shelves — create shelf
@@ -4999,9 +5012,10 @@ app.post('/api/library/shelves', async (c) => {
     if (existing) return c.json({ error: 'A shelf with this name already exists' }, 409);
 
     const now = new Date().toISOString();
+    const visibility = (data.visibility === 'public') ? 'public' : 'internal';
     const result = sqlite.prepare(
-      'INSERT INTO library_shelves (name, description, icon, color, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(data.name.trim(), data.description || null, data.icon || null, data.color || null, author, now, now);
+      'INSERT INTO library_shelves (name, description, icon, color, created_by, created_at, updated_at, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(data.name.trim(), data.description || null, data.icon || null, data.color || null, author, now, now, visibility);
     const shelf = sqlite.prepare('SELECT * FROM library_shelves WHERE id = ?').get((result as any).lastInsertRowid) as any;
     searchIndexUpsert('shelf', shelf.id, shelf.name, shelf.description || '', author, now, '/library');
     return c.json(shelf, 201);
@@ -5018,7 +5032,7 @@ app.patch('/api/library/shelves/:id', async (c) => {
   if (!existing) return c.json({ error: 'Shelf not found' }, 404);
   try {
     const data = await c.req.json();
-    const allowed = ['name', 'description', 'icon', 'color'];
+    const allowed = ['name', 'description', 'icon', 'color', 'visibility'];
     const updates: string[] = [];
     const values: any[] = [];
     for (const field of allowed) {
@@ -5060,6 +5074,7 @@ app.delete('/api/library/shelves/:id', async (c) => {
 
 // GET /api/library — list/search library entries
 app.get('/api/library', (c) => {
+  const isGuest = (c.get as any)('role') === 'guest';
   const q = c.req.query('q');
   const type = c.req.query('type') || c.req.query('category');
   const author = c.req.query('author');
@@ -5067,38 +5082,45 @@ app.get('/api/library', (c) => {
   const limit = Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50);
   const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0);
 
-  let query = 'SELECT * FROM library WHERE 1=1';
+  let query = 'SELECT l.* FROM library l';
   const params: any[] = [];
 
+  // T#623: guests only see entries in public shelves
+  if (isGuest) {
+    query += ' INNER JOIN library_shelves s ON s.id = l.shelf_id AND s.visibility = \'public\'';
+  }
+
+  query += ' WHERE 1=1';
+
   if (q) {
-    query += ' AND (title LIKE ? OR content LIKE ?)';
+    query += ' AND (l.title LIKE ? OR l.content LIKE ?)';
     params.push(`%${q}%`, `%${q}%`);
   }
   if (type) {
-    query += ' AND type = ?';
+    query += ' AND l.type = ?';
     params.push(type);
   }
   if (author) {
-    query += ' AND author = ?';
+    query += ' AND l.author = ?';
     params.push(author);
   }
   if (tag) {
-    query += ' AND tags LIKE ?';
+    query += ' AND l.tags LIKE ?';
     params.push(`%"${tag}"%`);
   }
   const shelfId = c.req.query('shelf_id');
   if (shelfId === 'null') {
-    query += ' AND shelf_id IS NULL';
+    query += ' AND l.shelf_id IS NULL';
   } else if (shelfId) {
-    query += ' AND shelf_id = ?';
+    query += ' AND l.shelf_id = ?';
     params.push(parseInt(shelfId, 10));
   }
 
   // Count
-  const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as count');
+  const countQuery = query.replace('SELECT l.*', 'SELECT COUNT(*) as count');
   const countResult = sqlite.prepare(countQuery).get(...params) as any;
 
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  query += ' ORDER BY l.created_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const rows = sqlite.prepare(query).all(...params) as any[];
@@ -5122,18 +5144,21 @@ app.get('/api/library', (c) => {
 
 // GET /api/library/search — typeahead suggestions for shelves + entries
 app.get('/api/library/search', (c) => {
+  const isGuest = (c.get as any)('role') === 'guest';
   const q = c.req.query('q')?.trim();
   if (!q || q.length < 2) return c.json({ suggestions: [] });
 
   const pattern = `%${q}%`;
 
-  const shelves = sqlite.prepare(
-    'SELECT id, name, icon, color, "shelf" as result_type FROM library_shelves WHERE name LIKE ? LIMIT 5'
-  ).all(pattern) as any[];
+  const shelfQuery = isGuest
+    ? 'SELECT id, name, icon, color, "shelf" as result_type FROM library_shelves WHERE name LIKE ? AND visibility = \'public\' LIMIT 5'
+    : 'SELECT id, name, icon, color, "shelf" as result_type FROM library_shelves WHERE name LIKE ? LIMIT 5';
+  const shelves = sqlite.prepare(shelfQuery).all(pattern) as any[];
 
-  const entries = sqlite.prepare(
-    'SELECT id, title, type, author, shelf_id, "entry" as result_type FROM library WHERE title LIKE ? ORDER BY updated_at DESC LIMIT 8'
-  ).all(pattern) as any[];
+  const entryQuery = isGuest
+    ? 'SELECT l.id, l.title, l.type, l.author, l.shelf_id, "entry" as result_type FROM library l INNER JOIN library_shelves s ON s.id = l.shelf_id AND s.visibility = \'public\' WHERE l.title LIKE ? ORDER BY l.updated_at DESC LIMIT 8'
+    : 'SELECT id, title, type, author, shelf_id, "entry" as result_type FROM library WHERE title LIKE ? ORDER BY updated_at DESC LIMIT 8';
+  const entries = sqlite.prepare(entryQuery).all(pattern) as any[];
 
   return c.json({
     suggestions: [
@@ -5152,8 +5177,16 @@ app.get('/api/library/types', (c) => {
 // GET /api/library/:id — get single entry
 app.get('/api/library/:id', (c) => {
   const id = parseInt(c.req.param('id'), 10);
+  const isGuest = (c.get as any)('role') === 'guest';
   const row = sqlite.prepare('SELECT * FROM library WHERE id = ?').get(id) as any;
   if (!row) return c.json({ error: 'Entry not found' }, 404);
+  // T#623: guests can only see entries in public shelves
+  if (isGuest && row.shelf_id) {
+    const shelf = sqlite.prepare('SELECT visibility FROM library_shelves WHERE id = ?').get(row.shelf_id) as any;
+    if (!shelf || shelf.visibility !== 'public') return c.json({ error: 'Entry not found' }, 404);
+  } else if (isGuest && !row.shelf_id) {
+    return c.json({ error: 'Entry not found' }, 404); // unshelved entries hidden from guests
+  }
 
   return c.json({
     id: row.id,

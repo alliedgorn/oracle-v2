@@ -18,6 +18,9 @@ export interface GuestAccount {
   created_by: string;
   expires_at: string | null;
   disabled_at: string | null;
+  banned_at: string | null;
+  banned_by: string | null;
+  ban_reason: string | null;
   locked_until: string | null;
   failed_attempts: number;
   created_at: string;
@@ -56,6 +59,9 @@ export function initGuestTables(sqlite: Database): void {
       created_by TEXT DEFAULT 'gorn',
       expires_at TEXT,
       disabled_at TEXT,
+      banned_at TEXT,
+      banned_by TEXT,
+      ban_reason TEXT,
       locked_until TEXT,
       failed_attempts INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
@@ -89,6 +95,11 @@ export function initGuestTables(sqlite: Database): void {
   try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN bio TEXT"); } catch { /* exists */ }
   try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN interests TEXT"); } catch { /* exists */ }
   try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN avatar_url TEXT"); } catch { /* exists */ }
+
+  // Add ban fields (T#616, Spec #36)
+  try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN banned_at TEXT"); } catch { /* exists */ }
+  try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN banned_by TEXT"); } catch { /* exists */ }
+  try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN ban_reason TEXT"); } catch { /* exists */ }
 }
 
 /**
@@ -188,9 +199,38 @@ export function deleteGuest(sqlite: Database, id: number): boolean {
 }
 
 /**
+ * Ban a guest account (T#616).
+ */
+export function banGuest(
+  sqlite: Database,
+  id: number,
+  bannedBy: string,
+  reason: string,
+): GuestAccount | null {
+  const now = new Date().toISOString();
+  sqlite.prepare(
+    `UPDATE guest_accounts SET banned_at = ?, banned_by = ?, ban_reason = ?, disabled_at = COALESCE(disabled_at, ?) WHERE id = ?`
+  ).run(now, bannedBy, reason, now, id);
+  return getGuest(sqlite, id);
+}
+
+/**
+ * Unban a guest account (T#616).
+ */
+export function unbanGuest(sqlite: Database, id: number): GuestAccount | null {
+  sqlite.prepare(
+    `UPDATE guest_accounts SET banned_at = NULL, banned_by = NULL, ban_reason = NULL, disabled_at = NULL WHERE id = ?`
+  ).run(id);
+  return getGuest(sqlite, id);
+}
+
+/**
  * Check if a guest account is active (not expired, not disabled, not locked).
  */
 export function isGuestActive(guest: GuestAccount): { active: boolean; reason?: string } {
+  if (guest.banned_at) {
+    return { active: false, reason: 'Account has been banned' };
+  }
   if (guest.disabled_at) {
     return { active: false, reason: 'Account has been disabled' };
   }

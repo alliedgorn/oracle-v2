@@ -296,10 +296,12 @@ export function notifyMentioned(
     }
 
     try {
-      const success = enqueueNotification(name, message);
-      if (success) {
-        notified.push(name);
-      }
+      // T#632: Random 5-30s delay per Beast to prevent pile-on responses
+      const delayMs = (5 + Math.random() * 25) * 1000;
+      setTimeout(() => {
+        try { enqueueNotification(name, message); } catch { /* silent */ }
+      }, delayMs);
+      notified.push(name);
     } catch {
       // queue not available — continue silently
     }

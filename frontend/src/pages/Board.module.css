@@ -489,6 +489,13 @@
   color: var(--text-primary);
 }
 
+.modalTaskId {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 14px;
+  margin-right: 6px;
+}
+
 .modalClose {
   background: none;
   border: none;

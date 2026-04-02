@@ -18,52 +18,56 @@ Library entries have no visibility control. All entries are visible to all authe
 
 ## Design
 
-### 1. Database: Add visibility column
+### 1. Database: Add visibility column to shelves
 
 ```sql
-ALTER TABLE library ADD COLUMN visibility TEXT NOT NULL DEFAULT 'internal';
+ALTER TABLE library_shelves ADD COLUMN visibility TEXT NOT NULL DEFAULT 'internal';
 ```
 
 Values: `public` | `internal` (default `internal`)
 
-All existing entries default to `internal` — no existing content exposed to guests without explicit opt-in.
+All existing shelves default to `internal` — no existing content exposed to guests without explicit opt-in.
+
+**Shelf-only visibility**: a public shelf makes all its entries visible to guests. An internal shelf hides everything. No entry-level visibility flag — if you need to hide an entry, move it to an internal shelf. Simpler mental model: same as a real library.
 
 ### 2. Backend: Filter by visibility
 
-**GET /api/library** — Add visibility filter:
-- If caller is guest (detected via session role): only return `visibility = 'public'` entries
-- If caller is Beast/owner: return all entries, support `?visibility=public|internal` filter param
-- Add `visibility` field to all response objects
+**GET /api/library** — Filter by shelf visibility:
+- If caller is guest: only return entries in shelves where `shelf.visibility = 'public'`
+- If caller is Beast/owner: return all entries
+- Add shelf `visibility` to response where relevant
 
 **GET /api/library/:id** — Single entry:
-- If guest and entry is `internal`: return 404
-- If Beast/owner: return normally with visibility field
+- If guest and entry's shelf is `internal`: return 404
+- If Beast/owner: return normally
 
 **GET /api/library/search** — Typeahead:
-- If guest: only search `public` entries
+- If guest: only search entries in public shelves
 - If Beast/owner: search all
 
 **GET /api/library/shelves** — Shelf list:
-- If guest: only count `public` entries in entry_count
-- Hide shelves with 0 public entries from guests
+- If guest: only return shelves where `visibility = 'public'`
+- If Beast/owner: return all shelves with visibility field, support `?visibility` filter
+
+**POST /api/library/shelves** — Create shelf:
+- Accept optional `visibility` field (default `internal`)
+
+**PATCH /api/library/shelves/:id** — Update shelf:
+- Accept `visibility` field to change shelf visibility
 
 **POST /api/library** — Create entry:
-- Accept optional `visibility` field (default `internal`)
+- No visibility field on entries — visibility determined by shelf
 - Guests cannot create entries (existing behavior, no change)
-
-**PATCH /api/library/:id** — Update entry:
-- Accept `visibility` field to change visibility
-- Only Beast/owner can update (existing behavior)
 
 ### 3. Frontend changes
 
 **App.tsx**: Add `/library` to GUEST_ROUTES set
 
 **Library.tsx**:
-- Add visibility badge on entry cards (public/internal indicator)
-- Add visibility toggle when creating/editing entries (Beast/owner only)
-- If guest: hide edit/create/delete controls, show only public entries
-- Add visibility filter dropdown for Beast/owner view (All / Public / Internal)
+- Add visibility badge on shelf pills (public/internal indicator, Beast/owner only)
+- Add visibility toggle when creating/editing shelves (Beast/owner only)
+- If guest: hide edit/create/delete controls, hide visibility badges, show only public shelves and their entries
+- Add visibility filter dropdown for Beast/owner shelf view (All / Public / Internal)
 
 ### 4. Guest experience
 
@@ -82,20 +86,19 @@ All existing entries default to `internal` — no existing content exposed to gu
 
 ## Migration
 
-- Additive only — new column with default value
-- All existing entries become `internal` (safe default)
+- Additive only — new column on library_shelves with default value
+- All existing shelves become `internal` (safe default)
 - No breaking changes
-- Entries must be explicitly set to `public` by a Beast
+- Shelves must be explicitly set to `public` by a Beast
 
 ## Security Considerations
 
-- Guest filter is enforced server-side, not just frontend
-- Internal entries invisible to guests in all API responses (list, search, single)
-- No information leakage about internal entry existence
-- Shelves with only internal entries hidden from guests
+- Guest filter is enforced server-side via shelf JOIN, not just frontend
+- Internal shelf entries invisible to guests in all API responses (list, search, single)
+- No information leakage about internal shelf/entry existence
+- Visibility badge hidden from guests
 
 ## Non-Goals
 
 - Per-Beast visibility (all Beasts see all entries)
-- Shelf-level visibility (visibility is per-entry)
 - Guest write access to library

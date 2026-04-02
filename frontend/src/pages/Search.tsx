@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import styles from './Search.module.css';
 
 interface SearchResult {
@@ -139,7 +140,7 @@ export function Search() {
                   </div>
                   <div className={styles.resultTitle}>{r.title}</div>
                   {r.snippet && (
-                    <div className={styles.resultSnippet} dangerouslySetInnerHTML={{ __html: r.snippet }} />
+                    <div className={styles.resultSnippet} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(r.snippet, { ALLOWED_TAGS: ['mark'] }) }} />
                   )}
                 </div>
               ))}

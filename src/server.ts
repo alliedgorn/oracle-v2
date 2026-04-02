@@ -5050,6 +5050,7 @@ app.patch('/api/library/shelves/:id', async (c) => {
           if (dup) return c.json({ error: 'A shelf with this name already exists' }, 409);
         }
         if (field === 'visibility') {
+          if (!hasSessionAuth(c)) return c.json({ error: 'Only Gorn can change shelf visibility' }, 403);
           const val = data[field] === 'public' ? 'public' : 'internal';
           updates.push(`${field} = ?`);
           values.push(val);

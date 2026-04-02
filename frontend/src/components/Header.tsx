@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { getGuestDashboard } from '../api/guest';
 import styles from './Header.module.css';
 
 interface QuickResult {
@@ -27,6 +28,13 @@ const topNavItems = [
   { path: '/forge', label: 'Forge' },
 ];
 
+// Guest top nav — flat, no dropdown
+const guestTopNavItems = [
+  { path: '/welcome', label: 'Welcome' },
+  { path: '/pack', label: 'Pack' },
+  { path: '/forum', label: 'Forum' },
+];
+
 // Grouped navigation (dropdowns for secondary items)
 
 const navGroups = [
@@ -36,7 +44,9 @@ const navGroups = [
       {
         label: 'Pack',
         items: [
-          { path: '/', label: 'Pack' },
+          { path: '/pack', label: 'Pack' },
+          { path: '/guests', label: 'Guests' },
+          { path: '/terminal', label: 'Terminal' },
           { path: '/teams', label: 'Teams' },
           { path: '/dms', label: 'DMs' },
           { path: '/risk', label: 'Risk' },
@@ -77,6 +87,9 @@ const navGroups = [
   },
 ];
 
+// Guest grouped nav — none, all items are top-level
+const guestNavGroups: typeof navGroups = [];
+
 interface NavBadges {
   specs: number;
   prowl: number;
@@ -97,7 +110,9 @@ interface HeaderProps {
 export function Header({ onRemoteToggle }: HeaderProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAuthenticated, authEnabled, logout } = useAuth();
+  const { isAuthenticated, authEnabled, isGuest, isLoading: authLoading, guestName, logout } = useAuth();
+  const activeTopNav = isGuest ? guestTopNavItems : topNavItems;
+  const activeNavGroups = isGuest ? guestNavGroups : navGroups;
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [badges, setBadges] = useState<NavBadges>({ specs: 0, prowl: 0, dms: 0, rules: 0 });
@@ -121,15 +136,17 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   });
 
   useEffect(() => {
+    if (authLoading || isGuest) return; // Wait for auth to resolve; guests don't need session stats
     loadSessionStats();
     const interval = setInterval(() => {
       if (document.hidden) return;
       loadSessionStats();
     }, 30000);
     return () => clearInterval(interval);
-  }, [sessionStartTime]);
+  }, [sessionStartTime, isGuest, authLoading]);
 
   async function loadSessionStats() {
+    if (isGuest) return;
     try {
       const response = await fetch(`/api/session/stats?since=${sessionStartTime}`);
       if (response.ok) {
@@ -147,6 +164,15 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   }
 
   const loadBadges = useCallback(async () => {
+    if (authLoading) return;
+    if (isGuest) {
+      // Guest badge: unread DM count
+      try {
+        const data = await getGuestDashboard();
+        setBadges({ specs: 0, prowl: 0, dms: data.dmUnreadTotal || 0, rules: 0 });
+      } catch {}
+      return;
+    }
     try {
       const [specsRes, prowlRes, dmRes, rulesRes] = await Promise.all([
         fetch('/api/specs?status=pending'),
@@ -169,7 +195,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
         rules: rulesData.total || 0,
       });
     } catch {}
-  }, []);
+  }, [isGuest, authLoading]);
 
   // Initial load + refresh on visibility change
   useEffect(() => {
@@ -246,8 +272,9 @@ export function Header({ onRemoteToggle }: HeaderProps) {
   // Focus input when opened
   useEffect(() => { if (searchOpen) searchInputRef.current?.focus(); }, [searchOpen]);
 
-  // Ctrl+K shortcut
+  // Ctrl+K shortcut (owner only — guests have no search)
   useEffect(() => {
+    if (isGuest) return;
     function handleKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setSearchOpen(true); }
     }
@@ -273,9 +300,10 @@ export function Header({ onRemoteToggle }: HeaderProps) {
       </Link>
 
       <nav className={styles.nav}>
-        {topNavItems.map(item => {
+        {activeTopNav.map(item => {
           const badgeCount = item.path === '/specs' ? badges.specs
             : item.path === '/prowl' ? badges.prowl
+            : item.path === '/dms' ? badges.dms
             : 0;
           return (
             <Link
@@ -294,7 +322,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
             </Link>
           );
         })}
-        {navGroups.map(group => (
+        {activeNavGroups.map(group => (
           <div
             key={group.label}
             className={styles.dropdown}
@@ -367,7 +395,7 @@ export function Header({ onRemoteToggle }: HeaderProps) {
         ))}
       </nav>
 
-      <div className={styles.quickSearch} ref={searchRef}>
+      {!isGuest && <div className={styles.quickSearch} ref={searchRef}>
         {searchOpen ? (
           <>
             <input
@@ -404,20 +432,28 @@ export function Header({ onRemoteToggle }: HeaderProps) {
             🔍 <span className={styles.quickSearchHint}>Ctrl+K</span>
           </button>
         )}
-      </div>
+      </div>}
 
       <div className={styles.sessionStats}>
-        <span className={styles.statItem}>
-          Session: {duration}
-        </span>
-        <span className={styles.statItem}>
-          {sessionStats?.searches || 0} searches
-        </span>
-        <span className={styles.statItem}>
-          {sessionStats?.learnings || 0} learnings
-        </span>
+        {isGuest ? (
+          <span className={styles.statItem} style={{ color: 'var(--text-secondary)' }}>
+            Guest: {guestName || 'Visitor'}
+          </span>
+        ) : (
+          <>
+            <span className={styles.statItem}>
+              Session: {duration}
+            </span>
+            <span className={styles.statItem}>
+              {sessionStats?.searches || 0} searches
+            </span>
+            <span className={styles.statItem}>
+              {sessionStats?.learnings || 0} learnings
+            </span>
+          </>
+        )}
         <span className={styles.dividerSmall} />
-        {onRemoteToggle && (
+        {!isGuest && onRemoteToggle && (
           <button onClick={onRemoteToggle} className={styles.settingsLink} title="Remote Control" style={{ position: 'relative' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
@@ -426,15 +462,19 @@ export function Header({ onRemoteToggle }: HeaderProps) {
             {badges.dms > 0 && <span className={styles.remoteBadge}>{badges.dms > 99 ? '99+' : badges.dms}</span>}
           </button>
         )}
-<button onClick={() => openChat('sable', 'Sable')} className={styles.settingsLink} title="Chat with Sable">
-          <img src="/api/forum/file/e8ba613f-e2cd-47b7-a385-a05b6b2ee0ae.jpg" alt="Sable" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }} />
-        </button>
-        <Link to="/settings" className={styles.settingsLink} title="Settings">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </Link>
+        {!isGuest && (
+          <button onClick={() => openChat('sable', 'Sable')} className={styles.settingsLink} title="Chat with Sable">
+            <img src="/api/f/e8ba613f-e2cd-47b7-a385-a05b6b2ee0ae.jpg" alt="Sable" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }} />
+          </button>
+        )}
+        {true && (
+          <Link to="/settings" className={styles.settingsLink} title="Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </Link>
+        )}
         {authEnabled && isAuthenticated && (
           <button onClick={logout} className={styles.logoutButton} title="Sign out">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

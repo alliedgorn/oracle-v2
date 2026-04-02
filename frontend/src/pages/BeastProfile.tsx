@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { getGuestPack } from '../api/guest';
 import styles from './BeastProfile.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
 
@@ -27,6 +29,10 @@ const API_BASE = '/api';
 export function BeastProfile() {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
+  const { isGuest } = useAuth();
+  const fetchPack = () => isGuest
+    ? getGuestPack()
+    : fetch(`${API_BASE}/pack`).then(r => r.json());
   const [beast, setBeast] = useState<Beast | null>(null);
   const [allBeasts, setAllBeasts] = useState<Beast[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,8 +56,7 @@ export function BeastProfile() {
     setLoading(true);
 
     // Fetch pack data (includes online status)
-    fetch(`${API_BASE}/pack`)
-      .then(res => res.json())
+    fetchPack()
       .then((data: PackData) => {
         setAllBeasts(data.beasts);
         const found = data.beasts.find(b => b.name === name.toLowerCase());
@@ -66,8 +71,7 @@ export function BeastProfile() {
     if (!name) return;
     const interval = setInterval(() => {
       if (document.hidden) return;
-      fetch(`${API_BASE}/pack`)
-        .then(res => res.json())
+      fetchPack()
         .then((data: PackData) => {
           setAllBeasts(data.beasts);
           const found = data.beasts.find(b => b.name === name.toLowerCase());
@@ -121,8 +125,7 @@ export function BeastProfile() {
         }),
       });
       // Refresh
-      const res = await fetch(`${API_BASE}/pack`);
-      const data: PackData = await res.json();
+      const data: PackData = await fetchPack();
       const found = data.beasts.find(b => b.name === beastName);
       if (found) setBeast(found);
       setEditing(false);
@@ -248,15 +251,17 @@ export function BeastProfile() {
 
           {/* Actions */}
           <div className={styles.actions}>
-            <button className={styles.editButton} onClick={() => {
-              setEditBio(beast.bio || '');
-              setEditInterests(interests.join(', '));
-              setEditRole(beast.role || '');
-              setEditSex(beast.sex || '');
-              setEditing(true);
-            }}>
-              Edit Profile
-            </button>
+            {!isGuest && (
+              <button className={styles.editButton} onClick={() => {
+                setEditBio(beast.bio || '');
+                setEditInterests(interests.join(', '));
+                setEditRole(beast.role || '');
+                setEditSex(beast.sex || '');
+                setEditing(true);
+              }}>
+                Edit Profile
+              </button>
+            )}
             <Link to={`/pack`} className={styles.actionButton}>
               View in Pack
             </Link>

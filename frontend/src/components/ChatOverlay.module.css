@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   bottom: 0;
-  right: 16px;
+  right: 340px;
   width: 380px;
   height: min(500px, calc(100vh - 60px));
   background: var(--bg-card);
@@ -319,6 +319,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.rateLimitNotice {
+  padding: 8px 12px;
+  background: rgba(255, 180, 50, 0.15);
+  color: #f0b040;
+  font-size: 12px;
+  text-align: center;
+  border-top: 1px solid rgba(255, 180, 50, 0.2);
 }
 
 @media (max-width: 480px) {

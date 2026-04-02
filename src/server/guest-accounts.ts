@@ -12,6 +12,9 @@ export interface GuestAccount {
   username: string;
   password_hash: string;
   display_name: string | null;
+  bio: string | null;
+  interests: string | null;
+  avatar_url: string | null;
   created_by: string;
   expires_at: string | null;
   disabled_at: string | null;
@@ -22,6 +25,7 @@ export interface GuestAccount {
   failed_attempts: number;
   created_at: string;
   last_login_at: string | null;
+  last_active_at: string | null;
 }
 
 export interface GuestAuditEntry {
@@ -73,12 +77,24 @@ export function initGuestTables(sqlite: Database): void {
     );
   `);
 
+  // Add last_active_at column if not present
+  try {
+    sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN last_active_at TEXT");
+  } catch {
+    // Column already exists
+  }
+
   // Add visibility column to forum_threads if not present (PR3)
   try {
     sqlite.exec("ALTER TABLE forum_threads ADD COLUMN visibility TEXT NOT NULL DEFAULT 'internal'");
   } catch {
     // Column already exists
   }
+
+  // Add profile fields for guest settings (T#574, Spec #35)
+  try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN bio TEXT"); } catch { /* exists */ }
+  try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN interests TEXT"); } catch { /* exists */ }
+  try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN avatar_url TEXT"); } catch { /* exists */ }
 
   // Add ban fields (T#616, Spec #36)
   try { sqlite.exec("ALTER TABLE guest_accounts ADD COLUMN banned_at TEXT"); } catch { /* exists */ }
@@ -258,9 +274,81 @@ export function recordSuccessfulLogin(sqlite: Database, guestId: number): void {
 }
 
 /**
+ * Update a guest's profile (self-service, T#574).
+ */
+export function updateGuestProfile(
+  sqlite: Database,
+  id: number,
+  updates: { display_name?: string; bio?: string; interests?: string; avatar_url?: string },
+): GuestAccount | null {
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  if (updates.display_name !== undefined) {
+    fields.push('display_name = ?');
+    values.push(updates.display_name);
+  }
+  if (updates.bio !== undefined) {
+    fields.push('bio = ?');
+    values.push(updates.bio);
+  }
+  if (updates.interests !== undefined) {
+    fields.push('interests = ?');
+    values.push(updates.interests);
+  }
+  if (updates.avatar_url !== undefined) {
+    fields.push('avatar_url = ?');
+    values.push(updates.avatar_url);
+  }
+
+  if (fields.length === 0) return getGuest(sqlite, id);
+
+  values.push(id);
+  sqlite.prepare(`UPDATE guest_accounts SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  return getGuest(sqlite, id);
+}
+
+/**
+ * Reset a guest's password (by ID, owner action).
+ */
+export async function resetGuestPassword(sqlite: Database, id: number, newPassword: string): Promise<boolean> {
+  if (!newPassword || newPassword.length < 8) {
+    throw new Error('Password must be at least 8 characters');
+  }
+  const hash = await Bun.password.hash(newPassword, { algorithm: 'bcrypt', cost: 12 });
+  const result = sqlite.prepare('UPDATE guest_accounts SET password_hash = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?')
+    .run(hash, id);
+  return result.changes > 0;
+}
+
+/**
+ * Change a guest's password (self-service, requires current password).
+ */
+export async function changeGuestPassword(
+  sqlite: Database,
+  guest: GuestAccount,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ success: boolean; error?: string }> {
+  const valid = await Bun.password.verify(currentPassword, guest.password_hash);
+  if (!valid) {
+    return { success: false, error: 'Current password is incorrect' };
+  }
+  if (!newPassword || newPassword.length < 8) {
+    return { success: false, error: 'New password must be at least 8 characters' };
+  }
+  const hash = await Bun.password.hash(newPassword, { algorithm: 'bcrypt', cost: 12 });
+  sqlite.prepare('UPDATE guest_accounts SET password_hash = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?')
+    .run(hash, guest.id);
+  return { success: true };
+}
+
+/**
  * Log a guest API action to the audit log.
  */
 export function logGuestAction(sqlite: Database, guestId: number, endpoint: string, method: string): void {
   sqlite.prepare('INSERT INTO guest_audit_log (guest_id, endpoint, method) VALUES (?, ?, ?)')
     .run(guestId, endpoint, method);
+  sqlite.prepare('UPDATE guest_accounts SET last_active_at = datetime(\'now\') WHERE id = ?')
+    .run(guestId);
 }

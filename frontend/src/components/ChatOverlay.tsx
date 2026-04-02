@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { autolinkIds } from '../utils/autolink';
 import { FileUpload } from './FileUpload';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { getGuestPack, getGuestDmConversation, sendGuestDm } from '../api/guest';
 import styles from './ChatOverlay.module.css';
 
 const API_BASE = '/api';
@@ -24,6 +25,8 @@ interface ChatOverlayProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   onClose: () => void;
+  isGuest?: boolean;
+  guestName?: string | null;
 }
 
 // Stable references to prevent ReactMarkdown re-parsing
@@ -35,12 +38,13 @@ const mdComponentsStable = {
 };
 
 // Memoized message component — only re-renders when content/read_at changes
-const ChatMessage = memo(function ChatMessage({ msg, onImgClick }: {
+const ChatMessage = memo(function ChatMessage({ msg, onImgClick, isSent }: {
   msg: Message;
   onImgClick: (src: string) => void;
+  isSent: boolean;
 }) {
   return (
-    <div className={`${styles.message} ${msg.sender === 'gorn' ? styles.sent : styles.received}`}>
+    <div className={`${styles.message} ${isSent ? styles.sent : styles.received}`}>
       <div className={styles.msgContent} onClick={(e) => {
         const target = e.target as HTMLElement;
         if (target.tagName === 'IMG') {
@@ -55,13 +59,13 @@ const ChatMessage = memo(function ChatMessage({ msg, onImgClick }: {
       </div>
       <span className={styles.msgTime}>
         {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-        {msg.sender === 'gorn' && (
-          <span className={styles.readStatus}>{msg.read_at ? ' ✓✓' : ' ✓'}</span>
+        {isSent && (
+          <span className={styles.readStatus}>{msg.read_at ? ' \u2713\u2713' : ' \u2713'}</span>
         )}
       </span>
     </div>
   );
-}, (prev, next) => prev.msg.id === next.msg.id && prev.msg.read_at === next.msg.read_at && prev.msg.message === next.msg.message);
+}, (prev, next) => prev.msg.id === next.msg.id && prev.msg.read_at === next.msg.read_at && prev.msg.message === next.msg.message && prev.isSent === next.isSent);
 
 const EMOJI_GROUPS = [
   { label: 'Smileys', emojis: ['😊', '😂', '🤣', '😍', '🥰', '😘', '😎', '🤔', '😅', '😢', '😤', '🙄', '😴', '🤗', '😇', '🫡', '🫠'] },
@@ -70,7 +74,8 @@ const EMOJI_GROUPS = [
   { label: 'Objects', emojis: ['🔥', '❤️', '⭐', '💯', '🎉', '🏆', '🚀', '💡', '⚡', '🎯', '🛡️', '⚠️', '✅', '❌', '🏋️', '🔨', '⚓', '🪨', '🗿', '🌋', '💣', '☄️', '🪐', '🥩', '🍖'] },
 ];
 
-export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollapse, onClose }: ChatOverlayProps) {
+export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollapse, onClose, isGuest = false, guestName = null }: ChatOverlayProps) {
+  const sender = isGuest ? (guestName || 'guest') : 'gorn';
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -101,7 +106,10 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
 
   // Fetch beast avatar
   useEffect(() => {
-    fetch(`${API_BASE}/pack`).then(r => r.json()).then(data => {
+    const promise = isGuest
+      ? getGuestPack()
+      : fetch(`${API_BASE}/pack`).then(r => r.json());
+    promise.then(data => {
       const beasts = Array.isArray(data) ? data : (data.beasts || data.pack || []);
       const beast = beasts.find((b: any) => b.name === beastName);
       if (beast?.avatarUrl) setAvatarUrl(beast.avatarUrl);
@@ -124,19 +132,21 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
 
   // Mark messages as read
   const markAsRead = useCallback(async () => {
+    if (isGuest) return; // Guest DMs don't have read tracking
     try { await fetch(`${API_BASE}/dm/gorn/${beastName}/read`, { method: 'PATCH' }); } catch {}
-  }, [beastName]);
+  }, [beastName, isGuest]);
 
   // Load latest messages (for initial load + polling)
   const loadMessages = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&order=desc`);
-      const data = await res.json();
+      const data = isGuest
+        ? await getGuestDmConversation(sender, beastName, PAGE_SIZE, 0, 'desc')
+        : await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&order=desc`).then(r => r.json());
       const msgs = (data.messages || []).reverse();
       setMessages(msgs);
       setHasMore((data.total || msgs.length) > msgs.length);
     } catch {}
-  }, [beastName]);
+  }, [beastName, sender, isGuest]);
 
   // Load older messages when scrolling to top
   const offsetRef = useRef(PAGE_SIZE);
@@ -146,8 +156,9 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
     const el = messagesContainerRef.current;
     const prevScrollHeight = el?.scrollHeight || 0;
     try {
-      const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&offset=${offsetRef.current}&order=desc`);
-      const data = await res.json();
+      const data = isGuest
+        ? await getGuestDmConversation(sender, beastName, PAGE_SIZE, offsetRef.current, 'desc')
+        : await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=${PAGE_SIZE}&offset=${offsetRef.current}&order=desc`).then(r => r.json());
       const older = (data.messages || []).reverse();
       if (older.length === 0) {
         setHasMore(false);
@@ -199,20 +210,20 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
       }
       // Mark as read only when new messages appear from the beast
       const latestMsg = messages[messages.length - 1];
-      if (latestMsg.sender !== 'gorn') markAsRead();
+      if (latestMsg.sender !== sender) markAsRead();
       lastMsgIdRef.current = latestId;
     }
     prevCountRef.current = messages.length;
   }, [messages, initialLoad]);
 
   // WebSocket: append new messages when DM arrives (no full reload)
+  // Skip for guests — use polling instead to avoid rapid refetch loops
   const appendNewMessages = useCallback(async () => {
+    if (isGuest) return;
     try {
       wasNearBottomRef.current = isNearBottom();
-      // Mark as read immediately so badge clears fast
       markAsRead();
-      const res = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=5&order=desc`);
-      const data = await res.json();
+      const data = await fetch(`${API_BASE}/dm/gorn/${beastName}?limit=5&order=desc`).then(r => r.json());
       const latest = (data.messages || []).reverse();
       setMessages(prev => {
         const existingIds = new Set(prev.map(m => m.id));
@@ -221,15 +232,26 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
         return [...prev, ...newMsgs];
       });
     } catch {}
-  }, [beastName, markAsRead]);
+  }, [beastName, markAsRead, isGuest]);
 
   useWebSocket('new_dm', appendNewMessages);
 
   // Refetch on WS reconnect (T#534 — stale overlay after long break)
   const handleReconnect = useCallback(() => {
+    if (isGuest) return;
     loadMessages().then(() => markAsRead());
-  }, [loadMessages, markAsRead]);
+  }, [loadMessages, markAsRead, isGuest]);
   useWebSocket('ws_reconnect', handleReconnect);
+
+  // Guest polling — check for new messages every 3s (replaces WS for guests)
+  useEffect(() => {
+    if (!isGuest || collapsed) return;
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      loadMessages();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isGuest, collapsed, loadMessages]);
 
   // Refetch on tab visibility change (T#534 — covers cases where WS didn't drop)
   useEffect(() => {
@@ -281,11 +303,15 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
     setLoading(true);
     userSentRef.current = true;
     try {
-      await fetch(`${API_BASE}/dm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: 'gorn', to: beastName, message: newMessage }),
-      });
+      if (isGuest) {
+        await sendGuestDm(beastName, newMessage);
+      } else {
+        await fetch(`${API_BASE}/dm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: 'gorn', to: beastName, message: newMessage }),
+        });
+      }
       setNewMessage('');
       await loadMessages();
     } finally { setLoading(false); }
@@ -318,7 +344,7 @@ export function ChatOverlay({ beastName, displayName, collapsed, onToggleCollaps
               <div className={styles.empty}>No messages yet. Say hello!</div>
             )}
             {messages.map(msg => (
-              <ChatMessage key={msg.id} msg={msg} onImgClick={handleImgClick} />
+              <ChatMessage key={msg.id} msg={msg} onImgClick={handleImgClick} isSent={isGuest ? (msg.sender === sender || msg.sender.includes('[Guest]')) : msg.sender === 'gorn'} />
             ))}
             <div ref={messagesEndRef} />
           </div>

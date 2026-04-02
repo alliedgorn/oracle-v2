@@ -145,6 +145,14 @@ a {
   overflow-y: auto;
 }
 
+.app-sidebar-guest {
+  width: 340px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  height: calc(100vh - 53px);
+}
+
 @media (max-width: 768px) {
   #root {
     height: auto;

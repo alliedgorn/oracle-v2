@@ -30,6 +30,7 @@ interface Task {
   due_date: string | null;
   type: string;
   reviewer: string | null;
+  risk_level: string;
   created_at: string;
   updated_at: string;
 }
@@ -61,6 +62,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const PRIORITIES = ['critical', 'high', 'medium', 'low'] as const;
+const RISK_LEVELS = ['high', 'medium', 'low'] as const;
 
 const BEAST_COLORS: Record<string, string> = {
   karo: '#d97706', zaghnal: '#7c3aed', gnarl: '#059669', bertus: '#dc2626',
@@ -90,6 +92,7 @@ export function Board() {
   const [newPriority, setNewPriority] = useState('medium');
   const [newAssignee, setNewAssignee] = useState('');
   const [newReviewer, setNewReviewer] = useState('');
+  const [newRiskLevel, setNewRiskLevel] = useState('medium');
   const [newProjectId, setNewProjectId] = useState('');
   const [newStatus, setNewStatus] = useState('todo');
 
@@ -264,13 +267,14 @@ export function Board() {
         priority: newPriority,
         assigned_to: newAssignee || null,
         reviewer: newReviewer || null,
+        risk_level: newRiskLevel,
         project_id: newProjectId ? parseInt(newProjectId, 10) : null,
         status: newStatus,
         created_by: 'gorn',
       }),
     });
     setNewTitle(''); setNewDesc(''); setNewPriority('medium');
-    setNewAssignee(''); setNewReviewer(''); setNewProjectId(''); setNewStatus('todo');
+    setNewAssignee(''); setNewReviewer(''); setNewRiskLevel('medium'); setNewProjectId(''); setNewStatus('todo');
     setShowNewTask(false);
     loadBoard();
   }
@@ -484,6 +488,9 @@ export function Board() {
               {beasts.map(b => <option key={b.name} value={b.name}>{b.displayName}</option>)}
               <option value="gorn">Gorn</option>
             </select>
+            <select value={newRiskLevel} onChange={e => setNewRiskLevel(e.target.value)} className={styles.projectSelect}>
+              {RISK_LEVELS.map(r => <option key={r} value={r}>Risk: {r}</option>)}
+            </select>
             <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)} className={styles.projectSelect} required>
               <option value="" disabled>Select Project</option>
               {board.projects.filter(p => p.status === 'active').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -648,6 +655,12 @@ export function Board() {
                   <label>Reviewer</label>
                   <span>{selectedTask.reviewer || 'None'}</span>
                 </div>
+                <div className={styles.metaRow}>
+                  <label>Risk Level</label>
+                  <span className={`${styles.priorityBadge} ${styles[`priority${(selectedTask.risk_level || 'medium') === 'high' ? 'High' : (selectedTask.risk_level || 'medium') === 'low' ? 'Low' : 'Medium'}`]}`}>
+                    {selectedTask.risk_level || 'medium'}
+                  </span>
+                </div>
                 {selectedTask.project_name && (
                   <div className={styles.metaRow}>
                     <label>Project</label>
@@ -732,6 +745,11 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
         {task.type && task.type !== 'task' && (
           <span className={`${styles.typeBadge} ${styles[`type${task.type.charAt(0).toUpperCase() + task.type.slice(1)}`]}`}>
             {task.type}
+          </span>
+        )}
+        {task.risk_level && task.risk_level !== 'medium' && (
+          <span className={styles.riskBadge} title={`Risk: ${task.risk_level}`}>
+            {task.risk_level === 'high' ? '⚠' : '▽'} {task.risk_level}
           </span>
         )}
         {task.assigned_to && (

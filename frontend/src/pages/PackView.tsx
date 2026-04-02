@@ -6,6 +6,8 @@ import '@xterm/xterm/css/xterm.css';
 import styles from './PackView.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
 import { BeastCard } from '../components/BeastCard';
+import { useAuth } from '../contexts/AuthContext';
+import { getGuestPack } from '../api/guest';
 
 interface Beast {
   name: string;
@@ -23,6 +25,7 @@ interface Beast {
 const API_BASE = '/api';
 
 export function PackView() {
+  const { isGuest, guestName } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [beasts, setBeasts] = useState<Beast[]>([]);
   const [selected, setSelected] = useState<Beast | null>(null);
@@ -40,8 +43,9 @@ export function PackView() {
   // Load beast list with online status — only update state if data changed
   const loadPack = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/pack`);
-      const data = await res.json();
+      const data = isGuest
+        ? await getGuestPack()
+        : await fetch(`${API_BASE}/pack`).then(r => r.json());
       const beastList = data.beasts || [];
       // Only update state if beast data actually changed (avoids unnecessary re-renders)
       const json = JSON.stringify(beastList.map((b: Beast) => `${b.name}:${b.status}:${b.online}`));
@@ -228,18 +232,29 @@ export function PackView() {
 
   // Stable callback maps so BeastCard memo works (no new function refs on each render)
   const beastCallbacks = useMemo(() => {
-    const map: Record<string, { onClick: () => void; onProfileClick: (e: React.MouseEvent) => void }> = {};
+    const map: Record<string, { onClick?: () => void; onProfileClick: (e: React.MouseEvent) => void }> = {};
     for (const beast of beasts) {
       map[beast.name] = {
-        onClick: () => selectBeast(beast),
+        // Guests can't open terminals
+        onClick: isGuest ? undefined : () => selectBeast(beast),
         onProfileClick: (e: React.MouseEvent) => { e.stopPropagation(); window.location.href = `/beast/${beast.name}`; },
       };
     }
     return map;
-  }, [beasts, selectBeast]);
+  }, [beasts, selectBeast, isGuest]);
+
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   return (
     <div className={styles.container}>
+      {/* Guest Welcome Banner */}
+      {isGuest && !bannerDismissed && (
+        <div className={styles.guestBanner}>
+          <span>Welcome to The Den{guestName ? `, ${guestName}` : ''}! You're visiting as a guest. Chat with the pack on the forum or send a direct message.</span>
+          <button className={styles.guestBannerClose} onClick={() => setBannerDismissed(true)}>×</button>
+        </div>
+      )}
+
       {/* Beast Grid */}
       <div className={styles.packGrid}>
         <h2 className={styles.title}>The Den</h2>
@@ -248,7 +263,7 @@ export function PackView() {
             <BeastCard
               key={beast.name}
               {...beast}
-              selected={selected?.name === beast.name}
+              selected={!isGuest && selected?.name === beast.name}
               onClick={beastCallbacks[beast.name]?.onClick}
               onProfileClick={beastCallbacks[beast.name]?.onProfileClick}
             />
@@ -256,8 +271,8 @@ export function PackView() {
         </div>
       </div>
 
-      {/* Terminal Viewer */}
-      <div className={styles.terminalPanel}>
+      {/* Terminal Viewer — hidden for guests */}
+      {!isGuest && <div className={styles.terminalPanel}>
         {selected ? (
           <>
             <div className={styles.terminalHeader}>
@@ -313,7 +328,7 @@ export function PackView() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

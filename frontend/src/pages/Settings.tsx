@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { getSettings, updateSettings, type Settings as SettingsType } from '../api/oracle';
 import { useAuth } from '../contexts/AuthContext';
+import { GuestSettings } from './GuestSettings';
 import styles from './Settings.module.css';
 
 export function Settings() {
+  const { isGuest } = useAuth();
+  if (isGuest) return <GuestSettings />;
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -503,6 +506,215 @@ export function Settings() {
           </button>
         </div>
       </div>
+
+      <TokenManagement />
+    </div>
+  );
+}
+
+// ============================================================================
+// API Token Management
+// ============================================================================
+
+interface Token {
+  id: number;
+  beast: string;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_by: string;
+  active: boolean;
+}
+
+const BEASTS = ['karo', 'gnarl', 'zaghnal', 'bertus', 'leonard', 'mara', 'rax', 'pip', 'nyx', 'dex', 'flint', 'quill', 'snap', 'vigil', 'talon', 'sable'];
+
+function TokenManagement() {
+  const [tokens, setTokens] = useState<Token[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [selectedBeast, setSelectedBeast] = useState('');
+  const [newToken, setNewToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function loadTokens() {
+    try {
+      const res = await fetch('/api/auth/tokens');
+      if (res.ok) {
+        const data = await res.json();
+        setTokens(data.tokens || []);
+      }
+    } catch {}
+    setLoading(false);
+  }
+
+  useEffect(() => { loadTokens(); }, []);
+
+  async function handleGenerate() {
+    if (!selectedBeast || generating) return;
+    setGenerating(true);
+    setNewToken(null);
+    try {
+      const res = await fetch('/api/auth/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ beast: selectedBeast }),
+      });
+      const data = await res.json();
+      if (data.token) {
+        setNewToken(data.token);
+        setSelectedBeast('');
+        loadTokens();
+      }
+    } catch {}
+    setGenerating(false);
+  }
+
+  async function handleRevoke(id: number) {
+    if (!confirm('Revoke this token? The beast will lose API access.')) return;
+    await fetch(`/api/auth/tokens/${id}`, { method: 'DELETE' });
+    loadTokens();
+  }
+
+  function copyToken() {
+    if (newToken) {
+      navigator.clipboard.writeText(newToken);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
+  const activeTokens = tokens.filter(t => t.active);
+  const revokedTokens = tokens.filter(t => !t.active);
+
+  return (
+    <div className={styles.section}>
+      <h2 className={styles.sectionTitle}>API Tokens</h2>
+      <p className={styles.sectionDescription}>Generate Bearer tokens for Beasts to authenticate with the API.</p>
+
+      {/* Generate new token */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+        <select
+          value={selectedBeast}
+          onChange={e => setSelectedBeast(e.target.value)}
+          className={styles.button}
+          style={{ padding: '8px 12px', fontSize: 13, minWidth: 140 }}
+        >
+          <option value="" disabled>Select Beast</option>
+          {BEASTS.map(b => (
+            <option key={b} value={b}>{b.charAt(0).toUpperCase() + b.slice(1)}</option>
+          ))}
+        </select>
+        <button
+          onClick={handleGenerate}
+          disabled={!selectedBeast || generating}
+          className={styles.button}
+          style={{ padding: '8px 16px', fontSize: 13 }}
+        >
+          {generating ? 'Generating...' : 'Generate Token'}
+        </button>
+      </div>
+
+      {/* Show newly generated token */}
+      {newToken && (
+        <div style={{
+          background: 'rgba(63, 185, 80, 0.08)',
+          border: '1px solid rgba(63, 185, 80, 0.3)',
+          borderRadius: 8,
+          padding: '12px 16px',
+          marginBottom: 16,
+          fontSize: 13,
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 8, color: '#3fb950' }}>Token generated — copy it now, it won't be shown again:</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <code style={{
+              flex: 1,
+              background: 'var(--bg-primary)',
+              padding: '8px 12px',
+              borderRadius: 6,
+              fontSize: 12,
+              fontFamily: 'var(--font-mono)',
+              wordBreak: 'break-all',
+              color: 'var(--text-primary)',
+            }}>
+              {newToken}
+            </code>
+            <button onClick={copyToken} className={styles.button} style={{ padding: '8px 12px', fontSize: 12, flexShrink: 0 }}>
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Active tokens */}
+      {loading ? (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading...</p>
+      ) : activeTokens.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, fontStyle: 'italic' }}>No active tokens.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {activeTokens.map(t => (
+            <div key={t.id} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 14px',
+              background: 'var(--bg-card)',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              fontSize: 13,
+            }}>
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)', minWidth: 80 }}>
+                {t.beast.charAt(0).toUpperCase() + t.beast.slice(1)}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                Created {new Date(t.created_at).toLocaleDateString()}
+              </span>
+              {t.last_used_at && (
+                <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                  Last used {new Date(t.last_used_at).toLocaleDateString()}
+                </span>
+              )}
+              <span style={{ marginLeft: 'auto' }}>
+                <button
+                  onClick={() => handleRevoke(t.id)}
+                  className={styles.dangerButton}
+                  style={{ padding: '4px 10px', fontSize: 11 }}
+                >
+                  Revoke
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Revoked tokens (collapsed) */}
+      {revokedTokens.length > 0 && (
+        <details style={{ marginTop: 16 }}>
+          <summary style={{ color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}>
+            {revokedTokens.length} revoked token{revokedTokens.length !== 1 ? 's' : ''}
+          </summary>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+            {revokedTokens.map(t => (
+              <div key={t.id} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '6px 14px',
+                opacity: 0.5,
+                fontSize: 12,
+                color: 'var(--text-muted)',
+              }}>
+                <span style={{ fontWeight: 600, minWidth: 80 }}>
+                  {t.beast.charAt(0).toUpperCase() + t.beast.slice(1)}
+                </span>
+                <span>Revoked {t.revoked_at ? new Date(t.revoked_at).toLocaleDateString() : ''}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

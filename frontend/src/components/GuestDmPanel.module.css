@@ -1,0 +1,368 @@
+/* GuestDmPanel — right sidebar for guest DMs, mirrors RemotePanel layout */
+.panel {
+  width: 320px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s ease, opacity 0.2s ease;
+}
+
+.panel.collapsed {
+  width: 0;
+  opacity: 0;
+  border-left: none;
+}
+
+.collapseToggle {
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 40px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: color 0.2s;
+  z-index: 10;
+}
+
+.collapseToggle:hover {
+  color: var(--accent);
+}
+
+.panelInner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panelHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  font-family: var(--font-heading);
+  color: var(--text-primary);
+}
+
+.closeBtn {
+  display: none;
+}
+
+/* Beast list */
+.beastList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.beastItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--beast-color, var(--text-muted));
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 4px;
+}
+
+.beastItem:hover {
+  background: var(--bg-card);
+}
+
+.beastAvatar {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.avatarImg {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatarEmoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+}
+
+.dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-secondary);
+}
+
+.dotOnline { background: #3fb950; }
+.dotOffline { background: #4b5563; }
+
+.beastInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.beastName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dmIcon {
+  font-size: 14px;
+  opacity: 0.3;
+}
+
+.beastItem:hover .dmIcon {
+  opacity: 0.8;
+}
+
+/* Chat view */
+.chatView {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.backBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 8px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.backBtn:hover {
+  color: var(--text-primary);
+}
+
+.chatHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chatAvatarImg {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.chatAvatarEmoji {
+  font-size: 20px;
+}
+
+.chatName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Messages */
+.messageList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.emptyChat {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 32px 0;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+}
+
+.messageMe {
+  align-self: flex-end;
+}
+
+.messageThem {
+  align-self: flex-start;
+}
+
+.messageBubble {
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.messageMe .messageBubble {
+  background: var(--accent, #d4943a);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.messageThem .messageBubble {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-bottom-left-radius: 4px;
+}
+
+.messageTime {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  padding: 0 4px;
+}
+
+.messageMe .messageTime {
+  text-align: right;
+}
+
+/* Input bar */
+.inputBar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+.input {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.sendBtn {
+  padding: 8px 14px;
+  background: var(--accent);
+  border: none;
+  color: white;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.sendBtn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.sendBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Backdrop — mobile only */
+.backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 150;
+    touch-action: none;
+  }
+
+  .panel {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 70vh;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    z-index: 151;
+    transform: translateY(100%);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transition: transform 0.2s ease;
+  }
+
+  .panel.mobileOpen {
+    transform: translateY(0);
+  }
+
+  .panel.collapsed {
+    width: 100%;
+    opacity: 1;
+    border-left: none;
+  }
+
+  .collapseToggle {
+    display: none;
+  }
+
+  .closeBtn {
+    display: block;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+
+  .closeBtn:hover {
+    color: var(--text-primary);
+  }
+}

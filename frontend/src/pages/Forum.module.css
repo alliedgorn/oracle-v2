@@ -94,6 +94,51 @@
   color: var(--text-primary);
 }
 
+.filterRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 0 12px;
+  margin-bottom: 4px;
+}
+
+.filterSelect {
+  flex: 1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.filterSelect:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.sortSelect {
+  flex: 1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.sortSelect:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .searchResults {
   margin-bottom: 12px;
   max-height: 300px;
@@ -177,6 +222,34 @@
   background: var(--bg-secondary);
   color: var(--text-muted);
   text-transform: capitalize;
+}
+
+/* Thread visibility pills */
+.visibilityPublic {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.visibilityInternal {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+}
+
+/* Guest badge on messages */
+.guestBadge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(156, 163, 175, 0.2);
+  color: #9ca3af;
+  margin-left: 6px;
+  font-weight: 500;
 }
 
 .pinnedThread {
@@ -380,6 +453,42 @@
   border-color: var(--accent);
 }
 
+.newThreadOptions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.visibilityToggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.visibilityBtn {
+  padding: 4px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.visibilityBtn:first-child {
+  border-right: 1px solid var(--border);
+}
+
+.visibilityBtnActive {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 .form .textarea {
   width: 100%;
   box-sizing: border-box;
@@ -468,6 +577,28 @@
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.threadCreator {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.deleteThreadBtn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.deleteThreadBtn:hover {
+  border-color: #ef4444;
+  color: #ef4444;
 }
 
 .statusBadge {

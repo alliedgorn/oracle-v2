@@ -86,7 +86,7 @@ import {
 
 
 import { enqueueNotification } from './notify.ts';
-import { rbacMiddleware } from './server/rbac.ts';
+import { rbacMiddleware, getGuestAllowlist } from './server/rbac.ts';
 import type { Role } from './server/rbac.ts';
 import {
   initGuestTables,
@@ -102,6 +102,9 @@ import {
   recordFailedAttempt,
   recordSuccessfulLogin,
   logGuestAction,
+  resetGuestPassword,
+  changeGuestPassword,
+  updateGuestProfile,
 } from './server/guest-accounts.ts';
 import {
   scanForInjection,
@@ -380,11 +383,14 @@ function isAuthenticated(c: Context): boolean {
   const authEnabled = getSetting('auth_enabled') === 'true';
   if (!authEnabled) return true; // Auth not enabled, everyone is "authenticated"
 
+  // Check session cookie first — guest sessions take priority over local bypass
+  const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
+  if (sessionCookie && verifySessionToken(sessionCookie)) return true;
+
   const localBypass = getSetting('auth_local_bypass') !== 'false'; // Default true
   if (localBypass && isLocalNetwork(c)) return true;
 
-  const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
-  return verifySessionToken(sessionCookie || '');
+  return false;
 }
 
 // Initialize guest account tables and safety migrations (Spec #32)
@@ -403,7 +409,6 @@ app.use('/api/*', async (c, next) => {
     '/api/auth/status',
     '/api/auth/login',
     '/api/health',
-    '/api/help'
   ];
   if (publicPaths.some(p => path === p)) {
     return next();
@@ -602,28 +607,79 @@ app.get('/api/auth/status', (c) => {
   const isLocal = isLocalNetwork(c);
   const authenticated = isAuthenticated(c);
 
+  // Parse session token to get role info for frontend nav scoping
+  const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
+  const session = parseSessionToken(sessionCookie || '');
+  const role = session.valid ? (session.role || 'owner') : (authenticated ? 'owner' : undefined);
+  const guestUsername = session.valid && session.role === 'guest' ? session.data : undefined;
+
+  // Strip internal auth details from guest responses (Bertus security review)
+  if (role === 'guest') {
+    // Look up display name and check account status
+    let guestDisplayName = guestUsername;
+    let guestActive = true;
+    if (guestUsername) {
+      const guest = getGuestByUsername(sqlite, guestUsername);
+      if (guest) {
+        if (guest.display_name) guestDisplayName = guest.display_name;
+        const status = isGuestActive(guest);
+        guestActive = status.active;
+      } else {
+        guestActive = false;
+      }
+    }
+    return c.json({
+      authenticated: guestActive,
+      authEnabled,
+      role: guestActive ? role : undefined,
+      guestName: guestActive ? guestDisplayName : undefined,
+      guestUsername: guestActive ? guestUsername : undefined,
+    });
+  }
+
   return c.json({
     authenticated,
     authEnabled,
     hasPassword,
     localBypass,
-    isLocal
+    isLocal,
+    role,
   });
 });
 
 // Login
 // Login rate limiting: max 5 attempts per IP per 15 minutes
-const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
+// Persisted to SQLite so restarts don't reset the window (T#594)
 const LOGIN_RATE_LIMIT = 5;
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
+
+sqlite.exec(`CREATE TABLE IF NOT EXISTS login_rate_limits (
+  ip TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  first_attempt_at INTEGER NOT NULL
+)`);
+
+function getRateLimit(ip: string): { count: number; firstAttempt: number } | null {
+  const row = sqlite.prepare('SELECT count, first_attempt_at FROM login_rate_limits WHERE ip = ?').get(ip) as any;
+  if (!row) return null;
+  return { count: row.count, firstAttempt: row.first_attempt_at };
+}
+
+function setRateLimit(ip: string, count: number, firstAttempt: number): void {
+  sqlite.prepare('INSERT OR REPLACE INTO login_rate_limits (ip, count, first_attempt_at) VALUES (?, ?, ?)').run(ip, count, firstAttempt);
+}
+
+function clearRateLimit(ip: string): void {
+  sqlite.prepare('DELETE FROM login_rate_limits WHERE ip = ?').run(ip);
+}
 
 app.post('/api/auth/login', async (c) => {
   const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
   const now = Date.now();
-  const attempts = loginAttempts.get(ip);
+  const attempts = getRateLimit(ip);
   if (attempts) {
     if (now - attempts.firstAttempt > LOGIN_RATE_WINDOW_MS) {
-      loginAttempts.delete(ip);
+      clearRateLimit(ip);
     } else if (attempts.count >= LOGIN_RATE_LIMIT) {
       const retryAfter = Math.ceil((attempts.firstAttempt + LOGIN_RATE_WINDOW_MS - now) / 1000);
       logSecurityEvent({
@@ -657,9 +713,9 @@ app.post('/api/auth/login', async (c) => {
     const validPassword = await Bun.password.verify(password, hashToVerify);
 
     if (!guest || !validPassword) {
-      const entry = loginAttempts.get(ip) || { count: 0, firstAttempt: now };
-      entry.count++;
-      loginAttempts.set(ip, entry);
+      const existing = getRateLimit(ip);
+      const newCount = (existing?.count || 0) + 1;
+      setRateLimit(ip, newCount, existing?.firstAttempt || now);
       if (guest) recordFailedAttempt(sqlite, guest);
       logSecurityEvent({
         eventType: 'auth_failure',
@@ -667,7 +723,7 @@ app.post('/api/auth/login', async (c) => {
         actor: username,
         actorType: 'guest',
         target: '/api/auth/login',
-        details: { attempt_number: (loginAttempts.get(ip)?.count || 1), auth_type: 'guest' },
+        details: { attempt_number: newCount, auth_type: 'guest' },
         ipSource: ip,
         requestId: (c.get as any)('requestId'),
       });
@@ -681,7 +737,7 @@ app.post('/api/auth/login', async (c) => {
     }
 
     // Successful guest login
-    loginAttempts.delete(ip);
+    clearRateLimit(ip);
     recordSuccessfulLogin(sqlite, guest.id);
     logSecurityEvent({
       eventType: 'auth_success',
@@ -715,15 +771,15 @@ app.post('/api/auth/login', async (c) => {
   // Verify password using Bun's built-in password functions
   const valid = await Bun.password.verify(password, storedHash);
   if (!valid) {
-    const entry = loginAttempts.get(ip) || { count: 0, firstAttempt: now };
-    entry.count++;
-    loginAttempts.set(ip, entry);
+    const existing = getRateLimit(ip);
+    const newCount = (existing?.count || 0) + 1;
+    setRateLimit(ip, newCount, existing?.firstAttempt || now);
     logSecurityEvent({
       eventType: 'auth_failure',
       severity: 'warning',
       actorType: 'unknown',
       target: '/api/auth/login',
-      details: { attempt_number: entry.count },
+      details: { attempt_number: newCount },
       ipSource: ip,
       requestId: (c.get as any)('requestId'),
     });
@@ -731,7 +787,7 @@ app.post('/api/auth/login', async (c) => {
   }
 
   // Successful owner login clears rate limit
-  loginAttempts.delete(ip);
+  clearRateLimit(ip);
   logSecurityEvent({
     eventType: 'auth_success',
     severity: 'info',
@@ -807,8 +863,26 @@ app.get('/api/guests', (c) => {
     return c.json({ error: 'Guest account management requires owner session' }, 403);
   }
 
-  const guests = listGuests(sqlite);
-  return c.json({ guests });
+  const guests = listGuests(sqlite).map(g => {
+    const displayName = g.display_name || g.username;
+    const guestTag = `[guest] ${displayName}`.toLowerCase();
+    const msgCount = (sqlite.prepare('SELECT COUNT(*) as c FROM dm_messages WHERE LOWER(sender) = ?').get(guestTag) as any)?.c || 0;
+    const threadCount = (sqlite.prepare("SELECT COUNT(DISTINCT thread_id) as c FROM forum_messages WHERE LOWER(author) LIKE '%[guest]%' AND LOWER(author) LIKE ?").get(`%${g.username}%`) as any)?.c || 0;
+    // Use WS presence map for real-time status; fall back to last_active_at DB window
+    const presence = webPresence.get(g.username);
+    const nowMs = Date.now();
+    const online = presence
+      ? (nowMs - presence.lastSeen) < WEB_PRESENCE_TIMEOUT_MS
+      : (g.last_active_at ? (nowMs - new Date(g.last_active_at + 'Z').getTime()) < 5 * 60 * 1000 : false);
+    return {
+      ...g,
+      online,
+      message_count: msgCount,
+      threads_participated: threadCount,
+    };
+  });
+  const onlineCount = guests.filter(g => g.online).length;
+  return c.json({ guests, total: guests.length, online_count: onlineCount });
 });
 
 // Get single guest account
@@ -822,7 +896,23 @@ app.get('/api/guests/:id', (c) => {
   if (!guest) return c.json({ error: 'Guest not found' }, 404);
 
   const { password_hash, ...safe } = guest;
-  return c.json(safe);
+
+  // Activity summary: count DMs sent and forum threads participated (T#570)
+  const guestTag = `[Guest] ${guest.display_name || guest.username}`;
+  const guestTagAlt = `[Guest] ${guest.username}`;
+  const dmCount = (sqlite.prepare(
+    `SELECT COUNT(*) as count FROM dm_messages WHERE sender = ? OR sender = ?`
+  ).get(guestTag, guestTagAlt) as any)?.count || 0;
+  const threadCount = (sqlite.prepare(
+    `SELECT COUNT(DISTINCT thread_id) as count FROM forum_messages WHERE author = ? OR author = ?`
+  ).get(guestTag, guestTagAlt) as any)?.count || 0;
+
+  const GUEST_ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
+  const online = guest.last_active_at
+    ? (Date.now() - new Date(guest.last_active_at + 'Z').getTime()) < GUEST_ONLINE_THRESHOLD_MS
+    : false;
+
+  return c.json({ ...safe, online, message_count: dmCount, threads_participated: threadCount });
 });
 
 // Update guest account (expiry, disable, display name)
@@ -845,15 +935,44 @@ app.patch('/api/guests/:id', (c) => {
   });
 });
 
-// Delete guest account
+// Owner reset guest password (T#566)
+app.patch('/api/guests/:id/password', async (c) => {
+  if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
+    return c.json({ error: 'Guest account management requires owner session' }, 403);
+  }
+
+  const id = parseInt(c.req.param('id'), 10);
+  const guest = getGuest(sqlite, id);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
+  const body = await c.req.json();
+  if (!body.password) return c.json({ error: 'password required' }, 400);
+
+  try {
+    await resetGuestPassword(sqlite, id, body.password);
+    return c.json({ success: true });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+// Delete guest account (T#570 — with cascade notification)
 app.delete('/api/guests/:id', (c) => {
   if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
     return c.json({ error: 'Guest account management requires owner session' }, 403);
   }
 
   const id = parseInt(c.req.param('id'), 10);
+  const guest = getGuest(sqlite, id);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
   const deleted = deleteGuest(sqlite, id);
-  if (!deleted) return c.json({ error: 'Guest not found' }, 404);
+  if (!deleted) return c.json({ error: 'Failed to delete guest' }, 500);
+
+  // Broadcast session invalidation — connected clients will see this and redirect to login
+  // Note: HMAC-signed cookies cannot be server-side revoked, but guest login check
+  // will fail since the account no longer exists in the DB
+  wsBroadcast('guest_deleted', { username: guest.username });
 
   return c.json({ success: true });
 });
@@ -1356,7 +1475,8 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/files', desc: 'List all uploaded files', params: '?limit=50&offset=0' },
     { method: 'GET', path: '/api/files/stats', desc: 'File storage statistics', params: null },
     { method: 'GET', path: '/api/files/:id', desc: 'Get file metadata', params: null },
-    { method: 'GET', path: '/api/files/:id/download', desc: 'Download file', params: null },
+    { method: 'GET', path: '/api/files/:id/download', desc: 'Download file by ID (owner/beast)', params: null },
+    { method: 'GET', path: '/api/f/:hash', desc: 'Download file by hash (public, unguessable)', params: null },
     { method: 'DELETE', path: '/api/files/:id', desc: 'Delete file', params: null },
     // Specs (SDD)
     { method: 'GET', path: '/api/specs', desc: 'List all specs', params: '?status=&author=' },
@@ -1447,11 +1567,23 @@ const HELP_ENDPOINTS = [
 
 // API Help — machine-readable endpoint catalog for Beast self-correction
 app.get('/api/help', (c) => {
+  const role = (c.get as any)('role') as Role | undefined;
   const filter = c.req.query('q')?.toLowerCase();
 
+  // Guests see only their allowed endpoints; owner/beast see everything
   let result = HELP_ENDPOINTS;
-  if (filter) {
+  if (role === 'guest') {
+    const allowlist = getGuestAllowlist();
     result = HELP_ENDPOINTS.filter(e =>
+      allowlist.some(a =>
+        (a.method === '*' || a.method === e.method) &&
+        new RegExp(a.pattern).test(e.path)
+      )
+    );
+  }
+
+  if (filter) {
+    result = result.filter(e =>
       e.path.toLowerCase().includes(filter) ||
       e.desc.toLowerCase().includes(filter) ||
       e.method.toLowerCase().includes(filter)
@@ -1842,6 +1974,594 @@ app.get('/api/read', async (c) => {
 app.get('/api/dashboard', (c) => c.json(handleDashboardSummary()));
 app.get('/api/dashboard/summary', (c) => c.json(handleDashboardSummary()));
 
+// Guest dashboard — public data only (T#558, Spec #32)
+app.get('/api/guest/dashboard', (c) => {
+  const guestUsername = (c.get as any)('guestUsername') as string | undefined;
+
+  // Public threads (visibility = public)
+  const publicThreads = sqlite.prepare(
+    "SELECT id, title, status, created_at, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE visibility = 'public' ORDER BY updated_at DESC LIMIT 10"
+  ).all() as any[];
+
+  // Pack info (Beast profiles)
+  const beasts = sqlite.prepare(
+    "SELECT name, display_name, animal, role, bio, theme_color FROM beast_profiles ORDER BY name"
+  ).all() as any[];
+
+  // Guest DM summary (own conversations only) with unread counts
+  let dmSummary: any[] = [];
+  let dmUnreadTotal = 0;
+  if (guestUsername) {
+    const guestDisplayName = getGuestDisplayName(guestUsername);
+    const guestTag = `[Guest] ${guestDisplayName}`;
+    const convos = sqlite.prepare(
+      "SELECT c.id, CASE WHEN participant1 = ? THEN participant2 ELSE participant1 END as other, (SELECT content FROM dm_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message, (SELECT created_at FROM dm_messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_at FROM dm_conversations c WHERE participant1 = ? OR participant2 = ? ORDER BY last_at DESC LIMIT 10"
+    ).all(guestTag, guestTag, guestTag) as any[];
+    for (const conv of convos) {
+      const unread = (sqlite.prepare(
+        "SELECT COUNT(*) as c FROM dm_messages WHERE conversation_id = ? AND LOWER(sender) != ? AND read_at IS NULL"
+      ).get(conv.id, guestTag.toLowerCase()) as any)?.c || 0;
+      dmSummary.push({ other: conv.other, last_message: conv.last_message, last_at: conv.last_at, unread });
+      dmUnreadTotal += unread;
+    }
+  }
+
+  return c.json({
+    publicThreads: publicThreads.map(t => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      message_count: t.msg_count || 0,
+      created_at: new Date(t.created_at).toISOString(),
+    })),
+    pack: beasts.map(b => ({
+      name: b.name,
+      displayName: b.display_name,
+      animal: b.animal,
+      role: b.role,
+      bio: b.bio,
+      themeColor: b.theme_color,
+    })),
+    dmSummary,
+    dmUnreadTotal,
+  });
+});
+
+// Guest threads — public only (T#559)
+app.get('/api/guest/threads', (c) => {
+  const limit = parseInt(c.req.query('limit') || '50');
+  const offset = parseInt(c.req.query('offset') || '0');
+
+  const rows = sqlite.prepare(
+    "SELECT *, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE visibility = 'public' AND deleted_at IS NULL ORDER BY COALESCE(pinned, 0) DESC, updated_at DESC LIMIT ? OFFSET ?"
+  ).all(limit, offset) as any[];
+
+  const total = (sqlite.prepare("SELECT COUNT(*) as total FROM forum_threads WHERE visibility = 'public' AND deleted_at IS NULL").get() as any)?.total || 0;
+
+  return c.json({
+    threads: rows.map(t => ({
+      id: t.id,
+      title: t.title,
+      status: t.status || 'active',
+      category: t.category || 'discussion',
+      pinned: !!(t.pinned),
+      message_count: t.msg_count || 0,
+      created_at: new Date(t.created_at).toISOString(),
+      visibility: 'public',
+    })),
+    total,
+  });
+});
+
+// Guest thread detail — public only (T#559)
+app.get('/api/guest/thread/:id', (c) => {
+  const threadId = parseInt(c.req.param('id'), 10);
+  if (isNaN(threadId)) return c.json({ error: 'Invalid thread ID' }, 400);
+
+  const threadRow = sqlite.prepare('SELECT * FROM forum_threads WHERE id = ? AND visibility = ?').get(threadId, 'public') as any;
+  if (!threadRow) return c.json({ error: 'Thread not found' }, 404);
+
+  const rawLimit = c.req.query('limit');
+  const parsedLimit = rawLimit ? parseInt(rawLimit, 10) : NaN;
+  const limit = rawLimit ? (isNaN(parsedLimit) || parsedLimit < 1 ? 50 : parsedLimit) : undefined;
+  const rawOffset = parseInt(c.req.query('offset') || '0', 10);
+  const offset = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset;
+  const order = (c.req.query('order') === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc';
+
+  const threadData = getFullThread(threadId, limit, offset, order);
+  if (!threadData) return c.json({ error: 'Thread not found' }, 404);
+
+  return c.json({
+    thread: {
+      id: threadData.thread.id,
+      title: threadData.thread.title,
+      status: threadData.thread.status,
+      created_at: new Date(threadData.thread.createdAt).toISOString(),
+    },
+    messages: threadData.messages.map(m => {
+      const raw = sqlite.prepare('SELECT reply_to_id FROM forum_messages WHERE id = ?').get(m.id) as any;
+      const reactionRows = sqlite.prepare(
+        'SELECT emoji, GROUP_CONCAT(beast_name) as beasts, COUNT(*) as count FROM forum_reactions WHERE message_id = ? GROUP BY emoji'
+      ).all(m.id) as any[];
+      // Resolve guest avatar URL from guest_accounts (T#602)
+      let authorAvatarUrl: string | null = null;
+      if (m.author?.startsWith('[Guest]')) {
+        const guestName = m.author.replace('[Guest] ', '').replace('[Guest]', '').trim();
+        const guest = sqlite.prepare('SELECT avatar_url FROM guest_accounts WHERE LOWER(display_name) = ? OR LOWER(username) = ?').get(guestName.toLowerCase(), guestName.toLowerCase()) as any;
+        authorAvatarUrl = guest?.avatar_url || null;
+      }
+      return {
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        author: m.author,
+        author_avatar_url: authorAvatarUrl,
+        reply_to_id: raw?.reply_to_id || null,
+        principles_found: m.principlesFound,
+        patterns_found: m.patternsFound,
+        created_at: new Date(m.createdAt).toISOString(),
+        reactions: reactionRows.map(r => ({ emoji: r.emoji, beasts: r.beasts.split(','), count: r.count })),
+      };
+    }),
+    total: threadData.total,
+  });
+});
+
+// Resolve guest display name from username
+function getGuestDisplayName(username: string): string {
+  const guest = sqlite.query('SELECT display_name FROM guest_accounts WHERE username = ?').get(username) as any;
+  return guest?.display_name || username;
+}
+
+// Guest post message — public threads only (T#559)
+app.post('/api/guest/thread/:id/message', async (c) => {
+  const threadId = parseInt(c.req.param('id'), 10);
+  if (isNaN(threadId)) return c.json({ error: 'Invalid thread ID' }, 400);
+
+  const threadRow = sqlite.prepare('SELECT visibility FROM forum_threads WHERE id = ?').get(threadId) as any;
+  if (!threadRow || threadRow.visibility !== 'public') {
+    return c.json({ error: 'Thread not found' }, 404);
+  }
+
+  const guestUsername = (c.get as any)('guestUsername') || 'guest';
+  const data = await c.req.json();
+  if (!data.message) return c.json({ error: 'Message required' }, 400);
+
+  // Rate limiting
+  const rateCheck = checkGuestPostRate(guestUsername);
+  if (!rateCheck.allowed) return c.json({ error: rateCheck.error }, 429);
+
+  // Content length
+  const lengthCheck = checkGuestContentLength(data.message, 'post');
+  if (!lengthCheck.allowed) return c.json({ error: lengthCheck.error }, 400);
+
+  // Injection scan
+  const scan = scanForInjection(data.message);
+  if (scan.flagged) {
+    logSecurityEvent({
+      eventType: 'suspicious_content',
+      severity: 'warning',
+      actor: guestUsername,
+      actorType: 'guest',
+      target: `/api/guest/thread/${threadId}/message`,
+      details: { patterns: scan.patterns, content_preview: data.message.slice(0, 200) },
+      ipSource: c.req.header('x-real-ip') || 'local',
+      requestId: (c.get as any)('requestId'),
+    });
+  }
+
+  const guestDisplayName = getGuestDisplayName(guestUsername);
+  const author = `[Guest] ${guestDisplayName}`;
+  const result = await withRetry(() => handleThreadMessage({
+    message: data.message,
+    threadId,
+    role: 'human',
+    author,
+  }));
+
+  if (result.messageId) {
+    sqlite.prepare('UPDATE forum_messages SET author_role = ? WHERE id = ?').run('guest', result.messageId);
+    if (data.reply_to_id) {
+      sqlite.prepare('UPDATE forum_messages SET reply_to_id = ? WHERE id = ?').run(data.reply_to_id, result.messageId);
+    }
+  }
+
+  wsBroadcast('new_message', { thread_id: threadId, message_id: result.messageId, author });
+  return c.json({ thread_id: threadId, message_id: result.messageId }, 201);
+});
+
+// Guest create thread — new public thread (T#561)
+app.post('/api/guest/thread', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername') || 'guest';
+  const data = await c.req.json();
+  if (!data.message) return c.json({ error: 'Message required' }, 400);
+  if (!data.title) return c.json({ error: 'Title required for new thread' }, 400);
+
+  // Rate limiting
+  const rateCheck = checkGuestPostRate(guestUsername);
+  if (!rateCheck.allowed) return c.json({ error: rateCheck.error }, 429);
+
+  // Content length
+  const lengthCheck = checkGuestContentLength(data.message, 'post');
+  if (!lengthCheck.allowed) return c.json({ error: lengthCheck.error }, 400);
+
+  // Injection scan
+  const scan = scanForInjection(data.message + ' ' + data.title);
+  if (scan.flagged) {
+    logSecurityEvent({
+      eventType: 'suspicious_content',
+      severity: 'warning',
+      actor: guestUsername,
+      actorType: 'guest',
+      target: '/api/guest/thread',
+      details: { patterns: scan.patterns, content_preview: (data.title + ': ' + data.message).slice(0, 200) },
+      ipSource: c.req.header('x-real-ip') || 'local',
+      requestId: (c.get as any)('requestId'),
+    });
+  }
+
+  const guestDisplayName = getGuestDisplayName(guestUsername);
+  const author = `[Guest] ${guestDisplayName}`;
+  const result = await withRetry(() => handleThreadMessage({
+    message: data.message,
+    title: data.title,
+    role: 'human',
+    author,
+  }));
+
+  // Force visibility to public and set author_role
+  if (result.threadId) {
+    sqlite.prepare('UPDATE forum_threads SET visibility = ? WHERE id = ?').run('public', result.threadId);
+  }
+  if (result.messageId) {
+    sqlite.prepare('UPDATE forum_messages SET author_role = ? WHERE id = ?').run('guest', result.messageId);
+  }
+
+  wsBroadcast('new_message', { thread_id: result.threadId, message_id: result.messageId, author });
+  return c.json({ thread_id: result.threadId, message_id: result.messageId }, 201);
+});
+
+// Guest pack — Beast profiles (T#559)
+app.get('/api/guest/pack', (c) => {
+  const beasts = sqlite.prepare(
+    "SELECT name, display_name, animal, role, bio, theme_color, avatar_url, interests, sex, birthdate FROM beast_profiles ORDER BY name"
+  ).all() as any[];
+
+  const { tmuxStatus } = getTmuxStatus();
+
+  return c.json({
+    beasts: beasts.map(b => {
+      const sessionName = b.name.charAt(0).toUpperCase() + b.name.slice(1);
+      const rawStatus = tmuxStatus.get(sessionName.toLowerCase()) || tmuxStatus.get(b.name) || 'offline';
+      return {
+        name: b.name,
+        displayName: b.display_name,
+        animal: b.animal,
+        role: b.role,
+        bio: b.bio,
+        themeColor: b.theme_color,
+        avatarUrl: normalizeAvatarUrl(b.avatar_url),
+        interests: b.interests,
+        sex: b.sex,
+        birthdate: b.birthdate,
+        online: rawStatus === 'processing' || rawStatus === 'idle' || rawStatus === 'waiting',
+        status: rawStatus,
+        sessionName,
+      };
+    }),
+  });
+});
+
+// Guest DM — read own conversations (T#559)
+app.get('/api/guest/dm/:from/:to', (c) => {
+  const fromParam = c.req.param('from');
+  const toParam = c.req.param('to');
+  const guestUsername = (c.get as any)('guestUsername');
+  const guestDisplayName = getGuestDisplayName(guestUsername);
+  const guestTag = `[Guest] ${guestDisplayName}`;
+
+  // Guests can only read their own conversations
+  if (fromParam !== guestTag && toParam !== guestTag && fromParam !== guestUsername && toParam !== guestUsername) {
+    return c.json({ error: 'Access denied' }, 403);
+  }
+
+  // Normalize: if from/to is the username, replace with [Guest] tag (DB format)
+  const from = (fromParam === guestUsername || fromParam === guestDisplayName) ? guestTag : fromParam;
+  const to = (toParam === guestUsername || toParam === guestDisplayName) ? guestTag : toParam;
+
+  const limit = parseInt(c.req.query('limit') || '50');
+  const offset = parseInt(c.req.query('offset') || '0');
+  const order = c.req.query('order') || 'asc';
+  const data = getDmMessages(from, to, limit, offset, order as 'asc' | 'desc');
+
+  // Map [Guest] tags back to username in response
+  const normalizeGuestSender = (s: string) => {
+    if (s.toLowerCase() === guestTag.toLowerCase()) return guestUsername;
+    return s;
+  };
+
+  return c.json({
+    conversation_id: data.conversationId,
+    participants: data.participants.map(p => normalizeGuestSender(p)),
+    messages: data.messages.map(m => ({
+      id: m.id,
+      sender: normalizeGuestSender(m.sender),
+      message: m.content,
+      read_at: m.readAt ? new Date(m.readAt).toISOString() : null,
+      created_at: new Date(m.createdAt).toISOString(),
+    })),
+    total: data.total,
+  });
+});
+
+// Guest DM — send message (T#559)
+app.post('/api/guest/dm', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername') || 'guest';
+  const data = await c.req.json();
+  if (!data.to || !data.message) return c.json({ error: 'to and message required' }, 400);
+
+  // Validate recipient exists — guests can only DM beasts or gorn
+  const recipientBeast = getBeastProfile(data.to);
+  const isOwner = data.to.toLowerCase() === 'gorn';
+  if (!recipientBeast && !isOwner) {
+    return c.json({ error: `Recipient "${data.to}" not found. Must be a valid beast name.` }, 404);
+  }
+
+  // Rate limiting
+  const rateCheck = checkGuestDmRate(guestUsername);
+  if (!rateCheck.allowed) return c.json({ error: rateCheck.error }, 429);
+
+  // Content length
+  const lengthCheck = checkGuestContentLength(data.message, 'dm');
+  if (!lengthCheck.allowed) return c.json({ error: lengthCheck.error }, 400);
+
+  // Injection scan
+  const scan = scanForInjection(data.message);
+  if (scan.flagged) {
+    logSecurityEvent({
+      eventType: 'suspicious_content',
+      severity: 'warning',
+      actor: guestUsername,
+      actorType: 'guest',
+      target: `/api/guest/dm/${data.to}`,
+      details: { patterns: scan.patterns, content_preview: data.message.slice(0, 200) },
+      ipSource: c.req.header('x-real-ip') || 'local',
+      requestId: (c.get as any)('requestId'),
+    });
+  }
+
+  const guestDisplayName = getGuestDisplayName(guestUsername);
+  const guestTag = `[Guest] ${guestDisplayName}`;
+  const result = await withRetry(() => sendDm(guestTag, data.to, data.message, `[Guest] ${guestUsername}`));
+
+  if (result.messageId) {
+    try {
+      sqlite.prepare('UPDATE dm_messages SET author_role = ? WHERE id = ?').run('guest', result.messageId);
+    } catch { /* column may not exist */ }
+  }
+
+  wsBroadcast('new_dm', { conversation_id: result.conversationId });
+  return c.json({ conversation_id: result.conversationId, message_id: result.messageId }, 201);
+});
+
+// Guest self-service password change (T#566, Spec #35 alias)
+// Password change rate limiting: max 5 attempts per guest per 15 minutes (T#581, Talon finding)
+const passwordChangeAttempts = new Map<string, { count: number; firstAttempt: number }>();
+const PASSWORD_CHANGE_RATE_LIMIT = 5;
+const PASSWORD_CHANGE_RATE_WINDOW_MS = 15 * 60 * 1000;
+
+app.post('/api/guest/change-password', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername');
+  if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
+
+  const guest = getGuestByUsername(sqlite, guestUsername);
+  if (!guest) return c.json({ error: 'Guest account not found' }, 404);
+
+  // Rate limit by guest username
+  const now = Date.now();
+  const attempts = passwordChangeAttempts.get(guestUsername);
+  if (attempts) {
+    if (now - attempts.firstAttempt > PASSWORD_CHANGE_RATE_WINDOW_MS) {
+      passwordChangeAttempts.delete(guestUsername);
+    } else if (attempts.count >= PASSWORD_CHANGE_RATE_LIMIT) {
+      const retryAfter = Math.ceil((attempts.firstAttempt + PASSWORD_CHANGE_RATE_WINDOW_MS - now) / 1000);
+      logSecurityEvent({
+        eventType: 'rate_limited',
+        severity: 'warning',
+        actor: guestUsername,
+        actorType: 'guest',
+        target: '/api/guest/change-password',
+        details: { attempts: attempts.count, window_ms: PASSWORD_CHANGE_RATE_WINDOW_MS },
+        ipSource: c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1',
+        requestId: (c.get as any)('requestId'),
+      });
+      return c.json({ error: `Too many password change attempts. Try again in ${Math.ceil(retryAfter / 60)} minutes.` }, 429);
+    }
+  }
+
+  const body = await c.req.json();
+  if (!body.current_password || !body.new_password) {
+    return c.json({ error: 'current_password and new_password required' }, 400);
+  }
+
+  const result = await changeGuestPassword(sqlite, guest, body.current_password, body.new_password);
+  if (!result.success) {
+    // Track failed attempts
+    const existing = passwordChangeAttempts.get(guestUsername);
+    if (existing) {
+      existing.count++;
+    } else {
+      passwordChangeAttempts.set(guestUsername, { count: 1, firstAttempt: now });
+    }
+    return c.json({ error: result.error }, 400);
+  }
+
+  // Success clears rate limit
+  passwordChangeAttempts.delete(guestUsername);
+  return c.json({ success: true });
+});
+
+// Legacy alias (T#566) — same rate limiting as /api/guest/change-password (T#581)
+app.post('/api/guest/reset-password', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername');
+  if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
+
+  const guest = getGuestByUsername(sqlite, guestUsername);
+  if (!guest) return c.json({ error: 'Guest account not found' }, 404);
+
+  const now = Date.now();
+  const attempts = passwordChangeAttempts.get(guestUsername);
+  if (attempts) {
+    if (now - attempts.firstAttempt > PASSWORD_CHANGE_RATE_WINDOW_MS) {
+      passwordChangeAttempts.delete(guestUsername);
+    } else if (attempts.count >= PASSWORD_CHANGE_RATE_LIMIT) {
+      const retryAfter = Math.ceil((attempts.firstAttempt + PASSWORD_CHANGE_RATE_WINDOW_MS - now) / 1000);
+      logSecurityEvent({
+        eventType: 'rate_limited',
+        severity: 'warning',
+        actor: guestUsername,
+        actorType: 'guest',
+        target: '/api/guest/reset-password',
+        details: { attempts: attempts.count, window_ms: PASSWORD_CHANGE_RATE_WINDOW_MS },
+        ipSource: c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1',
+        requestId: (c.get as any)('requestId'),
+      });
+      return c.json({ error: `Too many password change attempts. Try again in ${Math.ceil(retryAfter / 60)} minutes.` }, 429);
+    }
+  }
+
+  const body = await c.req.json();
+  if (!body.current_password || !body.new_password) {
+    return c.json({ error: 'current_password and new_password required' }, 400);
+  }
+
+  const result = await changeGuestPassword(sqlite, guest, body.current_password, body.new_password);
+  if (!result.success) {
+    const existing = passwordChangeAttempts.get(guestUsername);
+    if (existing) { existing.count++; } else { passwordChangeAttempts.set(guestUsername, { count: 1, firstAttempt: now }); }
+    return c.json({ error: result.error }, 400);
+  }
+
+  passwordChangeAttempts.delete(guestUsername);
+  return c.json({ success: true });
+});
+
+// Guest profile — own info (T#559, expanded T#574)
+app.get('/api/guest/profile', (c) => {
+  const guestUsername = (c.get as any)('guestUsername');
+  if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
+
+  const guest = getGuestByUsername(sqlite, guestUsername);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
+  return c.json({
+    username: guest.username,
+    display_name: guest.display_name,
+    bio: guest.bio || null,
+    interests: guest.interests || null,
+    avatar_url: guest.avatar_url || null,
+    created_at: guest.created_at,
+    expires_at: guest.expires_at,
+  });
+});
+
+// Guest self-service profile update (T#574, Spec #35)
+app.patch('/api/guest/profile', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername');
+  if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
+
+  const guest = getGuestByUsername(sqlite, guestUsername);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
+  const body = await c.req.json();
+
+  // Validate display_name length
+  if (body.display_name !== undefined && (!body.display_name || body.display_name.length > 50)) {
+    return c.json({ error: 'Display name must be 1-50 characters' }, 400);
+  }
+  // Block reserved names (Beast names, Gorn, Admin) — T#597
+  if (body.display_name !== undefined) {
+    const RESERVED_NAMES = new Set([
+      'karo','rax','mara','leonard','bertus','gnarl','zaghnal','pip','nyx','dex',
+      'flint','quill','snap','vigil','talon','sable','gorn','admin','administrator','system',
+    ]);
+    if (RESERVED_NAMES.has(body.display_name.toLowerCase().trim())) {
+      return c.json({ error: 'That display name is reserved' }, 400);
+    }
+  }
+  // Validate bio length
+  if (body.bio !== undefined && body.bio.length > 500) {
+    return c.json({ error: 'Bio must be under 500 characters' }, 400);
+  }
+  // Validate interests length
+  if (body.interests !== undefined && body.interests.length > 300) {
+    return c.json({ error: 'Interests must be under 300 characters' }, 400);
+  }
+
+  // avatar_url is only set via /api/guest/avatar upload — never from PATCH body (T#580, Talon finding)
+  const updated = updateGuestProfile(sqlite, guest.id, {
+    display_name: body.display_name,
+    bio: body.bio,
+    interests: body.interests,
+  });
+
+  if (!updated) return c.json({ error: 'Update failed' }, 500);
+
+  return c.json({
+    username: updated.username,
+    display_name: updated.display_name,
+    bio: updated.bio || null,
+    interests: updated.interests || null,
+    avatar_url: updated.avatar_url || null,
+  });
+});
+
+// Guest avatar upload (T#574, Spec #35)
+app.post('/api/guest/avatar', async (c) => {
+  const guestUsername = (c.get as any)('guestUsername');
+  if (!guestUsername) return c.json({ error: 'Not a guest session' }, 400);
+
+  const guest = getGuestByUsername(sqlite, guestUsername);
+  if (!guest) return c.json({ error: 'Guest not found' }, 404);
+
+  const formData = await c.req.formData();
+  const file = formData.get('file') as File | null;
+  if (!file) return c.json({ error: 'No file provided' }, 400);
+
+  // Validate file type by MIME
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    return c.json({ error: 'File must be jpg, png, or webp' }, 400);
+  }
+
+  // Validate file size (2MB max)
+  if (file.size > 2 * 1024 * 1024) {
+    return c.json({ error: 'File must be under 2MB' }, 400);
+  }
+
+  // Validate magic bytes — don't trust MIME alone (T#582, Talon finding)
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const isJpeg = bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF;
+  const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47;
+  const isWebp = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  if (!isJpeg && !isPng && !isWebp) {
+    return c.json({ error: 'File content does not match an allowed image type' }, 400);
+  }
+
+  // Save file
+  const ext = file.type.split('/')[1] === 'jpeg' ? 'jpg' : file.type.split('/')[1];
+  const filename = `guest-${guestUsername}-avatar.${ext}`;
+  const filePath = path.join(UPLOADS_DIR, filename);
+  await Bun.write(filePath, buffer);
+
+  const avatarUrl = `/api/f/${filename}`;
+  updateGuestProfile(sqlite, guest.id, { avatar_url: avatarUrl });
+
+  return c.json({ avatar_url: avatarUrl });
+});
+
 app.get('/api/dashboard/activity', (c) => {
   const days = parseInt(c.req.query('days') || '7');
   return c.json(handleDashboardActivity(days));
@@ -1965,11 +2685,22 @@ function getSpinnerVerbs(): Set<string> {
   return cachedSpinnerVerbs;
 }
 
-// Get all beasts with status (processing/idle/offline)
-app.get('/api/pack', (c) => {
-  const profiles = getAllBeastProfiles();
+// Rewrite legacy avatar URLs to /api/f/ format
+function normalizeAvatarUrl(url: string | null): string | null {
+  if (!url) return null;
+  // /api/forum/file/xxx.jpg -> /api/f/xxx.jpg
+  if (url.startsWith('/api/forum/file/')) return '/api/f/' + url.slice('/api/forum/file/'.length);
+  // /api/files/ID/download -> look up filename from files table, rewrite to /api/f/
+  const filesMatch = url.match(/^\/api\/files\/(\d+)\/download$/);
+  if (filesMatch) {
+    const file = sqlite.prepare('SELECT filename FROM files WHERE id = ?').get(parseInt(filesMatch[1])) as any;
+    if (file) return '/api/f/' + file.filename;
+  }
+  return url;
+}
 
-  // Get active tmux sessions, detect Claude state from pane content
+// Shared tmux status detection — used by both /api/pack and /api/guest/pack
+function getTmuxStatus(): { tmuxStatus: Map<string, 'processing' | 'idle' | 'waiting' | 'shell' | 'offline'>; contextPctMap: Map<string, number | null> } {
   const tmuxStatus: Map<string, 'processing' | 'idle' | 'waiting' | 'shell' | 'offline'> = new Map();
   const contextPctMap: Map<string, number | null> = new Map();
   try {
@@ -2078,11 +2809,20 @@ app.get('/api/pack', (c) => {
     }
   } catch { /* tmux not running */ }
 
+  return { tmuxStatus, contextPctMap };
+}
+
+// Get all beasts with status (processing/idle/offline)
+app.get('/api/pack', (c) => {
+  const profiles = getAllBeastProfiles();
+  const { tmuxStatus, contextPctMap } = getTmuxStatus();
+
   const beasts = profiles.map(p => {
     const sessionName = p.name.charAt(0).toUpperCase() + p.name.slice(1);
     const rawStatus = tmuxStatus.get(sessionName.toLowerCase()) || tmuxStatus.get(p.name) || 'offline';
     return {
       ...p,
+      avatarUrl: normalizeAvatarUrl(p.avatarUrl),
       online: rawStatus === 'processing' || rawStatus === 'idle' || rawStatus === 'waiting',
       status: rawStatus, // 'processing' | 'idle' | 'waiting' | 'shell' | 'offline'
       contextPct: contextPctMap.get(sessionName.toLowerCase()) ?? contextPctMap.get(p.name) ?? null,
@@ -2090,7 +2830,18 @@ app.get('/api/pack', (c) => {
     };
   });
 
-  return c.json({ beasts });
+  // Owner (Gorn) presence from WS heartbeat map
+  const now = Date.now();
+  const ownerPresence = webPresence.get('gorn');
+  const ownerOnline = !!ownerPresence && (now - ownerPresence.lastSeen) < WEB_PRESENCE_TIMEOUT_MS;
+  const owner = {
+    name: 'gorn',
+    online: ownerOnline,
+    status: ownerOnline ? 'active' : 'offline',
+    last_active_at: ownerPresence ? new Date(ownerPresence.lastSeen).toISOString() : null,
+  };
+
+  return c.json({ beasts, owner });
 });
 
 // Get all configured spinner verbs across all Beasts
@@ -2623,6 +3374,12 @@ app.post('/api/upload', async (c) => {
       }
     }
 
+    // Guests: images only — no documents
+    const isGuest = (c.get as any)('role') === 'guest';
+    if (isGuest && !isImage) {
+      return c.json({ error: 'Guests can only upload images (jpg, png, webp, gif)' }, 403);
+    }
+
     // For images: validate via magic bytes (existing behavior)
     // For non-images: validate via extension allowlist
     if (!isImage && !allowed) {
@@ -2696,8 +3453,7 @@ app.post('/api/upload', async (c) => {
       original_name: file.name,
       mime_type: finalMime,
       category,
-      url: `/api/files/${(result as any).lastInsertRowid}/download`,
-      legacy_url: `/api/forum/file/${filename}`,
+      url: `/api/f/${filename}`,
       size_bytes: processedBuffer.length,
     });
   } catch (error) {
@@ -2705,35 +3461,11 @@ app.post('/api/upload', async (c) => {
   }
 });
 
-// Serve uploaded files (legacy endpoint — kept for backwards compatibility)
+// Legacy file endpoint — redirect to /api/f/ which has proper auth + cache headers
 app.get('/api/forum/file/:filename', (c) => {
   const filename = c.req.param('filename');
   if (filename.includes('..') || filename.includes('/')) return c.json({ error: 'Invalid filename' }, 400);
-  const filePath = path.join(UPLOADS_DIR, filename);
-  if (!fs.existsSync(filePath)) return c.json({ error: 'File not found' }, 404);
-
-  const meta = sqlite.prepare('SELECT mime_type, original_name, deleted_at FROM files WHERE filename = ?').get(filename) as any
-    || sqlite.prepare('SELECT mime_type, original_name FROM forum_attachments WHERE filename = ?').get(filename) as any;
-  if (meta?.deleted_at) return c.json({ error: 'File not found' }, 404);
-
-  // ETag based on filename (UUID — immutable content)
-  const etag = `"${filename}"`;
-  const ifNoneMatch = c.req.header('if-none-match');
-  if (ifNoneMatch === etag) {
-    return new Response(null, { status: 304 });
-  }
-
-  const content = fs.readFileSync(filePath);
-  const safeImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
-  const isImage = safeImageTypes.has(meta?.mime_type);
-  const contentType = isImage ? meta.mime_type : 'application/octet-stream';
-
-  c.header('Content-Type', contentType);
-  c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${(meta?.original_name || filename).replace(/"/g, '_')}"`);
-  if (!isImage) c.header('Content-Security-Policy', 'sandbox');
-  c.header('Cache-Control', 'public, max-age=31536000, immutable');
-  c.header('ETag', etag);
-  return c.body(content);
+  return c.redirect(`/api/f/${filename}`, 301);
 });
 
 // ============================================================================
@@ -2778,7 +3510,7 @@ app.get('/api/files', (c) => {
       ...f,
       url: `/api/files/${f.id}/download`,
       is_image: f.mime_type.startsWith('image/'),
-      thumbnail_url: f.mime_type.startsWith('image/') ? `/api/forum/file/${f.filename}` : null,
+      thumbnail_url: f.mime_type.startsWith('image/') ? `/api/f/${f.filename}` : null,
     })),
     total,
     page,
@@ -2824,8 +3556,10 @@ app.get('/api/files/stats', (c) => {
   });
 });
 
-// GET /api/files/:id — file metadata
+// GET /api/files/:id — file metadata (owner-only, Beasts use /api/f/:hash)
 app.get('/api/files/:id', (c) => {
+  const role = (c.get as any)('role');
+  if (role !== 'owner') return c.json({ error: 'Owner access only' }, 403);
   const id = parseInt(c.req.param('id'), 10);
   const file = sqlite.prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL').get(id) as any;
   if (!file) return c.json({ error: 'File not found' }, 404);
@@ -2833,12 +3567,14 @@ app.get('/api/files/:id', (c) => {
     ...file,
     url: `/api/files/${file.id}/download`,
     is_image: file.mime_type.startsWith('image/'),
-    thumbnail_url: file.mime_type.startsWith('image/') ? `/api/forum/file/${file.filename}` : null,
+    thumbnail_url: file.mime_type.startsWith('image/') ? `/api/f/${file.filename}` : null,
   });
 });
 
-// GET /api/files/:id/download — download with security headers
+// GET /api/files/:id/download — download by ID (owner-only, all other access via /api/f/:hash)
 app.get('/api/files/:id/download', (c) => {
+  const role = (c.get as any)('role');
+  if (role !== 'owner') return c.json({ error: 'Owner access only' }, 403);
   const id = parseInt(c.req.param('id'), 10);
   const file = sqlite.prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL').get(id) as any;
   if (!file) return c.json({ error: 'File not found' }, 404);
@@ -2865,11 +3601,73 @@ app.get('/api/files/:id/download', (c) => {
   return c.body(content);
 });
 
+// GET /api/f/:hash — download by hash (local bypass allowed, remote requires login)
+app.get('/api/f/:hash', (c) => {
+  // Allow local network access without auth (Beasts on CLI need file access)
+  if (!isLocalNetwork(c)) {
+    const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
+    const hasSession = sessionCookie && verifySessionToken(sessionCookie);
+    const hasBearer = c.req.header('Authorization')?.startsWith('Bearer den_');
+    if (!hasSession && !hasBearer) {
+      return c.json({ error: 'Authentication required — login to access files' }, 401);
+    }
+  }
+
+  const hash = c.req.param('hash');
+  // Validate: alphanumeric, hyphens, dots — no path traversal
+  if (hash.includes('..') || hash.includes('/')) return c.json({ error: 'Invalid file hash' }, 400);
+  if (!/^[\w.-]+$/.test(hash)) return c.json({ error: 'Invalid file hash' }, 400);
+
+  // Try files table first, then fall back to disk (legacy avatar files)
+  const file = sqlite.prepare('SELECT * FROM files WHERE filename = ? AND deleted_at IS NULL').get(hash) as any;
+  const filePath = path.join(UPLOADS_DIR, hash);
+
+  // If not in active files, check if it was soft-deleted — return 404 rather than serving it from disk
+  if (!file) {
+    const deleted = sqlite.prepare('SELECT id FROM files WHERE filename = ? AND deleted_at IS NOT NULL').get(hash);
+    if (deleted) return c.json({ error: 'File not found' }, 404);
+  }
+
+  if (!file && !fs.existsSync(filePath)) return c.json({ error: 'File not found' }, 404);
+  if (file && !fs.existsSync(filePath)) return c.json({ error: 'File not found on disk' }, 404);
+
+  const etag = `"${hash}"`;
+  const ifNoneMatch = c.req.header('if-none-match');
+  if (ifNoneMatch === etag) {
+    return new Response(null, { status: 304 });
+  }
+
+  const content = fs.readFileSync(filePath);
+  const safeImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+  // Determine mime type from files table or extension
+  const ext = hash.split('.').pop()?.toLowerCase() || '';
+  const extMimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
+  const mimeType = file?.mime_type || extMimeMap[ext] || 'application/octet-stream';
+  const isImage = safeImageTypes.has(mimeType);
+  const originalName = file?.original_name || hash;
+
+  c.header('Content-Type', isImage ? mimeType : 'application/octet-stream');
+  c.header('Content-Disposition', isImage ? 'inline' : `attachment; filename="${originalName.replace(/"/g, '_')}"`);
+  if (!isImage) c.header('Content-Security-Policy', 'sandbox');
+  // private — browser can cache, but CDN/reverse proxy (Caddy) must not
+  c.header('Cache-Control', 'private, max-age=86400');
+  c.header('ETag', etag);
+  return c.body(content);
+});
+
 // DELETE /api/files/:id — soft delete (Nothing is Deleted)
+// Only file uploader or owner can delete
 app.delete('/api/files/:id', (c) => {
   const id = parseInt(c.req.param('id'), 10);
   const file = sqlite.prepare('SELECT * FROM files WHERE id = ? AND deleted_at IS NULL').get(id) as any;
   if (!file) return c.json({ error: 'File not found' }, 404);
+
+  const role = (c.get as any)('role');
+  const actor = (c.get as any)('actor');
+  if (role !== 'owner' && file.uploaded_by && actor !== file.uploaded_by) {
+    return c.json({ error: 'Only the uploader or owner can delete files' }, 403);
+  }
 
   const now = Date.now();
   sqlite.prepare('UPDATE files SET deleted_at = ? WHERE id = ?').run(now, id);
@@ -2887,7 +3685,7 @@ app.get('/api/message/:id/attachments', (c) => {
       id: r.id,
       filename: r.filename,
       original_name: r.original_name,
-      url: `/api/forum/file/${r.filename}`,
+      url: `/api/f/${r.filename}`,
       mime_type: r.mime_type,
       size_bytes: r.size_bytes,
       uploaded_by: r.uploaded_by,
@@ -3095,23 +3893,29 @@ app.get('/api/forum/search', (c) => {
 app.get('/api/threads', (c) => {
   const status = c.req.query('status');
   const category = c.req.query('category');
+  const visibility = c.req.query('visibility');
   const limit = parseInt(c.req.query('limit') || '50');
   const offset = parseInt(c.req.query('offset') || '0');
   const role = (c.get as any)('role') as Role | undefined;
 
-  let query = 'SELECT *, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE 1=1';
+  let query = 'SELECT *, (SELECT COUNT(*) FROM forum_messages WHERE thread_id = forum_threads.id) as msg_count FROM forum_threads WHERE deleted_at IS NULL';
   const params: any[] = [];
   if (status) { query += ' AND status = ?'; params.push(status); }
   if (category) { query += ' AND category = ?'; params.push(category); }
-  // Guests only see public threads
+  // Guests only see public threads; owner can filter by visibility
   if (role === 'guest') { query += " AND visibility = 'public'"; }
+  else if (visibility === 'public' || visibility === 'internal') { query += ' AND visibility = ?'; params.push(visibility); }
   query += ' ORDER BY COALESCE(pinned, 0) DESC, updated_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const rows = sqlite.prepare(query).all(...params) as any[];
-  let countQuery = 'SELECT COUNT(*) as total FROM forum_threads';
-  if (role === 'guest') { countQuery += " WHERE visibility = 'public'"; }
-  const total = (sqlite.prepare(countQuery).get() as any)?.total || 0;
+  let countQuery = 'SELECT COUNT(*) as total FROM forum_threads WHERE deleted_at IS NULL';
+  const countParams: any[] = [];
+  if (status) { countQuery += ' AND status = ?'; countParams.push(status); }
+  if (category) { countQuery += ' AND category = ?'; countParams.push(category); }
+  if (role === 'guest') { countQuery += " AND visibility = 'public'"; }
+  else if (visibility === 'public' || visibility === 'internal') { countQuery += ' AND visibility = ?'; countParams.push(visibility); }
+  const total = (sqlite.prepare(countQuery).get(...countParams) as any)?.total || 0;
 
   return c.json({
     threads: rows.map(t => ({
@@ -3122,6 +3926,7 @@ app.get('/api/threads', (c) => {
       pinned: !!(t.pinned),
       message_count: t.msg_count || 0,
       created_at: new Date(t.created_at).toISOString(),
+      created_by: t.created_by || null,
       issue_url: t.issue_url,
       visibility: t.visibility || 'internal',
     })),
@@ -3271,11 +4076,19 @@ app.get('/api/thread/:id', (c) => {
       const reactionRows = sqlite.prepare(
         'SELECT emoji, GROUP_CONCAT(beast_name) as beasts, COUNT(*) as count FROM forum_reactions WHERE message_id = ? GROUP BY emoji'
       ).all(m.id) as any[];
+      // Resolve guest avatar URL from guest_accounts (T#602)
+      let authorAvatarUrl: string | null = null;
+      if (m.author?.startsWith('[Guest]')) {
+        const guestName = m.author.replace('[Guest] ', '').replace('[Guest]', '').trim();
+        const guest = sqlite.prepare('SELECT avatar_url FROM guest_accounts WHERE LOWER(display_name) = ? OR LOWER(username) = ?').get(guestName.toLowerCase(), guestName.toLowerCase()) as any;
+        authorAvatarUrl = guest?.avatar_url || null;
+      }
       return {
         id: m.id,
         role: m.role,
         content: m.content,
         author: m.author,
+        author_avatar_url: authorAvatarUrl,
         reply_to_id: raw?.reply_to_id || null,
         principles_found: m.principlesFound,
         patterns_found: m.patternsFound,
@@ -3413,6 +4226,24 @@ app.post('/api/message/:id/react', async (c) => {
     if (!body.beast || !body.emoji) {
       return c.json({ error: 'beast and emoji are required' }, 400);
     }
+
+    const role = (c.get as any)('role');
+
+    // Guest identity enforcement — override body.beast with session identity
+    if (role === 'guest') {
+      const guestUsername = (c.get as any)('guestUsername');
+      body.beast = `[Guest] ${guestUsername || 'Guest'}`;
+
+      // Thread visibility check — guests can only react to messages in public threads
+      const msg = sqlite.prepare('SELECT thread_id FROM forum_messages WHERE id = ?').get(messageId) as any;
+      if (msg) {
+        const thread = sqlite.prepare('SELECT visibility FROM forum_threads WHERE id = ?').get(msg.thread_id) as any;
+        if (thread && thread.visibility && thread.visibility !== 'public') {
+          return c.json({ error: 'Guests cannot react to messages in private threads' }, 403);
+        }
+      }
+    }
+
     // Sender validation for non-local requests
     if (!isTrustedRequest(c)) {
       const as = body.as?.toLowerCase();
@@ -3466,6 +4297,14 @@ app.delete('/api/message/:id/react', async (c) => {
     if (!body.beast || !body.emoji) {
       return c.json({ error: 'beast and emoji are required' }, 400);
     }
+
+    const role = (c.get as any)('role');
+    // Guest identity enforcement
+    if (role === 'guest') {
+      const guestUsername = (c.get as any)('guestUsername');
+      body.beast = `[Guest] ${guestUsername || 'Guest'}`;
+    }
+
     if (!isTrustedRequest(c)) {
       const as = body.as?.toLowerCase();
       if (!as) return c.json({ error: 'as param required' }, 400);
@@ -3526,6 +4365,10 @@ try {
 } catch { /* column already exists */ }
 try {
   sqlite.prepare('ALTER TABLE forum_threads ADD COLUMN queue_summary TEXT DEFAULT NULL').run();
+} catch { /* column already exists */ }
+
+try {
+  sqlite.prepare('ALTER TABLE forum_threads ADD COLUMN deleted_at TEXT DEFAULT NULL').run();
 } catch { /* column already exists */ }
 
 // Mindlink removed — replaced by Prowl (T#279/T#280)
@@ -3692,8 +4535,8 @@ app.patch('/api/thread/:id/status', async (c) => {
   }
 });
 
-// DELETE /api/thread/:id — delete a thread and all related data
-// Auth: thread creator or Gorn only (for test cleanup)
+// DELETE /api/thread/:id — soft delete (set deleted_at, hide from listings)
+// Auth: thread creator or Gorn only
 app.delete('/api/thread/:id', (c) => {
   const id = parseInt(c.req.param('id'));
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -3704,12 +4547,9 @@ app.delete('/api/thread/:id', (c) => {
   if (as !== 'gorn' && as !== existing.created_by?.toLowerCase()) {
     return c.json({ error: 'Only the thread creator or Gorn can delete a thread' }, 403);
   }
-  // Cascade: reactions, read state, messages, then thread
-  sqlite.prepare('DELETE FROM forum_reactions WHERE message_id IN (SELECT id FROM forum_messages WHERE thread_id = ?)').run(id);
-  sqlite.prepare('DELETE FROM forum_read_status WHERE thread_id = ?').run(id);
-  sqlite.prepare('DELETE FROM forum_messages WHERE thread_id = ?').run(id);
-  sqlite.prepare('DELETE FROM forum_threads WHERE id = ?').run(id);
-  return c.json({ deleted: id, title: existing.title });
+  // Soft delete — set deleted_at timestamp (Nothing is Deleted)
+  sqlite.prepare("UPDATE forum_threads SET deleted_at = datetime('now'), status = 'deleted' WHERE id = ?").run(id);
+  return c.json({ deleted: id, title: existing.title, soft: true });
 });
 
 // ============================================================================
@@ -3810,7 +4650,24 @@ app.post('/api/dm', async (c) => {
         return c.json({ error: 'Sender impersonation blocked. as must match from.' }, 403);
       }
     }
-    const result = await withRetry(() => sendDm(data.from, data.to, data.message));
+    // Validate recipient exists — must be a beast, guest username, or "gorn"
+    const rawTo = data.to.replace(/^\[Guest\]\s*/, ''); // Strip [Guest] prefix if present
+    const recipientBeast = getBeastProfile(rawTo);
+    const recipientGuest = getGuestByUsername(sqlite, rawTo);
+    const isOwner = rawTo.toLowerCase() === 'gorn';
+    if (!recipientBeast && !recipientGuest && !isOwner) {
+      return c.json({ error: `Recipient "${data.to}" not found. Must be a valid beast name or guest username.` }, 404);
+    }
+
+    // Resolve guest usernames to [Guest] tags so messages land in the same conversation
+    let dmFrom = data.from;
+    let dmTo = data.to;
+    const guestFrom = getGuestByUsername(sqlite, data.from);
+    if (guestFrom) dmFrom = `[Guest] ${guestFrom.display_name || data.from}`;
+    if (recipientGuest) dmTo = `[Guest] ${recipientGuest.display_name || rawTo}`;
+    else if (data.to !== rawTo) dmTo = rawTo; // Strip [Guest] prefix for beast recipients
+
+    const result = await withRetry(() => sendDm(dmFrom, dmTo, data.message));
     // Set author_role on DM message (Spec #32, T#557 — Talon review fix)
     if (result.messageId) {
       const authorRole = role === 'guest' ? 'guest' : (role === 'owner' ? 'owner' : 'beast');
@@ -3863,11 +4720,25 @@ app.get('/api/dm/:name', (c) => {
   });
 });
 
-// Get messages between two Oracles
+// Get messages between two Oracles (also handles guest usernames)
 app.get('/api/dm/:name/:other', (c) => {
-  const name = c.req.param('name');
-  const other = c.req.param('other');
+  let name = c.req.param('name');
+  let other = c.req.param('other');
   const as = c.req.query('as')?.toLowerCase();
+
+  // Resolve guest usernames to [Guest] tags
+  // If name/other doesn't match a known beast and matches a guest account, use the [Guest] tag
+  for (const param of ['name', 'other'] as const) {
+    const val = param === 'name' ? name : other;
+    if (!val.startsWith('[Guest]') && !val.startsWith('[guest]')) {
+      const guest = getGuestByUsername(sqlite, val);
+      if (guest) {
+        const tag = `[Guest] ${guest.display_name || val}`;
+        if (param === 'name') name = tag;
+        else other = tag;
+      }
+    }
+  }
   // IDOR protection: 'as' required from non-local. Must be participant or gorn.
   if (!isTrustedRequest(c)) {
     if (!as) return c.json({ error: 'as param required for DM access' }, 400);
@@ -4306,9 +5177,13 @@ try {
   try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN spec_id INTEGER`).run(); } catch { /* exists */ }
   // v4: reviewer field for in_review workflow (T#418)
   try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN reviewer TEXT`).run(); } catch { /* exists */ }
+  // v5: risk_level for QA triage (T#617)
+  try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN risk_level TEXT DEFAULT 'medium'`).run(); } catch { /* exists */ }
+  sqlite.prepare(`UPDATE tasks SET risk_level = 'medium' WHERE risk_level IS NULL`).run();
 } catch { /* already exists */ }
 
 const VALID_TASK_TYPES = ['bug', 'feature', 'improvement', 'chore', 'task'];
+const VALID_RISK_LEVELS = ['high', 'medium', 'low'];
 
 // SDD enforcement: check if task can transition to in_progress or done
 function checkApprovalGate(task: any): string | null {
@@ -4428,6 +5303,8 @@ app.get('/api/tasks', (c) => {
   if (priority) { query += ' AND t.priority = ?'; params.push(priority); }
   const type = c.req.query('type');
   if (type) { query += ' AND t.type = ?'; params.push(type); }
+  const riskLevel = c.req.query('risk_level');
+  if (riskLevel) { query += ' AND t.risk_level = ?'; params.push(riskLevel); }
 
   const countQuery = query.replace('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id', 'SELECT COUNT(*) as total FROM tasks t');
   const total = (sqlite.prepare(countQuery).get(...params) as any)?.total || 0;
@@ -4448,7 +5325,7 @@ app.get('/api/tasks', (c) => {
 // POST /api/tasks — create task
 app.post('/api/tasks', async (c) => {
   const data = await c.req.json();
-  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type, reviewer } = data;
+  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type, reviewer, risk_level } = data;
   if (!title || !created_by) return c.json({ error: 'title and created_by required' }, 400);
   if (!project_id) return c.json({ error: 'project_id required — every task must belong to a project' }, 400);
   if (!assigned_to) return c.json({ error: 'assigned_to required — every task must have an assignee' }, 400);
@@ -4460,12 +5337,14 @@ app.post('/api/tasks', async (c) => {
   const taskPriority = validPriorities.includes(priority) ? priority : 'medium';
   if (type && !VALID_TASK_TYPES.includes(type)) return c.json({ error: `Invalid type. Valid: ${VALID_TASK_TYPES.join(', ')}` }, 400);
   const taskType = type || 'task';
+  if (risk_level && !VALID_RISK_LEVELS.includes(risk_level)) return c.json({ error: `Invalid risk_level. Valid: ${VALID_RISK_LEVELS.join(', ')}` }, 400);
+  const taskRiskLevel = VALID_RISK_LEVELS.includes(risk_level) ? risk_level : 'medium';
 
   const now = new Date().toISOString();
   const approvalRequired = data.approval_required ? 1 : 0;
   const result = sqlite.prepare(
-    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, approval_required, reviewer, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, reviewer, now, now);
+    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, approval_required, reviewer, risk_level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, reviewer, taskRiskLevel, now, now);
 
   const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid) as any;
   searchIndexUpsert('task', task.id, task.title, task.description || '', task.assigned_to || '', now, `/board?task=${task.id}`);
@@ -4526,6 +5405,7 @@ app.patch('/api/tasks/:id', async (c) => {
   if (data.status && !validStatuses.includes(data.status)) return c.json({ error: `Invalid status. Valid: ${validStatuses.join(', ')}` }, 400);
   if (data.priority && !validPriorities.includes(data.priority)) return c.json({ error: `Invalid priority. Valid: ${validPriorities.join(', ')}` }, 400);
   if (data.type && !VALID_TASK_TYPES.includes(data.type)) return c.json({ error: `Invalid type. Valid: ${VALID_TASK_TYPES.join(', ')}` }, 400);
+  if (data.risk_level && !VALID_RISK_LEVELS.includes(data.risk_level)) return c.json({ error: `Invalid risk_level. Valid: ${VALID_RISK_LEVELS.join(', ')}` }, 400);
 
   // Terminal status enforcement (T#529) — Done and Cancelled are final
   const terminalStatuses = ['done', 'cancelled'];
@@ -4547,7 +5427,7 @@ app.patch('/api/tasks/:id', async (c) => {
 
   const updates: string[] = [];
   const params: any[] = [];
-  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type', 'approval_required', 'spec_id', 'reviewer']) {
+  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type', 'approval_required', 'spec_id', 'reviewer', 'risk_level']) {
     if (data[field] !== undefined) { updates.push(`${field} = ?`); params.push(data[field]); }
   }
   if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
@@ -4637,14 +5517,15 @@ app.post('/api/tasks/:id/comments', async (c) => {
 
   // Notify task assignee, creator, and @mentioned beasts about the new comment
   try {
-    const task = sqlite.prepare('SELECT assigned_to, created_by, title FROM tasks WHERE id = ?').get(taskId) as any;
+    const task = sqlite.prepare('SELECT assigned_to, created_by, reviewer, title FROM tasks WHERE id = ?').get(taskId) as any;
     if (task) {
       const { parseMentions, notifyMentioned } = await import('./forum/mentions.ts');
       const commenter = author.split('@')[0].toLowerCase();
       const toNotify = new Set<string>();
-      // Notify assignee and creator
+      // Notify assignee, creator, and reviewer (T#575)
       if (task.assigned_to && task.assigned_to !== commenter) toNotify.add(task.assigned_to.toLowerCase());
       if (task.created_by && task.created_by !== commenter) toNotify.add(task.created_by.toLowerCase());
+      if (task.reviewer && task.reviewer !== commenter) toNotify.add(task.reviewer.toLowerCase());
       // Parse @mentions from comment content
       const mentions = parseMentions(content, 0);
       for (const m of mentions) toNotify.add(m.toLowerCase());
@@ -5102,8 +5983,10 @@ app.get('/api/teams/beast/:beast', (c) => {
 });
 
 const VALID_INTERVALS: Record<string, number> = {
-  '10m': 600, '30m': 1800, '1h': 3600, '3h': 10800,
-  '6h': 21600, '12h': 43200, '1d': 86400, '7d': 604800,
+  '10m': 600, '15m': 900, '20m': 1200, '30m': 1800, '45m': 2700,
+  '1h': 3600, '2h': 7200, '3h': 10800, '4h': 14400,
+  '6h': 21600, '8h': 28800, '12h': 43200,
+  '1d': 86400, '2d': 172800, '3d': 259200, '7d': 604800,
 };
 
 // Compute next occurrence of schedule_time (HH:MM) in UTC+7
@@ -9871,10 +10754,17 @@ function fts5Search(q: string, type: string | undefined, limit: number, offset: 
 
 // GET /api/search — global search (Meilisearch with FTS5 fallback)
 app.get('/api/search', async (c) => {
-  const requester = c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '');
-  if (!requester && !isTrustedRequest(c)) {
+  // Search requires owner session or local Beast request (T#605)
+  const role = (c.get as any)('role');
+  if (role === 'guest') {
+    return c.json({ error: 'Search is not available in guest mode' }, 403);
+  }
+  const hasSession = hasSessionAuth(c);
+  const isLocalBeast = isLocalNetwork(c) && c.req.query('as');
+  if (!hasSession && !isLocalBeast) {
     return c.json({ error: 'Authentication required' }, 401);
   }
+  const requester = c.req.query('as') || 'gorn';
 
   let q = c.req.query('q')?.trim();
   if (!q) return c.json({ results: [], total: 0, query: '' });
@@ -10114,6 +11004,11 @@ if (fs.existsSync(FRONTEND_DIST)) {
 
 const wsClients = new Set<any>();
 
+// Web presence tracking — in-memory, ephemeral (T#595)
+// Keyed by identity (e.g. 'gorn', 'gorn_guest'). Rebuilt on server restart.
+const webPresence = new Map<string, { identity: string; role: string; lastSeen: number }>();
+const WEB_PRESENCE_TIMEOUT_MS = 90_000; // 90s — 3 missed heartbeats
+
 // Allowed origins for WebSocket connections
 const WS_ALLOWED_ORIGINS = new Set([
   'http://localhost:47778',
@@ -10242,7 +11137,19 @@ export default {
         } catch (e) { console.error('[WS audit]', e); }
         return new Response(validation.reason || 'Forbidden', { status: 403 });
       }
-      const success = server.upgrade(req, { data: { identity: validation.identity } });
+      // Derive role and identity from session cookie using the full parser
+      // validateWsUpgrade uses a simplified token check that fails on 4-part tokens —
+      // use parseSessionToken here to get accurate role and identity for presence tracking.
+      const wsCookies = req.headers.get('cookie') || '';
+      const wsSessionMatch = wsCookies.match(/(?:^|;\s*)oracle_session=([^;]+)/);
+      const wsParsed = parseSessionToken(wsSessionMatch?.[1] || '');
+      const wsRole = wsParsed.valid ? (wsParsed.role || 'owner') : (validation.identity === 'local' ? 'beast' : 'unknown');
+      const wsData = wsParsed.valid && wsParsed.role === 'guest' ? wsParsed.data : undefined;
+      // Identity for presence: use parsed session result, fall back to validateWsUpgrade's value
+      const wsIdentity = wsParsed.valid
+        ? (wsParsed.role === 'guest' ? (wsParsed.data || 'guest') : 'gorn')
+        : validation.identity;
+      const success = server.upgrade(req, { data: { identity: wsIdentity, role: wsRole, username: wsData } });
       if (success) return undefined;
       return new Response('WebSocket upgrade failed', { status: 400 });
     }
@@ -10257,9 +11164,33 @@ export default {
     message(ws: any, message: string) {
       // Clients can send ping, we respond pong
       if (message === 'ping') ws.send('pong');
+
+      // Presence heartbeat — update in-memory map
+      try {
+        const parsed = typeof message === 'string' ? JSON.parse(message) : message;
+        if (parsed?.type === 'heartbeat') {
+          const identity = ws.data?.identity;
+          const role = ws.data?.role || 'unknown';
+          if (identity && identity !== 'unknown') {
+            const key = ws.data?.username || identity; // guest username or 'gorn'/'local'
+            const wasOnline = webPresence.has(key);
+            webPresence.set(key, { identity, role, lastSeen: Date.now() });
+            if (!wasOnline) {
+              wsBroadcast('presence_update', { identity: key, role, online: true });
+            }
+          }
+        }
+      } catch { /* not JSON — ignore */ }
     },
     close(ws: any) {
       wsClients.delete(ws);
+      // Remove from presence map and broadcast offline if they were online
+      const key = ws.data?.username || ws.data?.identity;
+      if (key && webPresence.has(key)) {
+        const entry = webPresence.get(key)!;
+        webPresence.delete(key);
+        wsBroadcast('presence_update', { identity: key, role: entry.role, online: false });
+      }
     },
   },
 };

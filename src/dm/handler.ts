@@ -93,6 +93,7 @@ export function sendDm(
   from: string,
   to: string,
   content: string,
+  notifyAs?: string,
 ): { conversationId: number; messageId: number; notified: boolean } {
   const fromLower = from.toLowerCase();
   const toLower = to.toLowerCase();
@@ -113,8 +114,8 @@ export function sendDm(
     .where(eq(dmConversations.id, conversation.id))
     .run();
 
-  // Notify recipient via tmux
-  const notified = notifyDmRecipient(fromLower, toLower, content);
+  // Notify recipient via tmux (use notifyAs for display if provided)
+  const notified = notifyDmRecipient(notifyAs || fromLower, toLower, content);
 
   return {
     conversationId: conversation.id,
@@ -134,7 +135,11 @@ function notifyDmRecipient(from: string, to: string, content: string): boolean {
   if (!entry) return false;
 
   const preview = sanitizeForTmux(content, 120);
-  const message = `[DM from ${from}]: ${preview}...\n\nUse /dm to read and /dm ${from} <message> to reply.`;
+  const isGuestDm = from.startsWith('[Guest] ');
+  const guestUsername = isGuestDm ? from.slice(8) : null;
+  const dmLabel = isGuestDm ? `[DM [Guest] from ${guestUsername}]` : `[DM from ${from}]`;
+  const replyHint = isGuestDm ? `Use /dm to read. use /dm ${guestUsername} <message> to reply.` : `Use /dm to read and /dm ${from} <message> to reply.`;
+  const message = `${dmLabel}: ${preview}...\n\n${replyHint}`;
 
   try {
     return enqueueNotification(to, message);

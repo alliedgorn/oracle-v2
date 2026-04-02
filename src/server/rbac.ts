@@ -21,34 +21,29 @@ interface AllowlistEntry {
 }
 
 const GUEST_ALLOWLIST: AllowlistEntry[] = [
-  // Auth
+  // All /api/guest/* endpoints — the dedicated guest API surface (T#559)
+  { method: '*', pattern: /^\/api\/guest\// },
+
+  // Auth (login, logout, status — shared by all roles)
   { method: 'GET', pattern: /^\/api\/auth\/status$/ },
   { method: 'POST', pattern: /^\/api\/auth\/login$/ },
   { method: 'POST', pattern: /^\/api\/auth\/logout$/ },
 
-  // Pack/Beasts (public info)
-  { method: 'GET', pattern: /^\/api\/pack$/ },
-  { method: 'GET', pattern: /^\/api\/beasts$/ },
-  { method: 'GET', pattern: /^\/api\/beast\/[^/]+$/ },
-  { method: 'GET', pattern: /^\/api\/beast\/[^/]+\/avatar\.svg$/ },
-
-  // Forum (visibility + guest-only-posts enforced at handler level in PR3)
-  { method: 'GET', pattern: /^\/api\/threads$/ },
-  { method: 'GET', pattern: /^\/api\/thread\/\d+$/ },
-  { method: 'POST', pattern: /^\/api\/thread$/ },  // Handler must enforce: guests post to existing public threads only, no new threads
-  { method: 'POST', pattern: /^\/api\/message\/\d+\/react$/ },
-  { method: 'GET', pattern: /^\/api\/message\/\d+\/reactions$/ },
-  { method: 'GET', pattern: /^\/api\/forum\/emojis$/ },
-  { method: 'GET', pattern: /^\/api\/reactions\/supported$/ },
-
-  // DMs (guest-to-Beast, own conversations only — enforced at handler level)
-  { method: 'POST', pattern: /^\/api\/dm$/ },
-  { method: 'GET', pattern: /^\/api\/dm\/[^/]+\/[^/]+$/ },
-  { method: 'PATCH', pattern: /^\/api\/dm\/[^/]+\/[^/]+\/read$/ },
-
   // Infrastructure
   { method: 'GET', pattern: /^\/api\/health$/ },
   { method: 'GET', pattern: /^\/api\/help$/ },
+
+  // Public read-only data (used by guest-accessible components)
+  { method: 'GET', pattern: /^\/api\/reactions\/supported$/ },
+
+  // Reactions — guests can react to messages
+  { method: 'POST', pattern: /^\/api\/message\/\d+\/react$/ },
+  { method: 'DELETE', pattern: /^\/api\/message\/\d+\/react$/ },
+  { method: 'GET', pattern: /^\/api\/message\/\d+\/reactions$/ },
+
+  // File uploads and downloads — guests can attach and view files
+  { method: 'POST', pattern: /^\/api\/upload$/ },
+  { method: 'GET', pattern: /^\/api\/f\/[\w.-]+$/ },
 ];
 
 /**

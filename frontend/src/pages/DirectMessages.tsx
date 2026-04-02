@@ -11,6 +11,8 @@ import { VoiceInput } from '../components/VoiceInput';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { autolinkIds } from '../utils/autolink';
+import { useAuth } from '../contexts/AuthContext';
+import { getGuestDashboard, getGuestDmConversation, sendGuestDm } from '../api/guest';
 
 interface DashboardConversation {
   id: number;
@@ -46,12 +48,30 @@ interface Dashboard {
 
 const API_BASE = '/api';
 
-async function fetchDashboard(): Promise<Dashboard> {
+async function fetchDashboard(isGuest = false): Promise<Dashboard> {
+  if (isGuest) {
+    const data = await getGuestDashboard();
+    return {
+      conversations: (data.dmSummary || []).map((d: any, i: number) => ({
+        id: i,
+        participants: ['guest', d.beast],
+        message_count: 0,
+        unread_count: d.unread || 0,
+        last_message: '',
+        last_sender: '',
+        last_at: '',
+        created_at: '',
+      })),
+      total_conversations: (data.dmSummary || []).length,
+      total_messages: 0,
+    };
+  }
   const res = await fetch(`${API_BASE}/dm/dashboard`);
   return res.json();
 }
 
-async function fetchMessages(name1: string, name2: string, limit = 50, offset = 0, order: 'asc' | 'desc' = 'desc'): Promise<ConversationDetail> {
+async function fetchMessages(name1: string, name2: string, limit = 50, offset = 0, order: 'asc' | 'desc' = 'desc', isGuest = false): Promise<ConversationDetail> {
+  if (isGuest) return getGuestDmConversation(name1, name2, limit, offset, order);
   const params = new URLSearchParams();
   params.set('limit', limit.toString());
   if (offset) params.set('offset', offset.toString());
@@ -60,12 +80,14 @@ async function fetchMessages(name1: string, name2: string, limit = 50, offset = 
   return res.json();
 }
 
-async function markAllRead(name1: string, name2: string): Promise<any> {
+async function markAllRead(name1: string, name2: string, isGuest = false): Promise<any> {
+  if (isGuest) return; // Guests don't have read tracking
   const res = await fetch(`${API_BASE}/dm/${name1}/${name2}/read-all`, { method: 'PATCH' });
   return res.json();
 }
 
-async function sendDm(from: string, to: string, message: string): Promise<any> {
+async function sendDm(from: string, to: string, message: string, isGuest = false): Promise<any> {
+  if (isGuest) return sendGuestDm(to, message);
   const res = await fetch(`${API_BASE}/dm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -75,6 +97,7 @@ async function sendDm(from: string, to: string, message: string): Promise<any> {
 }
 
 export function DirectMessages() {
+  const { isGuest, guestName } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [selectedConv, setSelectedConv] = useState<DashboardConversation | null>(null);
@@ -84,7 +107,7 @@ export function DirectMessages() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [showNewDm, setShowNewDm] = useState(false);
-  const [viewMode, setViewMode] = useState<'my' | 'beast'>('my');
+  // viewMode removed — owner only sees own conversations (no Beast DM toggle)
   const [beasts, setBeasts] = useState<{ name: string; displayName: string }[]>([]);
   const [totalMessages, setTotalMessages] = useState(0);
   const totalMessagesRef = useRef(0);
@@ -160,7 +183,7 @@ export function DirectMessages() {
         if (convParam) {
           const [p1, p2] = convParam.split('-');
           if (p1 && p2) {
-            fetchMessages(p1, p2, 5, 0, 'desc').then(data => {
+            fetchMessages(p1, p2, 5, 0, 'desc', isGuest).then(data => {
               if (data.total !== totalMessagesRef.current) {
                 setMessages(prev => {
                   if (!prev) return prev;
@@ -266,7 +289,7 @@ export function DirectMessages() {
     const [p1, p2] = convParam.split('-');
     if (!p1 || !p2) return;
     const currentCount = messages.messages.length;
-    const data = await fetchMessages(p1, p2, PAGE_SIZE, currentCount, 'desc');
+    const data = await fetchMessages(p1, p2, PAGE_SIZE, currentCount, 'desc', isGuest);
     if (data.messages.length > 0) {
       data.messages.reverse();
       setMessages(prev => prev ? {
@@ -284,19 +307,19 @@ export function DirectMessages() {
   });
 
   async function loadDashboard() {
-    const data = await fetchDashboard();
+    const data = await fetchDashboard(isGuest);
     setDashboard(data);
   }
 
   async function loadMessages(p1: string, p2: string) {
     initialScrollDone.current = false;
-    const data = await fetchMessages(p1, p2, PAGE_SIZE, 0, 'desc');
+    const data = await fetchMessages(p1, p2, PAGE_SIZE, 0, 'desc', isGuest);
     data.messages.reverse(); // Display chronologically
     setMessages(data);
     totalMessagesRef.current = data.total;
     setTotalMessages(data.total);
     // Mark all as read and refresh sidebar badges
-    await markAllRead(p1, p2);
+    await markAllRead(p1, p2, isGuest);
     await loadDashboard();
   }
 
@@ -310,11 +333,12 @@ export function DirectMessages() {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConv) return;
 
-    const other = selectedConv.participants[0] === 'gorn' ? selectedConv.participants[1] : selectedConv.participants[0];
+    const me = isGuest ? (guestName || 'guest') : 'gorn';
+    const other = selectedConv.participants[0] === me ? selectedConv.participants[1] : selectedConv.participants[0];
 
     setLoading(true);
     try {
-      await sendDm('gorn', other, newMessage);
+      await sendDm(me, other, newMessage, isGuest);
       setNewMessage('');
       // Reload messages and dashboard
       await loadMessages(selectedConv.participants[0], selectedConv.participants[1]);
@@ -326,7 +350,8 @@ export function DirectMessages() {
 
   async function startNewDm(beastName: string) {
     setShowNewDm(false);
-    const sorted = [beastName, 'gorn'].sort();
+    const me = isGuest ? (guestName || 'guest') : 'gorn';
+    const sorted = [beastName, me].sort();
     const key = sorted.join('-');
     setSearchParams({ conv: key });
     // Create a temporary selectedConv so chat view opens immediately
@@ -342,7 +367,7 @@ export function DirectMessages() {
     });
     // Try loading existing messages (latest first)
     try {
-      const data = await fetchMessages(sorted[0], sorted[1], PAGE_SIZE, 0, 'desc');
+      const data = await fetchMessages(sorted[0], sorted[1], PAGE_SIZE, 0, 'desc', isGuest);
       data.messages.reverse();
       setMessages(data);
       totalMessagesRef.current = data.total;
@@ -420,16 +445,7 @@ export function DirectMessages() {
           </div>
         )}
 
-        <div className={styles.viewToggle}>
-          <button
-            className={`${styles.viewToggleBtn} ${viewMode === 'my' ? styles.viewToggleActive : ''}`}
-            onClick={() => setViewMode('my')}
-          >My Chats</button>
-          <button
-            className={`${styles.viewToggleBtn} ${viewMode === 'beast' ? styles.viewToggleActive : ''}`}
-            onClick={() => setViewMode('beast')}
-          >Beast Chats</button>
-        </div>
+        {/* Beast Chats toggle removed — owner only sees own conversations */}
 
         <SearchInput
           value={search}
@@ -439,9 +455,8 @@ export function DirectMessages() {
 
         <div className={styles.conversationList}>
           {dashboard?.conversations.filter(conv => {
-            const hasGorn = conv.participants.includes('gorn');
-            if (viewMode === 'my' && !hasGorn) return false;
-            if (viewMode === 'beast' && hasGorn) return false;
+            // Owner only sees own conversations (no Beast-to-Beast DMs)
+            if (!conv.participants.includes('gorn')) return false;
             if (!search.trim()) return true;
             const q = search.toLowerCase();
             return conv.participants[0].includes(q) || conv.participants[1].includes(q);

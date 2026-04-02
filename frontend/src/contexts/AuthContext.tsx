@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { getAuthStatus, login as apiLogin, logout as apiLogout, type AuthStatus } from '../api/oracle';
+import { wsReconnect } from '../hooks/useWebSocket';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -8,7 +9,11 @@ interface AuthContextType {
   localBypass: boolean;
   isLocal: boolean;
   isLoading: boolean;
-  login: (password: string) => Promise<{ success: boolean; error?: string }>;
+  role: 'owner' | 'guest' | null;
+  isGuest: boolean;
+  guestName: string | null;
+  guestUsername: string | null;
+  login: (password: string, username?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
 }
@@ -42,10 +47,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkAuth();
   }, []);
 
-  async function login(password: string): Promise<{ success: boolean; error?: string }> {
-    const result = await apiLogin(password);
+  async function login(password: string, username?: string): Promise<{ success: boolean; error?: string }> {
+    const result = await apiLogin(password, username);
     if (result.success) {
       await checkAuth();
+      // Reconnect WebSocket to pick up new session cookie for presence tracking
+      wsReconnect();
     }
     return result;
   }
@@ -55,6 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await checkAuth();
   }
 
+  const role = authState.authenticated
+    ? (authState.role || 'owner')
+    : null;
+
   return (
     <AuthContext.Provider value={{
       isAuthenticated: authState.authenticated,
@@ -63,6 +74,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localBypass: authState.localBypass,
       isLocal: authState.isLocal,
       isLoading,
+      role,
+      isGuest: role === 'guest',
+      guestName: authState.guestName || authState.guestUsername || null,
+      guestUsername: authState.guestUsername || null,
       login,
       logout,
       checkAuth

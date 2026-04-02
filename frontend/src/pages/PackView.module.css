@@ -1,10 +1,41 @@
 .container {
   display: flex;
+  flex-wrap: wrap;
   max-width: 1400px;
   margin: 0 auto;
   padding: 24px;
   gap: 24px;
   height: calc(100vh - 180px);
+}
+
+/* Guest Welcome Banner */
+.guestBanner {
+  width: 100%;
+  background: rgba(156, 163, 175, 0.1);
+  border: 1px solid rgba(156, 163, 175, 0.2);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.guestBannerClose {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.guestBannerClose:hover {
+  color: var(--text-primary);
 }
 
 /* Left Panel — Beast Grid */

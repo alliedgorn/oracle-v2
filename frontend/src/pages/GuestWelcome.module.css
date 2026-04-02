@@ -1,0 +1,200 @@
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+/* Hero */
+.hero {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.heroTitle {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 16px;
+  line-height: 1.2;
+}
+
+.heroSubtitle {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* Sections */
+.section {
+  margin-bottom: 40px;
+  text-align: center;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+  font-weight: 600;
+}
+
+.sectionLink {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.sectionLink:hover {
+  text-decoration: underline;
+}
+
+/* Beast Avatar Row */
+.beastRow {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.beastCircle {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: visible;
+  cursor: default;
+  transition: transform 0.15s;
+}
+
+.beastCircle:hover {
+  transform: scale(1.1);
+}
+
+.beastAvatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+}
+
+.beastEmoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  font-size: 22px;
+}
+
+.beastOnlineDot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #22c55e;
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
+}
+
+/* Quick Action Cards */
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+.actionCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  text-decoration: none;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  text-align: center;
+}
+
+.actionCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  border-color: var(--accent);
+}
+
+.actionIcon {
+  font-size: 28px;
+}
+
+.actionLabel {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.actionDesc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Activity Pulse */
+.pulse {
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pulseDot {
+  opacity: 0.4;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .container {
+    padding: 32px 16px;
+  }
+
+  .heroTitle {
+    font-size: 26px;
+  }
+
+  .heroSubtitle {
+    font-size: 15px;
+  }
+
+  .beastRow {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 0 16px;
+  }
+
+  .beastRow::-webkit-scrollbar {
+    display: none;
+  }
+
+  .actions {
+    grid-template-columns: 1fr;
+  }
+}

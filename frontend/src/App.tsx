@@ -18,12 +18,14 @@ import { Login } from './pages/Login';
 import { Settings } from './pages/Settings';
 import { Playground } from './pages/Playground';
 import { Map } from './pages/Map';
-import { PackView } from './pages/PackView';
+import { PackPage } from './pages/PackPage';
+import { TerminalView } from './pages/TerminalView';
 import { BeastProfile } from './pages/BeastProfile';
 import { Playbook } from './pages/Playbook';
 import { GornQueue } from './pages/GornQueue';
 import { RemoteControl } from './pages/RemoteControl';
 import { RemotePanel } from './components/RemotePanel';
+import { GuestDmPanel } from './components/GuestDmPanel';
 import { Prowl } from './pages/Prowl';
 import { Risk } from './pages/Risk';
 import { Rules } from './pages/Rules';
@@ -35,15 +37,26 @@ import { Teams } from './pages/Teams';
 import { AuditLog } from './pages/AuditLog';
 import { SpecReview } from './pages/SpecReview';
 import { Files } from './pages/Files';
+import { Guests } from './pages/Guests';
+import { GuestWelcome } from './pages/GuestWelcome';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ChatProvider, useChat } from './contexts/ChatContext';
 import { ChatOverlay } from './components/ChatOverlay';
 import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
 
-// Protected route wrapper
+// Guest-accessible routes (no redirect for guests)
+const GUEST_ROUTES = new Set(['/', '/pack', '/forum', '/dms', '/beast', '/welcome', '/terminal', '/settings']);
+
+function isGuestRoute(pathname: string): boolean {
+  if (GUEST_ROUTES.has(pathname)) return true;
+  if (pathname.startsWith('/beast/')) return true;
+  return false;
+}
+
+// Protected route wrapper with guest role awareness
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, authEnabled, isLoading } = useAuth();
+  const { isAuthenticated, authEnabled, isLoading, isGuest } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -54,11 +67,17 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // Guests can only access whitelisted routes — redirect others to /
+  if (isGuest && !isGuestRoute(location.pathname)) {
+    return <Navigate to="/" replace />;
+  }
+
   return <>{children}</>;
 }
 
 function AppContent() {
   const location = useLocation();
+  const { isGuest, isLoading: authLoading } = useAuth();
   const isLoginPage = location.pathname === '/login';
   const [remoteCollapsed, setRemoteCollapsed] = useState(false);
   const [remoteMobileOpen, setRemoteMobileOpen] = useState(false);
@@ -87,7 +106,8 @@ function AppContent() {
       <div className={!isLoginPage ? 'app-main' : undefined}>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<RequireAuth><PackView /></RequireAuth>} />
+        <Route path="/welcome" element={<RequireAuth><GuestWelcome /></RequireAuth>} />
+        <Route path="/" element={<RequireAuth><PackPage /></RequireAuth>} />
         <Route path="/overview" element={<RequireAuth><Overview /></RequireAuth>} />
         <Route path="/feed" element={<RequireAuth><Feed /></RequireAuth>} />
         <Route path="/doc/:id" element={<RequireAuth><DocDetail /></RequireAuth>} />
@@ -98,7 +118,8 @@ function AppContent() {
         <Route path="/graph3d" element={<Navigate to="/graph" replace />} />
         <Route path="/handoff" element={<RequireAuth><Handoff /></RequireAuth>} />
         <Route path="/activity" element={<RequireAuth><Activity /></RequireAuth>} />
-        <Route path="/pack" element={<RequireAuth><PackView /></RequireAuth>} />
+        <Route path="/pack" element={<RequireAuth><PackPage /></RequireAuth>} />
+        <Route path="/terminal" element={<RequireAuth><TerminalView /></RequireAuth>} />
         <Route path="/beast/:name" element={<RequireAuth><BeastProfile /></RequireAuth>} />
         <Route path="/playbook" element={<RequireAuth><Playbook /></RequireAuth>} />
         <Route path="/queue" element={<RequireAuth><GornQueue /></RequireAuth>} />
@@ -121,11 +142,12 @@ function AppContent() {
         <Route path="/audit" element={<RequireAuth><AuditLog /></RequireAuth>} />
         <Route path="/specs" element={<RequireAuth><SpecReview /></RequireAuth>} />
         <Route path="/files" element={<RequireAuth><Files /></RequireAuth>} />
+        <Route path="/guests" element={<RequireAuth><Guests /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       </Routes>
-      {!isLoginPage && <QuickLearn />}
+      {!isLoginPage && !authLoading && !isGuest && <QuickLearn />}
       </div>
-      {!isLoginPage && (
+      {!isLoginPage && !authLoading && !isGuest && (
         <RemotePanel
           isOpen={remoteMobileOpen}
           onClose={() => setRemoteMobileOpen(false)}
@@ -133,8 +155,17 @@ function AppContent() {
           onToggleCollapse={() => setRemoteCollapsed(prev => !prev)}
         />
       )}
+      {!isLoginPage && !authLoading && isGuest && (
+        <GuestDmPanel
+          isOpen={remoteMobileOpen}
+          onClose={() => setRemoteMobileOpen(false)}
+          collapsed={remoteCollapsed}
+          onToggleCollapse={() => setRemoteCollapsed(prev => !prev)}
+        />
+      )}
       </div>
-      {!isLoginPage && <GlobalChatOverlay />}
+      {!isLoginPage && !authLoading && !isGuest && <GlobalChatOverlay />}
+      {!isLoginPage && !authLoading && isGuest && <GuestGlobalChatOverlay />}
     </>
   );
 }
@@ -153,17 +184,42 @@ function GlobalChatOverlay() {
   );
 }
 
-function App() {
+function GuestGlobalChatOverlay() {
+  const { chatTarget, collapsed, closeChat, toggleCollapse } = useChat();
+  const { guestUsername, guestName } = useAuth();
+  if (!chatTarget) return null;
+  return (
+    <ChatOverlay
+      beastName={chatTarget.beastName}
+      displayName={chatTarget.displayName}
+      collapsed={collapsed}
+      onToggleCollapse={toggleCollapse}
+      onClose={closeChat}
+      isGuest={true}
+      guestName={guestUsername || guestName}
+    />
+  );
+}
+
+function AppInit() {
+  const { isGuest, isLoading } = useAuth();
+
   useEffect(() => {
+    if (isLoading || isGuest) return;
     getStats().then(stats => {
       if (stats.vault_repo) setVaultRepo(stats.vault_repo);
     }).catch(() => {});
-  }, []);
+  }, [isLoading, isGuest]);
 
+  return null;
+}
+
+function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <ChatProvider>
+          <AppInit />
           <AppContent />
         </ChatProvider>
       </AuthProvider>

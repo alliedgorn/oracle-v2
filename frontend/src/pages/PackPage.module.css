@@ -1,0 +1,480 @@
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* Guest Welcome Banner */
+.guestBanner {
+  background: rgba(156, 163, 175, 0.1);
+  border: 1px solid rgba(156, 163, 175, 0.2);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.guestBannerClose {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.guestBannerClose:hover {
+  color: var(--text-primary);
+}
+
+/* Main Layout */
+.layout {
+  display: flex;
+  gap: 24px;
+  height: calc(100vh - 200px);
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin: 0 0 20px 0;
+}
+
+/* Beast Card Grid */
+.gridSection {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.beastGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+/* Individual Beast Card */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--beast-color, var(--border));
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.cardSelected {
+  border-color: var(--accent);
+  background: var(--accent-glow, rgba(212, 148, 58, 0.06));
+  box-shadow: 0 0 12px rgba(212, 148, 58, 0.15);
+}
+
+.cardProcessing {
+  /* full opacity */
+}
+
+.cardWaiting {
+  /* full opacity */
+}
+
+.cardOffline {
+  opacity: 0.5;
+}
+
+.cardOffline:hover {
+  opacity: 0.7;
+}
+
+/* Shimmer bar for processing */
+.shimmerBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--beast-color, #3fb950), transparent);
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Card Avatar */
+.cardAvatar {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.cardAvatarImg {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--beast-color, var(--border));
+}
+
+.cardAvatarEmoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  font-size: 36px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 50%;
+  border: 2px solid var(--beast-color, var(--border));
+}
+
+/* Status dot on card */
+.cardDot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-card);
+}
+
+.dotOnline {
+  background: #3fb950;
+  box-shadow: 0 0 6px rgba(63, 185, 80, 0.5);
+}
+
+.dotProcessing {
+  background: #3fb950;
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.dotWaiting {
+  background: #f59e0b;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.dotOffline {
+  background: #4b5563;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 4px rgba(63, 185, 80, 0.3); }
+  50% { box-shadow: 0 0 10px rgba(63, 185, 80, 0.7); }
+}
+
+.cardName {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.cardAnimal {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.cardRole {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.3;
+}
+
+/* Profile Detail Panel */
+.profilePanel {
+  width: 380px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  overflow-y: auto;
+}
+
+.profileContent {
+  padding: 32px;
+}
+
+/* Hero */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.heroAvatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.heroAvatarImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.heroAvatarEmoji {
+  font-size: 52px;
+}
+
+.heroName {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.heroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Status Bar */
+.statusBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.statusBarDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.statusBarProcessing {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.08);
+}
+
+.statusBarWaiting {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.statusBarOnline {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.06);
+}
+
+.statusBarOffline {
+  color: var(--text-muted);
+  background: rgba(110, 118, 129, 0.08);
+}
+
+/* Bio */
+.bio {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0 0 20px 0;
+}
+
+/* Interests */
+.interests {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.interestTag {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Birthdate */
+.birthdate {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actionButton {
+  display: block;
+  font-size: 14px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.actionButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+/* Placeholder */
+.placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  padding: 32px;
+}
+
+.placeholderIcon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.placeholder p {
+  font-size: 16px;
+  margin: 0;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .container {
+    padding: 12px;
+  }
+
+  .layout {
+    flex-direction: column;
+    height: auto;
+    gap: 16px;
+  }
+
+  .beastGrid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .card {
+    padding: 14px 10px;
+  }
+
+  .cardAvatar {
+    width: 56px;
+    height: 56px;
+  }
+
+  .cardAvatarImg,
+  .cardAvatarEmoji {
+    width: 56px;
+    height: 56px;
+    font-size: 26px;
+  }
+
+  .cardName {
+    font-size: 14px;
+  }
+
+  .cardDot {
+    width: 10px;
+    height: 10px;
+  }
+
+  .profilePanel {
+    width: 100%;
+  }
+
+  .profileContent {
+    padding: 20px;
+  }
+
+  .heroAvatar {
+    width: 96px;
+    height: 96px;
+  }
+
+  .heroName {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 480px) {
+  .beastGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .card {
+    padding: 12px 8px;
+  }
+
+  .cardAvatar {
+    width: 48px;
+    height: 48px;
+  }
+
+  .cardAvatarImg,
+  .cardAvatarEmoji {
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
+  }
+
+  .cardName {
+    font-size: 13px;
+  }
+
+  .cardRole {
+    display: none;
+  }
+}

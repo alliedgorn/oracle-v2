@@ -9,11 +9,11 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { autolinkIds } from '../utils/autolink';
 import styles from './Forum.module.css';
 import { ANIMAL_EMOJI } from '../utils/animals';
+import { useAuth } from '../contexts/AuthContext';
+import { getGuestThreads, getGuestThread, postGuestThreadReply, createGuestThread, getGuestPack } from '../api/guest';
 import { FileUpload } from '../components/FileUpload';
 import { EmojiButton } from '../components/EmojiButton';
 import { VoiceInput } from '../components/VoiceInput';
-import { SearchInput } from '../components/SearchInput';
-import { FilterTabs } from '../components/FilterTabs';
 
 interface BeastProfile {
   name: string;
@@ -40,10 +40,19 @@ const FALLBACK_MAP: Record<string, { name: string; emoji: string }> = {
 function resolveAuthor(
   role: string,
   author: string | null,
-  profiles: Map<string, BeastProfile>
+  profiles: Map<string, BeastProfile>,
+  guestAvatars?: Map<string, string | null>,
+  msgAvatarUrl?: string | null
 ): { name: string; emoji: string; avatarUrl: string | null; themeColor: string | null } {
   // Check author field first — role alone is unreliable (Beasts post with role: human)
   if (author) {
+    // Guest authors: "[Guest] username" — display as guest, don't match beast profiles
+    if (author.startsWith('[Guest]')) {
+      const guestName = author.replace('[Guest] ', '').replace('[Guest]', '') || 'Guest';
+      const avatarUrl = msgAvatarUrl || guestAvatars?.get(guestName.toLowerCase()) || null;
+      return { name: guestName, emoji: '👤', avatarUrl, themeColor: null };
+    }
+
     const authorLower = author.toLowerCase();
 
     // Match against beast profiles from DB
@@ -84,7 +93,9 @@ interface Thread {
   pinned: boolean;
   message_count: number;
   created_at: string;
+  created_by: string | null;
   issue_url: string | null;
+  visibility?: 'public' | 'internal';
 }
 
 interface Message {
@@ -92,6 +103,8 @@ interface Message {
   role: 'human' | 'oracle' | 'claude';
   content: string;
   author: string | null;
+  author_role?: 'owner' | 'beast' | 'guest';
+  author_avatar_url?: string | null;
   reply_to_id: number | null;
   principles_found: number | null;
   patterns_found: number | null;
@@ -112,12 +125,20 @@ interface ThreadDetail {
 
 const API_BASE = '/api';
 
-async function fetchThreads(): Promise<{ threads: Thread[]; total: number }> {
-  const res = await fetch(`${API_BASE}/threads`);
+async function fetchThreads(isGuest = false, limit?: number, offset = 0, category?: string, visibility?: string): Promise<{ threads: Thread[]; total: number }> {
+  if (isGuest) return getGuestThreads(limit, offset) as any;
+  const params = new URLSearchParams();
+  if (limit !== undefined) params.set('limit', limit.toString());
+  if (offset) params.set('offset', offset.toString());
+  if (category && category !== 'all') params.set('category', category);
+  if (visibility && visibility !== 'all') params.set('visibility', visibility);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE}/threads${qs ? '?' + qs : ''}`);
   return res.json();
 }
 
-async function fetchThread(id: number, limit?: number, offset = 0, order: 'asc' | 'desc' = 'desc'): Promise<ThreadDetail & { total: number }> {
+async function fetchThread(id: number, limit?: number, offset = 0, order: 'asc' | 'desc' = 'desc', isGuest = false): Promise<ThreadDetail & { total: number }> {
+  if (isGuest) return getGuestThread(id, limit, offset);
   const params = new URLSearchParams();
   if (limit !== undefined) params.set('limit', limit.toString());
   if (offset) params.set('offset', offset.toString());
@@ -127,7 +148,14 @@ async function fetchThread(id: number, limit?: number, offset = 0, order: 'asc' 
   return res.json();
 }
 
-async function sendMessage(message: string, threadId?: number, title?: string, replyToId?: number): Promise<any> {
+async function sendMessage(message: string, threadId?: number, title?: string, replyToId?: number, isGuest = false): Promise<any> {
+  if (isGuest) {
+    if (threadId) {
+      return postGuestThreadReply(threadId, message, replyToId);
+    } else {
+      return createGuestThread(message, title);
+    }
+  }
   const res = await fetch(`${API_BASE}/thread`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -138,6 +166,7 @@ async function sendMessage(message: string, threadId?: number, title?: string, r
 
 
 export function Forum() {
+  const { isGuest, guestName } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedThread, setSelectedThread] = useState<ThreadDetail | null>(null);
@@ -156,16 +185,21 @@ export function Forum() {
   const [newTitle, setNewTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [beastProfiles, setBeastProfiles] = useState<Map<string, BeastProfile>>(new Map());
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<{ messages: any[]; threads: any[] } | null>(null);
+  const [guestAvatars, setGuestAvatars] = useState<Map<string, string | null>>(new Map());
   const [reactions, setReactions] = useState<Record<number, { emoji: string; beasts: string[]; count: number }[]>>({});
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
   const [supportedEmoji, setSupportedEmoji] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [visibilityFilter, setVisibilityFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'recent' | 'active' | 'most-msgs'>('recent');
   const [newCategory, setNewCategory] = useState<string>('discussion');
+  const [newVisibility, setNewVisibility] = useState<'internal' | 'public'>('internal');
   const [replyTo, setReplyTo] = useState<{ id: number; author: string | null; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [totalMessages, setTotalMessages] = useState(0);
+  const [threadTotal, setThreadTotal] = useState(0);
+  const [isLoadingMoreThreads, setIsLoadingMoreThreads] = useState(false);
+  const THREAD_PAGE_SIZE = 20;
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -234,10 +268,12 @@ export function Forum() {
     return () => window.removeEventListener('scroll', handler);
   }, []);
 
-  // Load unread counts for gorn
+  // Load unread counts (owner uses 'gorn', guests use 'guest:<name>')
+  const unreadIdentity = isGuest ? `guest:${guestName}` : 'gorn';
+
   async function loadUnreadCounts() {
     try {
-      const res = await fetch(`${API_BASE}/forum/unread/gorn`);
+      const res = await fetch(`${API_BASE}/forum/unread/${encodeURIComponent(unreadIdentity)}`);
       const data = await res.json();
       const counts: Record<number, number> = {};
       for (const t of data.threads || []) {
@@ -247,13 +283,13 @@ export function Forum() {
     } catch { /* ignore */ }
   }
 
-  // Mark thread as read for gorn
+  // Mark thread as read
   async function markThreadRead(threadId: number, lastMessageId: number) {
     try {
       await fetch(`${API_BASE}/forum/read`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beast: 'gorn', threadId, messageId: lastMessageId }),
+        body: JSON.stringify({ beast: unreadIdentity, threadId, messageId: lastMessageId }),
       });
       setUnreadCounts(prev => {
         const next = { ...prev };
@@ -263,10 +299,9 @@ export function Forum() {
     } catch { /* ignore */ }
   }
 
-  // Load beast profiles
+  // Load beast profiles + guest avatars
   useEffect(() => {
-    fetch(`${API_BASE}/beasts`)
-      .then(res => res.json())
+    (isGuest ? getGuestPack() : fetch(`${API_BASE}/beasts`).then(res => res.json()))
       .then(data => {
         const map = new Map<string, BeastProfile>();
         for (const b of data.beasts || []) {
@@ -275,6 +310,19 @@ export function Forum() {
         setBeastProfiles(map);
       })
       .catch(() => {});
+    // Load guest avatars (owner only — /api/guests requires owner session)
+    if (!isGuest) {
+      fetch(`${API_BASE}/guests`).then(r => r.json())
+        .then(data => {
+          const map = new Map<string, string | null>();
+          for (const g of data.guests || []) {
+            map.set(g.username?.toLowerCase(), g.avatar_url || null);
+            if (g.display_name) map.set(g.display_name.toLowerCase(), g.avatar_url || null);
+          }
+          setGuestAvatars(map);
+        })
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -282,6 +330,11 @@ export function Forum() {
     loadUnreadCounts();
     fetch('/api/reactions/supported').then(r => r.json()).then(d => setSupportedEmoji(d.emoji || [])).catch(() => {});
   }, []);
+
+  // Reload threads when category or visibility filter changes
+  useEffect(() => {
+    loadThreads();
+  }, [categoryFilter, visibilityFilter]);
 
   // Load thread from URL param or auto-select first
   // Only react to threadIdParam changes (user navigation), NOT threads polling
@@ -309,7 +362,7 @@ export function Forum() {
       // Pause polling while user is typing to prevent re-renders
       if (document.activeElement?.tagName === 'TEXTAREA') return;
       if (selectedThread) {
-        fetchThread(selectedThread.thread.id, 5, 0, 'desc').then(data => {
+        fetchThread(selectedThread.thread.id, 5, 0, 'desc', isGuest).then(data => {
           setSelectedThread(prev => {
             if (!prev) return prev;
             const existingIds = new Set(prev.messages.map(m => m.id));
@@ -342,15 +395,22 @@ export function Forum() {
     if (!container) return;
 
     if (!initialScrollDone.current) {
-      container.scrollTop = container.scrollHeight;
-      initialScrollDone.current = true;
+      // Defer scroll to after DOM paint so scrollHeight reflects rendered messages
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+          }
+          initialScrollDone.current = true;
+        });
+      });
     }
   }, [selectedThread?.messages.length]);
 
   // Real-time WebSocket updates — fetch only new messages, append
   const handleWsMessage = useCallback((data: any) => {
     if (selectedThread && data.thread_id === selectedThread.thread.id) {
-      fetchThread(selectedThread.thread.id, 5, 0, 'desc').then(d => {
+      fetchThread(selectedThread.thread.id, 5, 0, 'desc', isGuest).then(d => {
         setSelectedThread(prev => {
           if (!prev) return prev;
           const existingIds = new Set(prev.messages.map(m => m.id));
@@ -362,14 +422,14 @@ export function Forum() {
         setTotalMessages(d.total);
       }).catch(() => {});
     }
-    fetchThreads().then(d => setThreads(d.threads)).catch(() => {});
-  }, [selectedThread?.thread.id]);
+    fetchThreads(isGuest).then(d => setThreads(d.threads)).catch(() => {});
+  }, [selectedThread?.thread.id, isGuest]);
 
   useWebSocket('new_message', handleWsMessage);
 
-  // Real-time reaction updates
+  // Real-time reaction updates (skip private API for guests)
   const handleWsReaction = useCallback((data: any) => {
-    if (!data.message_id) return;
+    if (!data.message_id || isGuest) return;
     // Refresh reactions for the affected message
     fetch(`${API_BASE}/message/${data.message_id}/reactions`)
       .then(r => r.json())
@@ -377,7 +437,7 @@ export function Forum() {
         setReactions(prev => ({ ...prev, [data.message_id]: d.reactions || [] }));
       })
       .catch(() => {});
-  }, []);
+  }, [isGuest]);
 
   useWebSocket('reaction', handleWsReaction);
 
@@ -392,7 +452,7 @@ export function Forum() {
     const prevScrollHeight = container?.scrollHeight || 0;
     try {
       const currentCount = selectedThread.messages.length;
-      const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'desc');
+      const data = await fetchThread(selectedThread.thread.id, PAGE_SIZE, currentCount, 'desc', isGuest);
       data.messages.reverse();
       if (data.messages.length > 0) {
         setSelectedThread(prev => prev ? {
@@ -414,14 +474,29 @@ export function Forum() {
 
 
   async function loadThreads() {
-    const data = await fetchThreads();
+    const data = await fetchThreads(isGuest, THREAD_PAGE_SIZE, 0, categoryFilter, visibilityFilter);
     setThreads(data.threads);
+    setThreadTotal(data.total);
   }
+
+  const loadMoreThreads = useCallback(async () => {
+    if (isLoadingMoreThreads) return;
+    setIsLoadingMoreThreads(true);
+    try {
+      const data = await fetchThreads(isGuest, THREAD_PAGE_SIZE, threads.length, categoryFilter, visibilityFilter);
+      if (data.threads.length > 0) {
+        setThreads(prev => [...prev, ...data.threads]);
+        setThreadTotal(data.total);
+      }
+    } finally {
+      setIsLoadingMoreThreads(false);
+    }
+  }, [isGuest, threads.length, isLoadingMoreThreads, categoryFilter, visibilityFilter]);
 
   async function selectThread(id: number) {
     initialScrollDone.current = false;
     // Load latest messages (desc) then reverse for chronological display
-    const data = await fetchThread(id, PAGE_SIZE, 0, 'desc');
+    const data = await fetchThread(id, PAGE_SIZE, 0, 'desc', isGuest);
     data.messages.reverse();
     setSelectedThread(data);
     setTotalMessages(data.total);
@@ -452,14 +527,14 @@ export function Forum() {
     setLoading(true);
     try {
       if (selectedThread) {
-        const result = await sendMessage(messageText, selectedThread.thread.id, undefined, replyTo?.id);
+        const result = await sendMessage(messageText, selectedThread.thread.id, undefined, replyTo?.id, isGuest);
         // Append the new message locally instead of re-fetching (avoids WebSocket duplicate)
         if (result.message_id) {
           const newMsg = {
             id: result.message_id,
             role: 'human' as const,
             content: messageText,
-            author: 'gorn',
+            author: isGuest ? `[Guest] ${guestName || 'Guest'}` : 'gorn',
             reply_to_id: replyTo?.id || null,
             principles_found: null,
             patterns_found: null,
@@ -473,13 +548,21 @@ export function Forum() {
         }
       } else if (showNewThread) {
         // Create new thread
-        const result = await sendMessage(messageText, undefined, newTitle || undefined);
+        const result = await sendMessage(messageText, undefined, newTitle || undefined, undefined, isGuest);
         // Set category if not default
-        if (newCategory && newCategory !== 'discussion' && result.thread_id) {
+        if (!isGuest && newCategory && newCategory !== 'discussion' && result.thread_id) {
           await fetch(`${API_BASE}/thread/${result.thread_id}/category`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ category: newCategory }),
+          });
+        }
+        // Set visibility if public
+        if (!isGuest && newVisibility === 'public' && result.thread_id) {
+          await fetch(`${API_BASE}/thread/${result.thread_id}/visibility`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ visibility: 'public' }),
           });
         }
         await loadThreads();
@@ -528,19 +611,20 @@ export function Forum() {
   }
 
   async function toggleReaction(messageId: number, emoji: string) {
+    const reactAs = isGuest ? `[Guest] ${guestName || 'Guest'}` : 'gorn';
     const existing = reactions[messageId] || [];
-    const myReaction = existing.find(r => r.emoji === emoji && r.beasts.includes('gorn'));
+    const myReaction = existing.find(r => r.emoji === emoji && r.beasts.includes(reactAs));
     if (myReaction) {
       await fetch(`${API_BASE}/message/${messageId}/react`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beast: 'gorn', emoji }),
+        body: JSON.stringify({ beast: reactAs, emoji }),
       });
     } else {
       await fetch(`${API_BASE}/message/${messageId}/react`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ beast: 'gorn', emoji }),
+        body: JSON.stringify({ beast: reactAs, emoji }),
       });
     }
     // Reload reactions for this message
@@ -551,21 +635,6 @@ export function Forum() {
     } catch { /* ignore */ }
   }
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!searchQuery.trim()) {
-      setSearchResults(null);
-      return;
-    }
-    const res = await fetch(`${API_BASE}/forum/search?q=${encodeURIComponent(searchQuery)}`);
-    const data = await res.json();
-    setSearchResults({ messages: data.messages, threads: data.threads });
-  }
-
-  function clearSearch() {
-    setSearchQuery('');
-    setSearchResults(null);
-  }
 
   return (
     <div className={styles.container}>
@@ -581,62 +650,48 @@ export function Forum() {
           </button>
         </div>
 
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search forum..."
-          onSubmit={handleSearch}
-          onClear={clearSearch}
-          showClear={!!searchResults}
-        />
-
-        {searchResults && (
-          <div className={styles.searchResults}>
-            <div className={styles.searchCount}>
-              {searchResults.threads.length} threads, {searchResults.messages.length} messages
-            </div>
-            {searchResults.threads.map((t: any) => (
-              <div
-                key={`t-${t.id}`}
-                className={styles.searchItem}
-                onClick={() => { setSearchParams({ thread: t.id.toString() }); clearSearch(); }}
-              >
-                <span className={styles.searchLabel}>Thread</span>
-                <span className={styles.searchTitle}>{t.title}</span>
-              </div>
-            ))}
-            {searchResults.messages.map((m: any) => (
-              <div
-                key={`m-${m.id}`}
-                className={styles.searchItem}
-                onClick={() => { setSearchParams({ thread: m.thread_id.toString() }); clearSearch(); }}
-              >
-                <span className={styles.searchLabel}>Msg</span>
-                <span className={styles.searchTitle}>{m.content.slice(0, 80)}...</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className={styles.filterWrapper}>
-          <FilterTabs
-            items={[
-              { id: 'all', label: 'All' },
-              { id: 'announcement', label: 'Announcement' },
-              { id: 'task', label: 'Task' },
-              { id: 'discussion', label: 'Discussion' },
-              { id: 'decision', label: 'Decision' },
-              { id: 'question', label: 'Question' },
-            ]}
-            activeId={categoryFilter}
-            onChange={setCategoryFilter}
-            variant="compact"
-          />
+        <div className={styles.filterRow}>
+          <select
+            value={categoryFilter}
+            onChange={e => setCategoryFilter(e.target.value)}
+            className={styles.filterSelect}
+          >
+            <option value="all">All categories</option>
+            <option value="announcement">Announcement</option>
+            <option value="task">Task</option>
+            <option value="discussion">Discussion</option>
+            <option value="decision">Decision</option>
+            <option value="question">Question</option>
+          </select>
+          {!isGuest && (
+            <select
+              value={visibilityFilter}
+              onChange={e => setVisibilityFilter(e.target.value)}
+              className={styles.filterSelect}
+            >
+              <option value="all">All threads</option>
+              <option value="internal">Internal only</option>
+              <option value="public">Public only</option>
+            </select>
+          )}
+          <select
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
+            className={styles.sortSelect}
+          >
+            <option value="recent">Recent</option>
+            <option value="active">Most active</option>
+            <option value="most-msgs">Most messages</option>
+          </select>
         </div>
 
         <div className={styles.threadList}>
           {threads
-            .filter(t => categoryFilter === 'all' || t.category === categoryFilter)
+            .sort((a, b) => {
+              if (sortOrder === 'most-msgs') return (b.message_count || 0) - (a.message_count || 0);
+              // 'recent' and 'active' use default server order
+              return 0;
+            })
             .map(thread => (
             <div
               key={thread.id}
@@ -651,7 +706,13 @@ export function Forum() {
                 )}
               </div>
               <div className={styles.threadMeta}>
+                {thread.created_by && <span className={styles.threadCreator}>by {thread.created_by}</span>}
                 <span className={styles.categoryBadge}>{thread.category || 'discussion'}</span>
+                {!isGuest && thread.visibility && (
+                  <span className={thread.visibility === 'public' ? styles.visibilityPublic : styles.visibilityInternal}>
+                    {thread.visibility === 'public' ? 'Public' : 'Internal'}
+                  </span>
+                )}
                 <span className={styles.count}>{thread.message_count} msgs</span>
               </div>
             </div>
@@ -659,6 +720,16 @@ export function Forum() {
 
           {threads.length === 0 && (
             <div className={styles.empty}>No threads yet</div>
+          )}
+          {threads.length < threadTotal && (
+            <button
+              onClick={loadMoreThreads}
+              disabled={isLoadingMoreThreads}
+              className={styles.loadMoreBtn}
+              style={{ margin: '12px auto', display: 'block' }}
+            >
+              {isLoadingMoreThreads ? 'Loading...' : `Load more (${threadTotal - threads.length} remaining)`}
+            </button>
           )}
         </div>
       </div>
@@ -679,17 +750,37 @@ export function Forum() {
                 onChange={e => setNewTitle(e.target.value)}
                 className={styles.titleInput}
               />
-              <div className={styles.categoryPills}>
-                {['discussion', 'announcement', 'task', 'decision', 'question'].map(cat => (
-                  <button
-                    key={cat}
-                    type="button"
-                    className={`${styles.categoryPill} ${newCategory === cat ? styles.categoryPillActive : ''}`}
-                    onClick={() => setNewCategory(cat)}
-                  >
-                    {cat}
-                  </button>
-                ))}
+              <div className={styles.newThreadOptions}>
+                <div className={styles.categoryPills}>
+                  {['discussion', 'announcement', 'task', 'decision', 'question'].map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      className={`${styles.categoryPill} ${newCategory === cat ? styles.categoryPillActive : ''}`}
+                      onClick={() => setNewCategory(cat)}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                {!isGuest && (
+                  <div className={styles.visibilityToggle}>
+                    <button
+                      type="button"
+                      className={`${styles.visibilityBtn} ${newVisibility === 'internal' ? styles.visibilityBtnActive : ''}`}
+                      onClick={() => setNewVisibility('internal')}
+                    >
+                      Internal
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.visibilityBtn} ${newVisibility === 'public' ? styles.visibilityBtnActive : ''}`}
+                      onClick={() => setNewVisibility('public')}
+                    >
+                      Public
+                    </button>
+                  </div>
+                )}
               </div>
               <textarea
                 placeholder="What's on your mind? (⌘+Enter to send)"
@@ -722,6 +813,27 @@ export function Forum() {
               <button className={styles.mobileBack} onClick={() => { setSelectedThread(null); setSearchParams({}); }}>←</button>
               <h2><span className={styles.threadIdHeader}>#{selectedThread.thread.id}</span> {selectedThread.thread.title}</h2>
               <div className={styles.threadActions}>
+                {!isGuest && (
+                  <button
+                    className={styles.deleteThreadBtn}
+                    onClick={async () => {
+                      if (!confirm(`Delete thread #${selectedThread.thread.id} "${selectedThread.thread.title}"? This cannot be undone.`)) return;
+                      try {
+                        await fetch(`${API_BASE}/thread/${selectedThread.thread.id}`, {
+                          method: 'DELETE',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ beast: 'gorn' }),
+                        });
+                        setSelectedThread(null);
+                        setSearchParams({});
+                        loadThreads();
+                      } catch {}
+                    }}
+                    title="Delete thread"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
 
@@ -738,7 +850,7 @@ export function Forum() {
                 </div>
               )}
               {selectedThread.messages.map(msg => {
-                const identity = resolveAuthor(msg.role, msg.author, beastProfiles);
+                const identity = resolveAuthor(msg.role, msg.author, beastProfiles, guestAvatars, msg.author_avatar_url);
                 return (
                 <div
                   key={msg.id}
@@ -753,6 +865,7 @@ export function Forum() {
                         <span className={styles.avatarEmoji}>{identity.emoji}</span>
                       )}
                       {identity.name}
+                      {msg.author_role === 'guest' && <span className={styles.guestBadge}>Guest</span>}
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span className={styles.messageId}>#{msg.id}</span>
@@ -785,7 +898,7 @@ export function Forum() {
                     {(reactions[msg.id] || []).map(r => (
                       <button
                         key={r.emoji}
-                        className={`${styles.reactionBtn} ${r.beasts.includes('gorn') ? styles.reactionActive : ''}`}
+                        className={`${styles.reactionBtn} ${r.beasts.includes(isGuest ? `[Guest] ${guestName || 'Guest'}` : 'gorn') ? styles.reactionActive : ''}`}
                         onClick={() => toggleReaction(msg.id, r.emoji)}
                         title={r.beasts.join(', ')}
                       >

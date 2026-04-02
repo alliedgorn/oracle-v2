@@ -1,0 +1,218 @@
+/* RemoteBeastCard — compact card for the remote sidebar panel */
+.card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border-left: 2px solid var(--beast-color, transparent);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s;
+  overflow: hidden;
+}
+
+.card:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.card.selected {
+  background: rgba(212, 148, 58, 0.08);
+  border-left-color: var(--accent);
+}
+
+.card.processing {
+  /* full opacity */
+}
+
+.card.waiting {
+  /* full opacity */
+}
+
+.card.offline {
+  opacity: 0.4;
+}
+
+.card.offline:hover {
+  opacity: 0.6;
+}
+
+/* Shimmer bar */
+.shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--beast-color, #3fb950), transparent);
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Avatar — small */
+.avatar {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.avatarImg {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatarEmoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 15px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 50%;
+}
+
+/* Status dot */
+.dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bg-primary, #0d1117);
+}
+
+.dotActive {
+  background: #3fb950;
+  box-shadow: 0 0 4px rgba(63, 185, 80, 0.5);
+}
+
+.dotWaiting {
+  background: #f59e0b;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.dotOnline {
+  background: #3fb950;
+}
+
+.dotOffline {
+  background: #4b5563;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Info */
+.info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pct {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+  flex-shrink: 0;
+}
+
+/* Status label */
+.status {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.statusActive {
+  color: #3fb950;
+}
+
+.statusWaiting {
+  color: #f59e0b;
+}
+
+.statusIdle {
+  color: var(--text-muted);
+}
+
+.statusOff {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.card:hover .actions {
+  opacity: 1;
+}
+
+.btn {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 4px;
+  position: relative;
+  transition: color 0.15s;
+}
+
+.btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #ef4444;
+  color: white;
+  font-size: 8px;
+  font-weight: 700;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  line-height: 1;
+}

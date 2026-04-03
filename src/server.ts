@@ -11350,8 +11350,52 @@ async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> 
     let confirmText: string;
 
     if (msg.photo && msg.photo.length > 0) {
+      // Download and save photo so Beasts can view it
+      let photoUrl = '';
+      try {
+        const photo = msg.photo[msg.photo.length - 1];
+        const fileInfo = await tgApi(bot.token, 'getFile', { file_id: photo.file_id });
+        if (fileInfo.ok && fileInfo.result?.file_path) {
+          const filePath = fileInfo.result.file_path;
+          const imageRes = await fetch(`https://api.telegram.org/file/bot${bot.token}/${filePath}`);
+          if (imageRes.ok) {
+            const buffer = Buffer.from(await imageRes.arrayBuffer());
+            if (buffer.length <= 20 * 1024 * 1024) {
+              // Process with sharp if available
+              let processedBuffer = buffer;
+              let ext = '.' + (filePath.split('.').pop() || 'jpg');
+              try {
+                const sharp = require('sharp');
+                const metadata = await sharp(buffer).metadata();
+                if (metadata.width && metadata.width > 1920) {
+                  processedBuffer = await sharp(buffer).rotate().resize(1920, null, { withoutEnlargement: true }).jpeg({ quality: 95 }).withMetadata({ orientation: undefined }).toBuffer();
+                  ext = '.jpg';
+                } else {
+                  processedBuffer = await sharp(buffer).rotate().withMetadata({ orientation: undefined }).toBuffer();
+                }
+              } catch { /* sharp not available */ }
+
+              if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+              const filename = `telegram_${crypto.randomUUID()}${ext}`;
+              fs.writeFileSync(path.join(UPLOADS_DIR, filename), processedBuffer);
+              try {
+                sqlite.prepare('INSERT INTO files (filename, original_name, mime_type, size_bytes, uploaded_by, context, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(filename, `telegram_photo${ext}`, ext === '.jpg' ? 'image/jpeg' : 'image/png', processedBuffer.length, 'gorn', 'telegram', Date.now());
+              } catch { /* files table may not have all columns */ }
+              photoUrl = `https://denbook.online/api/f/${filename}`;
+              console.log(`[Telegram:${bot.beast}] Photo saved: ${filename}`);
+            }
+          }
+        }
+      } catch (e) { console.error(`[Telegram:${bot.beast}] Photo download error:`, e); }
+
       const caption = msg.caption || '';
-      notifyText = caption ? `[Telegram from Gorn] Photo: ${caption}` : '[Telegram from Gorn] Photo received';
+      if (photoUrl) {
+        notifyText = caption
+          ? `[Telegram from Gorn] ${caption}\\n\\nPhoto: ${photoUrl}`
+          : `[Telegram from Gorn] Photo: ${photoUrl}`;
+      } else {
+        notifyText = caption ? `[Telegram from Gorn] Photo: ${caption}` : '[Telegram from Gorn] Photo received (download failed)';
+      }
       confirmText = `✓ Notified ${bot.beast}`;
 
     } else if (msg.text) {

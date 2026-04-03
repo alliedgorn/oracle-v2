@@ -11270,36 +11270,78 @@ app.get('/api/search/status', async (c) => {
 // ============================================================================
 // Telegram Two-Way Chat (T#633)
 // ============================================================================
-// Long-polling receiver: Gorn sends messages/photos to the Telegram bot,
-// they get forwarded as DMs from "gorn" to TELEGRAM_FORWARD_TO (default: sable).
+// Multi-bot long-polling: each Beast can have its own Telegram bot.
+// Gorn sends messages/photos to a Beast's bot, they get forwarded as DMs.
+// Config: TELEGRAM_BOTS env var (JSON array) or legacy single-bot env vars.
 
-const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TG_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
-const TG_FORWARD_TO = process.env.TELEGRAM_FORWARD_TO || 'sable';
 const TG_POLL_INTERVAL = 3000; // ms
 
-// Telegram polling state
-let tgOffset = 0;
-let tgLastMessageAt: string | null = null;
-let tgMessageCount = 0;
-let tgPollingActive = false;
-let tgPollTimer: ReturnType<typeof setInterval> | null = null;
+interface TelegramBot {
+  token: string;
+  beast: string;       // Beast name this bot belongs to
+  chatId: string;      // Gorn's chat ID (same for all bots)
+  offset: number;
+  lastMessageAt: string | null;
+  messageCount: number;
+  active: boolean;
+  timer: ReturnType<typeof setInterval> | null;
+}
 
-async function tgApi(method: string, params: Record<string, string> = {}): Promise<any> {
-  const url = new URL(`https://api.telegram.org/bot${TG_TOKEN}/${method}`);
+// Parse bot configs from env
+function parseTelegramBots(): TelegramBot[] {
+  const bots: TelegramBot[] = [];
+
+  // Try TELEGRAM_BOTS JSON array first: [{"token":"...","beast":"karo"},{"token":"...","beast":"sable"}]
+  const botsJson = process.env.TELEGRAM_BOTS;
+  if (botsJson) {
+    try {
+      const parsed = JSON.parse(botsJson);
+      for (const b of parsed) {
+        if (b.token && b.beast) {
+          bots.push({
+            token: b.token,
+            beast: b.beast,
+            chatId: b.chatId || TG_CHAT_ID,
+            offset: 0, lastMessageAt: null, messageCount: 0, active: false, timer: null,
+          });
+        }
+      }
+    } catch (e) { console.error('[Telegram] Failed to parse TELEGRAM_BOTS:', e); }
+  }
+
+  // Fallback: legacy single-bot env vars
+  if (bots.length === 0) {
+    const token = process.env.TELEGRAM_BOT_TOKEN || '';
+    const beast = process.env.TELEGRAM_FORWARD_TO || 'karo';
+    if (token && TG_CHAT_ID) {
+      bots.push({
+        token, beast, chatId: TG_CHAT_ID,
+        offset: 0, lastMessageAt: null, messageCount: 0, active: false, timer: null,
+      });
+    }
+  }
+
+  return bots;
+}
+
+const telegramBots = parseTelegramBots();
+
+async function tgApi(token: string, method: string, params: Record<string, string> = {}): Promise<any> {
+  const url = new URL(`https://api.telegram.org/bot${token}/${method}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url.toString());
   return res.json();
 }
 
-async function tgSendReply(chatId: string, text: string): Promise<void> {
-  await tgApi('sendMessage', { chat_id: chatId, text });
+async function tgSendReply(token: string, chatId: string, text: string): Promise<void> {
+  await tgApi(token, 'sendMessage', { chat_id: chatId, text });
 }
 
-async function handleTelegramMessage(msg: any): Promise<void> {
+async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> {
   // Only accept messages from Gorn's chat
-  if (String(msg.chat.id) !== TG_CHAT_ID) {
-    console.log(`[Telegram] Rejected: chat_id ${msg.chat.id} !== expected ${TG_CHAT_ID}`);
+  if (String(msg.chat.id) !== bot.chatId) {
+    console.log(`[Telegram:${bot.beast}] Rejected: chat_id ${msg.chat.id} !== expected ${bot.chatId}`);
     return;
   }
 
@@ -11307,16 +11349,16 @@ async function handleTelegramMessage(msg: any): Promise<void> {
     if (msg.photo && msg.photo.length > 0) {
       // Photo message — download largest size
       const photo = msg.photo[msg.photo.length - 1];
-      const fileInfo = await tgApi('getFile', { file_id: photo.file_id });
+      const fileInfo = await tgApi(bot.token, 'getFile', { file_id: photo.file_id });
       if (!fileInfo.ok || !fileInfo.result?.file_path) {
-        console.error('[Telegram] Failed to get file info:', fileInfo);
+        console.error(`[Telegram:${bot.beast}] Failed to get file info:`, fileInfo);
         return;
       }
 
       const filePath = fileInfo.result.file_path;
-      const imageRes = await fetch(`https://api.telegram.org/file/bot${TG_TOKEN}/${filePath}`);
+      const imageRes = await fetch(`https://api.telegram.org/file/bot${bot.token}/${filePath}`);
       if (!imageRes.ok) {
-        console.error('[Telegram] Failed to download photo:', imageRes.status);
+        console.error(`[Telegram:${bot.beast}] Failed to download photo:`, imageRes.status);
         return;
       }
 
@@ -11324,8 +11366,8 @@ async function handleTelegramMessage(msg: any): Promise<void> {
 
       // Defense-in-depth: reject oversized files (Telegram caps at 20MB)
       if (buffer.length > 20 * 1024 * 1024) {
-        console.log(`[Telegram] Photo rejected: ${buffer.length} bytes exceeds 20MB limit`);
-        await tgSendReply(TG_CHAT_ID, '✗ Photo too large (max 20MB)');
+        console.log(`[Telegram:${bot.beast}] Photo rejected: ${buffer.length} bytes exceeds 20MB limit`);
+        await tgSendReply(bot.token, bot.chatId, '✗ Photo too large (max 20MB)');
         return;
       }
 
@@ -11373,98 +11415,101 @@ async function handleTelegramMessage(msg: any): Promise<void> {
         ? `${caption}\n\n![Photo](${imageUrl})`
         : `![Photo](${imageUrl})`;
 
-      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, dmText));
+      const result = await withRetry(() => sendDm('gorn', bot.beast, dmText));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
 
-      console.log(`[Telegram] Photo forwarded to ${TG_FORWARD_TO} (${filename})`);
-      tgMessageCount++;
-      tgLastMessageAt = new Date().toISOString();
-      await tgSendReply(TG_CHAT_ID, `✓ Photo forwarded to ${TG_FORWARD_TO}`);
+      console.log(`[Telegram:${bot.beast}] Photo forwarded (${filename})`);
+      bot.messageCount++;
+      bot.lastMessageAt = new Date().toISOString();
+      await tgSendReply(bot.token, bot.chatId, `✓ Photo forwarded to ${bot.beast}`);
 
     } else if (msg.text) {
       // Text message
-      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, msg.text));
+      const result = await withRetry(() => sendDm('gorn', bot.beast, msg.text));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
 
-      console.log(`[Telegram] Text forwarded to ${TG_FORWARD_TO}: ${msg.text.slice(0, 50)}...`);
-      tgMessageCount++;
-      tgLastMessageAt = new Date().toISOString();
-      await tgSendReply(TG_CHAT_ID, `✓ Forwarded to ${TG_FORWARD_TO}`);
+      console.log(`[Telegram:${bot.beast}] Text forwarded: ${msg.text.slice(0, 50)}...`);
+      bot.messageCount++;
+      bot.lastMessageAt = new Date().toISOString();
+      await tgSendReply(bot.token, bot.chatId, `✓ Forwarded to ${bot.beast}`);
 
     } else if (msg.document) {
-      // Document — note it but don't download for v1
       const docName = msg.document.file_name || 'unknown';
       const dmText = `[Document: ${docName}]${msg.caption ? ' — ' + msg.caption : ''}`;
-      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, dmText));
+      const result = await withRetry(() => sendDm('gorn', bot.beast, dmText));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
 
-      console.log(`[Telegram] Document note forwarded to ${TG_FORWARD_TO}: ${docName}`);
-      tgMessageCount++;
-      tgLastMessageAt = new Date().toISOString();
-      await tgSendReply(TG_CHAT_ID, `✓ Document note forwarded to ${TG_FORWARD_TO} (${docName})`);
+      console.log(`[Telegram:${bot.beast}] Document note forwarded: ${docName}`);
+      bot.messageCount++;
+      bot.lastMessageAt = new Date().toISOString();
+      await tgSendReply(bot.token, bot.chatId, `✓ Document note forwarded to ${bot.beast} (${docName})`);
 
     } else if (msg.voice) {
-      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, '[Voice message]'));
+      const result = await withRetry(() => sendDm('gorn', bot.beast, '[Voice message]'));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
-      tgMessageCount++;
-      tgLastMessageAt = new Date().toISOString();
-      await tgSendReply(TG_CHAT_ID, `✓ Voice message note forwarded to ${TG_FORWARD_TO}`);
+      bot.messageCount++;
+      bot.lastMessageAt = new Date().toISOString();
+      await tgSendReply(bot.token, bot.chatId, `✓ Voice message note forwarded to ${bot.beast}`);
 
     } else if (msg.sticker) {
       const emoji = msg.sticker.emoji || '';
-      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, `[Sticker ${emoji}]`));
+      const result = await withRetry(() => sendDm('gorn', bot.beast, `[Sticker ${emoji}]`));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
-      tgMessageCount++;
-      tgLastMessageAt = new Date().toISOString();
-      await tgSendReply(TG_CHAT_ID, `✓ Sticker forwarded to ${TG_FORWARD_TO}`);
+      bot.messageCount++;
+      bot.lastMessageAt = new Date().toISOString();
+      await tgSendReply(bot.token, bot.chatId, `✓ Sticker forwarded to ${bot.beast}`);
 
     } else {
-      // Unknown type — forward a note
-      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, '[Unsupported message type]'));
+      const result = await withRetry(() => sendDm('gorn', bot.beast, '[Unsupported message type]'));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
-      tgMessageCount++;
-      tgLastMessageAt = new Date().toISOString();
+      bot.messageCount++;
+      bot.lastMessageAt = new Date().toISOString();
     }
   } catch (err) {
-    console.error('[Telegram] Error handling message:', err);
+    console.error(`[Telegram:${bot.beast}] Error handling message:`, err);
   }
 }
 
-async function pollTelegram(): Promise<void> {
+async function pollTelegramBot(bot: TelegramBot): Promise<void> {
   try {
-    const data = await tgApi('getUpdates', {
-      offset: String(tgOffset),
+    const data = await tgApi(bot.token, 'getUpdates', {
+      offset: String(bot.offset),
       timeout: '3',
       allowed_updates: JSON.stringify(['message']),
     });
 
     if (data.ok && data.result?.length) {
       for (const update of data.result) {
-        tgOffset = update.update_id + 1;
+        bot.offset = update.update_id + 1;
         const msg = update.message;
         if (msg) {
-          console.log(`[Telegram] Update ${update.update_id}: chat_id=${msg.chat?.id} from=${msg.from?.username || msg.from?.id} text=${(msg.text || '[non-text]').slice(0, 50)}`);
-          await handleTelegramMessage(msg);
+          console.log(`[Telegram:${bot.beast}] Update ${update.update_id}: chat_id=${msg.chat?.id} from=${msg.from?.username || msg.from?.id} text=${(msg.text || '[non-text]').slice(0, 50)}`);
+          await handleTelegramMessage(bot, msg);
         }
       }
     }
   } catch (err) {
-    console.error('[Telegram] Poll error:', err);
+    console.error(`[Telegram:${bot.beast}] Poll error:`, err);
   }
 }
 
 function startTelegramPolling(): void {
-  if (!TG_TOKEN || !TG_CHAT_ID) {
-    console.log('[Telegram] Polling disabled — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set');
+  if (telegramBots.length === 0) {
+    console.log('[Telegram] No bots configured — polling disabled');
     return;
   }
 
-  tgPollingActive = true;
-  // Initial poll to clear any pending updates
-  pollTelegram().then(() => {
-    tgPollTimer = setInterval(pollTelegram, TG_POLL_INTERVAL);
-    console.log(`[Telegram] Polling started — forwarding to ${TG_FORWARD_TO} every ${TG_POLL_INTERVAL / 1000}s`);
-  });
+  for (const bot of telegramBots) {
+    bot.active = true;
+    // Stagger initial polls to avoid hitting Telegram rate limits
+    const delay = telegramBots.indexOf(bot) * 1000;
+    setTimeout(() => {
+      pollTelegramBot(bot).then(() => {
+        bot.timer = setInterval(() => pollTelegramBot(bot), TG_POLL_INTERVAL);
+        console.log(`[Telegram:${bot.beast}] Polling started (every ${TG_POLL_INTERVAL / 1000}s)`);
+      });
+    }, delay);
+  }
 }
 
 // GET /api/telegram/status — polling status (owner only)
@@ -11472,12 +11517,15 @@ app.get('/api/telegram/status', (c) => {
   if (!hasSessionAuth(c) && !isTrustedRequest(c)) return c.json({ error: 'Auth required' }, 403);
 
   return c.json({
-    polling: tgPollingActive,
-    forward_to: TG_FORWARD_TO,
-    chat_id: TG_CHAT_ID ? `${TG_CHAT_ID.slice(0, 4)}****` : null,
-    last_message_at: tgLastMessageAt,
-    message_count: tgMessageCount,
+    bots: telegramBots.map(b => ({
+      beast: b.beast,
+      polling: b.active,
+      chat_id: b.chatId ? `${b.chatId.slice(0, 4)}****` : null,
+      last_message_at: b.lastMessageAt,
+      message_count: b.messageCount,
+    })),
     poll_interval_ms: TG_POLL_INTERVAL,
+    total_bots: telegramBots.length,
   });
 });
 

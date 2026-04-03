@@ -1442,10 +1442,14 @@ const HELP_ENDPOINTS = [
     { method: 'DELETE', path: '/api/forum/emojis/:emoji', desc: 'Remove custom emoji', params: null },
     { method: 'GET', path: '/api/reactions/supported', desc: 'List all supported reactions', params: null },
     // DMs
-    { method: 'GET', path: '/api/dm/:from/:to', desc: 'Get DM conversation between two beasts', params: '?limit=30&offset=0&order=desc' },
+    { method: 'GET', path: '/api/dm/:name', desc: 'List DM conversations for a beast', params: null },
+    { method: 'GET', path: '/api/dm/:name/:other', desc: 'Get DM conversation between two beasts', params: '?limit=30&offset=0&order=desc' },
     { method: 'POST', path: '/api/dm', desc: 'Send a DM', params: 'body: { from, to, message }' },
-    { method: 'PATCH', path: '/api/dm/:from/:to/read', desc: 'Mark DM conversation as read', params: null },
-    { method: 'GET', path: '/api/dm/unread/:beast', desc: 'Get unread DM counts', params: null },
+    { method: 'PATCH', path: '/api/dm/:name/:other/read', desc: 'Mark DM conversation as read', params: null },
+    { method: 'PATCH', path: '/api/dm/:name/:other/read-all', desc: 'Mark all DMs as read', params: null },
+    { method: 'DELETE', path: '/api/dm/messages/:id', desc: 'Delete a DM message', params: null },
+    { method: 'GET', path: '/api/dm/dashboard', desc: 'DM dashboard stats', params: null },
+    { method: 'GET', path: '/api/dm/unread-count', desc: 'Get unread DM count', params: null },
     // Tasks (PM Board)
     { method: 'GET', path: '/api/tasks', desc: 'List tasks', params: '?assignee=&reviewer=&status=&limit=100&offset=0' },
     { method: 'GET', path: '/api/tasks/:id', desc: 'Get task by ID', params: null },
@@ -1561,9 +1565,15 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/google/gmail/messages', desc: 'List Gmail messages', params: '?label=INBOX&maxResults=20&q=search&pageToken=' },
     { method: 'GET', path: '/api/google/gmail/messages/:id', desc: 'Get Gmail message by ID', params: null },
     { method: 'GET', path: '/api/google/gmail/threads/:id', desc: 'Get Gmail thread by ID', params: null },
+    // Google Access Control
+    { method: 'GET', path: '/api/google/access', desc: 'List Google OAuth Beast allowlist', params: null },
+    { method: 'POST', path: '/api/google/access', desc: 'Add Beast to Google OAuth allowlist', params: 'body: { beast }' },
+    { method: 'DELETE', path: '/api/google/access/:beast', desc: 'Remove Beast from Google OAuth allowlist', params: null },
+    { method: 'GET', path: '/api/google/audit', desc: 'Google OAuth audit log', params: null },
     // Search
     { method: 'GET', path: '/api/search', desc: 'Search documents and knowledge', params: '?q=query&type=all&limit=10' },
     { method: 'GET', path: '/api/search/status', desc: 'Search index status', params: null },
+    { method: 'POST', path: '/api/search/reindex', desc: 'Trigger search reindex', params: null },
     // Remote
     { method: 'GET', path: '/api/remote/status', desc: 'Remote panel connection status', params: null },
     { method: 'POST', path: '/api/remote/attach', desc: 'Attach to beast for remote control', params: 'body: { beast }' },
@@ -1574,14 +1584,141 @@ const HELP_ENDPOINTS = [
     { method: 'PATCH', path: '/api/queue/gorn/:threadId', desc: 'Update queue item status', params: 'body: { status }' },
     // Dashboard
     { method: 'GET', path: '/api/dashboard', desc: 'Dashboard summary', params: null },
+    { method: 'GET', path: '/api/dashboard/summary', desc: 'Dashboard summary (alt)', params: null },
     { method: 'GET', path: '/api/dashboard/activity', desc: 'Activity stats', params: null },
     { method: 'GET', path: '/api/dashboard/growth', desc: 'Growth metrics', params: null },
+    { method: 'GET', path: '/api/session/stats', desc: 'Session statistics', params: null },
     // Library
     { method: 'GET', path: '/api/library', desc: 'List library entries', params: '?shelf=&limit=50' },
+    { method: 'GET', path: '/api/library/:id', desc: 'Get library entry by ID', params: null },
     { method: 'POST', path: '/api/library', desc: 'Add library entry', params: 'body: { title, content, shelf?, author }' },
+    { method: 'PATCH', path: '/api/library/:id', desc: 'Update library entry', params: 'body: { title?, content?, shelf? }' },
+    { method: 'DELETE', path: '/api/library/:id', desc: 'Delete library entry', params: null },
+    { method: 'GET', path: '/api/library/search', desc: 'Search library entries', params: '?q=query' },
+    { method: 'GET', path: '/api/library/types', desc: 'List library entry types', params: null },
+    { method: 'GET', path: '/api/library/shelves', desc: 'List library shelves', params: null },
+    { method: 'GET', path: '/api/library/shelves/:id', desc: 'Get shelf by ID', params: null },
+    { method: 'POST', path: '/api/library/shelves', desc: 'Create shelf', params: 'body: { name, description? }' },
+    { method: 'PATCH', path: '/api/library/shelves/:id', desc: 'Update shelf', params: 'body: { name?, description? }' },
+    { method: 'DELETE', path: '/api/library/shelves/:id', desc: 'Delete shelf', params: null },
     // Handoffs
     { method: 'POST', path: '/api/handoff', desc: 'Submit session handoff', params: 'body: { oracle, summary, ... }' },
     { method: 'GET', path: '/api/inbox', desc: 'Get inbox items', params: '?type=&limit=20' },
+    // Auth Tokens
+    { method: 'GET', path: '/api/auth/tokens', desc: 'List API tokens', params: null },
+    { method: 'POST', path: '/api/auth/tokens', desc: 'Create API token', params: 'body: { name }' },
+    { method: 'DELETE', path: '/api/auth/tokens/:id', desc: 'Delete API token', params: null },
+    { method: 'POST', path: '/api/auth/tokens/rotate', desc: 'Rotate API token', params: null },
+    // Guests
+    { method: 'GET', path: '/api/guests', desc: 'List guests', params: null },
+    { method: 'GET', path: '/api/guests/:id', desc: 'Get guest by ID', params: null },
+    { method: 'POST', path: '/api/guests', desc: 'Create guest account', params: 'body: { username, display_name, password }' },
+    { method: 'PATCH', path: '/api/guests/:id', desc: 'Update guest', params: 'body: { display_name?, ... }' },
+    { method: 'PATCH', path: '/api/guests/:id/password', desc: 'Change guest password', params: 'body: { password }' },
+    { method: 'DELETE', path: '/api/guests/:id', desc: 'Delete guest', params: null },
+    { method: 'POST', path: '/api/guests/:id/ban', desc: 'Ban guest', params: null },
+    { method: 'POST', path: '/api/guests/:id/unban', desc: 'Unban guest', params: null },
+    // Guest-facing endpoints
+    { method: 'GET', path: '/api/guest/threads', desc: 'List public threads (guest view)', params: null },
+    { method: 'GET', path: '/api/guest/thread/:id', desc: 'Get thread (guest view)', params: null },
+    { method: 'POST', path: '/api/guest/thread', desc: 'Create thread (guest)', params: 'body: { message, title }' },
+    { method: 'POST', path: '/api/guest/thread/:id/message', desc: 'Post message to thread (guest)', params: 'body: { message }' },
+    { method: 'GET', path: '/api/guest/dm/:from/:to', desc: 'Get DM conversation (guest view)', params: null },
+    { method: 'POST', path: '/api/guest/dm', desc: 'Send DM (guest)', params: 'body: { to, message }' },
+    { method: 'GET', path: '/api/guest/pack', desc: 'Get pack profiles (guest view)', params: null },
+    { method: 'GET', path: '/api/guest/profile', desc: 'Get own guest profile', params: null },
+    { method: 'PATCH', path: '/api/guest/profile', desc: 'Update own guest profile', params: 'body: { display_name?, bio? }' },
+    { method: 'POST', path: '/api/guest/avatar', desc: 'Upload guest avatar', params: 'body: FormData with file' },
+    { method: 'POST', path: '/api/guest/change-password', desc: 'Change guest password (self)', params: 'body: { old_password, new_password }' },
+    { method: 'POST', path: '/api/guest/reset-password', desc: 'Reset guest password', params: 'body: { username }' },
+    { method: 'GET', path: '/api/guest/dashboard', desc: 'Guest dashboard', params: null },
+    // Projects
+    { method: 'GET', path: '/api/projects', desc: 'List projects', params: null },
+    { method: 'GET', path: '/api/projects/:id', desc: 'Get project by ID', params: null },
+    { method: 'POST', path: '/api/projects', desc: 'Create project', params: 'body: { name, description? }' },
+    { method: 'PATCH', path: '/api/projects/:id', desc: 'Update project', params: 'body: { name?, description? }' },
+    { method: 'DELETE', path: '/api/projects/:id', desc: 'Delete project', params: null },
+    // Teams
+    { method: 'GET', path: '/api/teams', desc: 'List teams', params: null },
+    { method: 'GET', path: '/api/teams/:id', desc: 'Get team by ID', params: null },
+    { method: 'POST', path: '/api/teams', desc: 'Create team', params: 'body: { name, ... }' },
+    { method: 'PATCH', path: '/api/teams/:id', desc: 'Update team', params: 'body: { name?, ... }' },
+    { method: 'DELETE', path: '/api/teams/:id', desc: 'Delete team', params: null },
+    { method: 'POST', path: '/api/teams/:id/members', desc: 'Add member to team', params: 'body: { beast }' },
+    { method: 'DELETE', path: '/api/teams/:id/members/:beast', desc: 'Remove member from team', params: null },
+    { method: 'POST', path: '/api/teams/:id/projects', desc: 'Link project to team', params: 'body: { projectId }' },
+    { method: 'DELETE', path: '/api/teams/:id/projects/:projectId', desc: 'Unlink project from team', params: null },
+    { method: 'GET', path: '/api/teams/beast/:beast', desc: 'Get teams for a beast', params: null },
+    // Security
+    { method: 'GET', path: '/api/security/events', desc: 'Security event log', params: '?limit=50' },
+    { method: 'GET', path: '/api/security/events/stats', desc: 'Security event stats', params: null },
+    { method: 'GET', path: '/api/audit', desc: 'Audit log', params: '?limit=50' },
+    { method: 'GET', path: '/api/audit/stats', desc: 'Audit stats', params: null },
+    // Scheduler (additional)
+    { method: 'GET', path: '/api/schedules/:id', desc: 'Get schedule by ID', params: null },
+    { method: 'POST', path: '/api/schedules/:id/execute', desc: 'Execute schedule now', params: null },
+    { method: 'PATCH', path: '/api/schedules/:id/trigger', desc: 'Trigger schedule', params: null },
+    { method: 'GET', path: '/api/scheduler/health', desc: 'Scheduler health check', params: null },
+    // Tasks (additional)
+    { method: 'POST', path: '/api/tasks/bulk-status', desc: 'Bulk update task status', params: 'body: { ids, status }' },
+    // Specs (additional)
+    { method: 'GET', path: '/api/specs/by-task/:taskId', desc: 'Get specs linked to a task', params: null },
+    { method: 'GET', path: '/api/specs/by-thread/:threadId', desc: 'Get specs linked to a thread', params: null },
+    { method: 'GET', path: '/api/spec-comments/:commentId', desc: 'Get spec comment by ID', params: null },
+    // Risks (additional)
+    { method: 'GET', path: '/api/risks/:id/comments', desc: 'Get risk comments', params: null },
+    { method: 'POST', path: '/api/risks/:id/comments', desc: 'Add risk comment', params: 'body: { author, content }' },
+    // Messages (additional)
+    { method: 'DELETE', path: '/api/message/:id', desc: 'Delete message', params: 'body: { beast }' },
+    // Forum (additional)
+    { method: 'POST', path: '/api/forum/subscribe', desc: 'Subscribe to thread', params: 'body: { beast, threadId }' },
+    { method: 'GET', path: '/api/forum/subscriptions/:beast', desc: 'Get thread subscriptions', params: null },
+    { method: 'GET', path: '/api/thread/:id/subscribers', desc: 'Get thread subscribers', params: null },
+    // Files (additional)
+    { method: 'GET', path: '/api/files/archive/stats', desc: 'File archive stats', params: null },
+    { method: 'POST', path: '/api/files/archive/run', desc: 'Run file archival', params: null },
+    { method: 'POST', path: '/api/files/:id/restore', desc: 'Restore archived file', params: null },
+    // Routine (additional)
+    { method: 'GET', path: '/api/routine/workout-trends', desc: 'Workout trend data', params: null },
+    { method: 'GET', path: '/api/routine/photos', desc: 'List routine photos', params: null },
+    { method: 'POST', path: '/api/routine/photo/upload', desc: 'Upload routine photo', params: 'body: FormData with file' },
+    { method: 'GET', path: '/api/routine/photo/:filename', desc: 'Get routine photo', params: null },
+    { method: 'GET', path: '/api/routine/logs/deleted', desc: 'List deleted routine logs', params: null },
+    // Supersede (document versioning)
+    { method: 'GET', path: '/api/supersede', desc: 'List supersede records', params: null },
+    { method: 'POST', path: '/api/supersede', desc: 'Create supersede record', params: 'body: { path, content, author }' },
+    { method: 'GET', path: '/api/supersede/chain/:path', desc: 'Get supersede chain for path', params: null },
+    // Traces
+    { method: 'GET', path: '/api/traces', desc: 'List traces', params: null },
+    { method: 'GET', path: '/api/traces/:id', desc: 'Get trace by ID', params: null },
+    { method: 'GET', path: '/api/traces/:id/chain', desc: 'Get trace chain', params: null },
+    { method: 'GET', path: '/api/traces/:id/linked-chain', desc: 'Get linked trace chain', params: null },
+    { method: 'POST', path: '/api/traces/:prevId/link', desc: 'Link traces', params: null },
+    { method: 'DELETE', path: '/api/traces/:id/link', desc: 'Unlink trace', params: null },
+    // Settings
+    { method: 'GET', path: '/api/settings', desc: 'Get app settings', params: null },
+    { method: 'POST', path: '/api/settings', desc: 'Update app settings', params: 'body: { ... }' },
+    // Database
+    { method: 'GET', path: '/api/db/stats', desc: 'Database statistics', params: null },
+    { method: 'POST', path: '/api/db/maintenance', desc: 'Run database maintenance', params: null },
+    // Withings (additional)
+    { method: 'POST', path: '/api/oauth/withings/sync', desc: 'Sync Withings data', params: null },
+    { method: 'POST', path: '/api/webhooks/withings', desc: 'Withings webhook callback', params: null },
+    // Telegram
+    { method: 'GET', path: '/api/telegram/status', desc: 'Telegram polling status (owner only)', params: null },
+    // Board / Pack
+    { method: 'GET', path: '/api/board', desc: 'Board overview (tasks summary)', params: null },
+    { method: 'GET', path: '/api/pack/spinner-verbs', desc: 'Pack spinner verb list', params: null },
+    // Knowledge / Docs
+    { method: 'GET', path: '/api/docs', desc: 'List knowledge documents', params: null },
+    { method: 'GET', path: '/api/doc/:id', desc: 'Get document by ID', params: null },
+    { method: 'GET', path: '/api/feed', desc: 'Activity feed', params: null },
+    { method: 'POST', path: '/api/learn', desc: 'Submit learn request', params: 'body: { ... }' },
+    { method: 'GET', path: '/api/oracles', desc: 'List oracles', params: null },
+    // Internal/legacy (included for 404 hint completeness)
+    { method: 'GET', path: '/api/stats', desc: 'Server stats', params: null },
+    { method: 'GET', path: '/api/logs', desc: 'Server logs', params: null },
+    { method: 'GET', path: '/api/beast/:name/avatar.svg', desc: 'Get beast avatar SVG', params: null },
   ];
 
 // API Help — machine-readable endpoint catalog for Beast self-correction

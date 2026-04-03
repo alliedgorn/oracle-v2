@@ -4487,22 +4487,6 @@ app.patch('/api/thread/:id/category', async (c) => {
   }
 });
 
-// Update thread visibility (public/internal)
-app.patch('/api/thread/:id/visibility', async (c) => {
-  const threadId = parseInt(c.req.param('id'), 10);
-  try {
-    const data = await c.req.json();
-    const allowed = ['public', 'internal'];
-    if (!data.visibility || !allowed.includes(data.visibility)) {
-      return c.json({ error: `Invalid visibility. Allowed: ${allowed.join(', ')}` }, 400);
-    }
-    sqlite.prepare('UPDATE forum_threads SET visibility = ? WHERE id = ?').run(data.visibility, threadId);
-    return c.json({ success: true, thread_id: threadId, visibility: data.visibility });
-  } catch (e) {
-    return c.json({ error: 'Invalid JSON' }, 400);
-  }
-});
-
 // ============================================================================
 // Gorn Queue — decisions awaiting Gorn's approval
 // ============================================================================

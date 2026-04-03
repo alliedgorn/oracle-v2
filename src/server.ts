@@ -11379,7 +11379,7 @@ async function handleTelegramMessage(msg: any): Promise<void> {
       console.log(`[Telegram] Photo forwarded to ${TG_FORWARD_TO} (${filename})`);
       tgMessageCount++;
       tgLastMessageAt = new Date().toISOString();
-      await tgSendReply(TG_CHAT_ID, '✓ Photo forwarded to Sable');
+      await tgSendReply(TG_CHAT_ID, `✓ Photo forwarded to ${TG_FORWARD_TO}`);
 
     } else if (msg.text) {
       // Text message
@@ -11389,7 +11389,7 @@ async function handleTelegramMessage(msg: any): Promise<void> {
       console.log(`[Telegram] Text forwarded to ${TG_FORWARD_TO}: ${msg.text.slice(0, 50)}...`);
       tgMessageCount++;
       tgLastMessageAt = new Date().toISOString();
-      await tgSendReply(TG_CHAT_ID, '✓ Forwarded to Sable');
+      await tgSendReply(TG_CHAT_ID, `✓ Forwarded to ${TG_FORWARD_TO}`);
 
     } else if (msg.document) {
       // Document — note it but don't download for v1
@@ -11401,14 +11401,14 @@ async function handleTelegramMessage(msg: any): Promise<void> {
       console.log(`[Telegram] Document note forwarded to ${TG_FORWARD_TO}: ${docName}`);
       tgMessageCount++;
       tgLastMessageAt = new Date().toISOString();
-      await tgSendReply(TG_CHAT_ID, `✓ Document note forwarded to Sable (${docName})`);
+      await tgSendReply(TG_CHAT_ID, `✓ Document note forwarded to ${TG_FORWARD_TO} (${docName})`);
 
     } else if (msg.voice) {
       const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, '[Voice message]'));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
       tgMessageCount++;
       tgLastMessageAt = new Date().toISOString();
-      await tgSendReply(TG_CHAT_ID, '✓ Voice message note forwarded to Sable');
+      await tgSendReply(TG_CHAT_ID, `✓ Voice message note forwarded to ${TG_FORWARD_TO}`);
 
     } else if (msg.sticker) {
       const emoji = msg.sticker.emoji || '';
@@ -11416,7 +11416,7 @@ async function handleTelegramMessage(msg: any): Promise<void> {
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
       tgMessageCount++;
       tgLastMessageAt = new Date().toISOString();
-      await tgSendReply(TG_CHAT_ID, '✓ Sticker forwarded to Sable');
+      await tgSendReply(TG_CHAT_ID, `✓ Sticker forwarded to ${TG_FORWARD_TO}`);
 
     } else {
       // Unknown type — forward a note

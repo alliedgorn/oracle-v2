@@ -1551,6 +1551,16 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/oauth/withings/status', desc: 'Check Withings connection status', params: null },
     { method: 'DELETE', path: '/api/oauth/withings/disconnect', desc: 'Disconnect Withings', params: null },
     { method: 'GET', path: '/api/withings/devices', desc: 'List Withings devices', params: null },
+    // Google OAuth + Gmail
+    { method: 'GET', path: '/api/oauth/google/authorize', desc: 'Start Google OAuth flow', params: null },
+    { method: 'GET', path: '/api/oauth/google/callback', desc: 'Google OAuth callback (internal)', params: null },
+    { method: 'GET', path: '/api/oauth/google/status', desc: 'Check Google connection status', params: null },
+    { method: 'DELETE', path: '/api/oauth/google/disconnect', desc: 'Disconnect Google', params: null },
+    { method: 'GET', path: '/api/google/gmail/profile', desc: 'Get Gmail profile info', params: null },
+    { method: 'GET', path: '/api/google/gmail/labels', desc: 'List Gmail labels', params: null },
+    { method: 'GET', path: '/api/google/gmail/messages', desc: 'List Gmail messages', params: '?label=INBOX&maxResults=20&q=search&pageToken=' },
+    { method: 'GET', path: '/api/google/gmail/messages/:id', desc: 'Get Gmail message by ID', params: null },
+    { method: 'GET', path: '/api/google/gmail/threads/:id', desc: 'Get Gmail thread by ID', params: null },
     // Search
     { method: 'GET', path: '/api/search', desc: 'Search documents and knowledge', params: '?q=query&type=all&limit=10' },
     { method: 'GET', path: '/api/search/status', desc: 'Search index status', params: null },

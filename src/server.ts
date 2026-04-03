@@ -11384,7 +11384,6 @@ async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> 
     console.log(`[Telegram:${bot.beast}] Notified: ${notifyText.slice(0, 80)}`);
     bot.messageCount++;
     bot.lastMessageAt = new Date().toISOString();
-    await tgSendReply(bot.token, bot.chatId, confirmText);
 
   } catch (err) {
     console.error(`[Telegram:${bot.beast}] Error handling message:`, err);

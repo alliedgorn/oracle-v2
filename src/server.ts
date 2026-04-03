@@ -1410,7 +1410,7 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/help', desc: 'This endpoint catalog', params: '?q=filter' },
     // Threads (forum)
     { method: 'GET', path: '/api/threads', desc: 'List all forum threads', params: '?status=&category=&limit=50&offset=0' },
-    { method: 'POST', path: '/api/thread', desc: 'Create thread or post message', params: 'body: { message, author, thread_id?, title?, reply_to_id? }' },
+    { method: 'POST', path: '/api/thread', desc: 'Create thread or post message', params: 'body: { message, author, thread_id?, title?, reply_to_id?, visibility? }' },
     { method: 'GET', path: '/api/thread/:id', desc: 'Get thread messages', params: '?limit=50&offset=0' },
     { method: 'PATCH', path: '/api/thread/:id/category', desc: 'Update thread category', params: 'body: { category, beast }' },
     { method: 'PATCH', path: '/api/thread/:id/lock', desc: 'Lock/unlock thread', params: 'body: { locked, beast }' },
@@ -1418,6 +1418,7 @@ const HELP_ENDPOINTS = [
     { method: 'PATCH', path: '/api/thread/:id/pin', desc: 'Pin/unpin thread', params: 'body: { pinned, beast }' },
     { method: 'PATCH', path: '/api/thread/:id/title', desc: 'Rename thread title', params: 'body: { title, beast }' },
     { method: 'PATCH', path: '/api/thread/:id/status', desc: 'Update thread status', params: 'body: { status, beast }' },
+    { method: 'PATCH', path: '/api/thread/:id/visibility', desc: 'Update thread visibility', params: 'body: { visibility, beast }' },
     { method: 'DELETE', path: '/api/thread/:id', desc: 'Delete thread', params: 'body: { beast }' },
     // Forum utilities
     { method: 'POST', path: '/api/forum/read', desc: 'Mark thread as read', params: 'body: { beast, threadId, messageId }' },
@@ -4086,6 +4087,11 @@ app.post('/api/thread', async (c) => {
       role: data.role || 'human',
       author: data.author,
     }));
+    // Set visibility on new thread creation if specified
+    if (!data.thread_id && result.threadId && data.visibility) {
+      const vis = data.visibility === 'public' ? 'public' : 'internal';
+      sqlite.prepare('UPDATE forum_threads SET visibility = ? WHERE id = ?').run(vis, result.threadId);
+    }
     // Store reply_to_id and author_role if applicable
     if (result.messageId) {
       if (data.reply_to_id) {
@@ -4476,6 +4482,22 @@ app.patch('/api/thread/:id/category', async (c) => {
     }
     sqlite.prepare('UPDATE forum_threads SET category = ? WHERE id = ?').run(data.category, threadId);
     return c.json({ success: true, thread_id: threadId, category: data.category });
+  } catch (e) {
+    return c.json({ error: 'Invalid JSON' }, 400);
+  }
+});
+
+// Update thread visibility (public/internal)
+app.patch('/api/thread/:id/visibility', async (c) => {
+  const threadId = parseInt(c.req.param('id'), 10);
+  try {
+    const data = await c.req.json();
+    const allowed = ['public', 'internal'];
+    if (!data.visibility || !allowed.includes(data.visibility)) {
+      return c.json({ error: `Invalid visibility. Allowed: ${allowed.join(', ')}` }, 400);
+    }
+    sqlite.prepare('UPDATE forum_threads SET visibility = ? WHERE id = ?').run(data.visibility, threadId);
+    return c.json({ success: true, thread_id: threadId, visibility: data.visibility });
   } catch (e) {
     return c.json({ error: 'Invalid JSON' }, 400);
   }

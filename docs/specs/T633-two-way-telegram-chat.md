@@ -4,7 +4,7 @@
 **Author**: Karo
 **Priority**: High
 **Reviewer**: Bertus (security — approved), Gnarl (architecture — approved)
-**Status**: Shipped, in review
+**Status**: Shipped, tested by Gorn
 
 ## Problem
 
@@ -12,7 +12,9 @@ The Telegram bots are one-way — they send notifications TO Gorn but cannot rec
 
 ## Design — Multi-Bot Architecture
 
-Each Beast can have its own Telegram bot. Gorn sends a message to a Beast's bot, the server receives it via long polling and forwards it as a DM from "gorn" to that Beast.
+Each Beast has its own Telegram bot. Gorn sends a message to a Beast's bot, the server receives it via long polling, sends a **tmux notification** to the Beast with the message content, and the Beast replies via Telegram.
+
+No DMs are created. Beasts see the message as a notification and reply through their own bot's outbound API.
 
 ### 1. Long Polling (not webhooks)
 
@@ -22,42 +24,47 @@ Each Beast can have its own Telegram bot. Gorn sends a message to a Beast's bot,
 
 ### 2. Configuration
 
-**Option A — JSON array** (preferred for multi-bot):
+**TELEGRAM_BOTS** — JSON array in oracle-v2 `.env`:
 ```
-TELEGRAM_BOTS=[{"token":"bot1_token","beast":"karo"},{"token":"bot2_token","beast":"sable"}]
+TELEGRAM_BOTS=[{"token":"...","beast":"karo"},{"token":"...","beast":"sable"},{"token":"...","beast":"leonard"},{"token":"...","beast":"gnarl"}]
 TELEGRAM_CHAT_ID=1786526199
 ```
 
-**Option B — Legacy single-bot** (fallback):
-```
-TELEGRAM_BOT_TOKEN=<token>
-TELEGRAM_CHAT_ID=<gorn's chat ID>
-TELEGRAM_FORWARD_TO=<beast name>
-```
+Fallback: legacy single-bot vars (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_FORWARD_TO`) still supported.
 
 ### 3. Message Processing
 
 Per bot, when a Telegram update is received:
 
-1. **Validate sender**: Only process messages from `TELEGRAM_CHAT_ID` (Gorn). Reject all others.
-2. **Text messages**: Forward as DM from "gorn" to the bot's Beast.
-3. **Photos**: Download largest size via `getFile`, process with sharp (resize >1920px, strip EXIF GPS), save to uploads, DM with markdown image.
-4. **Documents**: Forward as text DM with filename note.
-5. **Voice/Stickers/Other**: Forward as descriptive text DM.
-6. **Confirmation**: Reply to Gorn on Telegram (e.g. `✓ Forwarded to karo`).
+1. **Validate sender**: Only process messages from `TELEGRAM_CHAT_ID` (Gorn). Reject all others silently.
+2. **Text messages**: Send tmux notification to the Beast with message content.
+3. **Photos**: Download largest size via `getFile`, process with sharp (resize >1920px, strip EXIF GPS), save to uploads with `crypto.randomUUID()` filename. Notification includes clickable `denbook.online/api/f/` link so Beast can view the image.
+4. **Documents/Voice/Stickers/Other**: Send tmux notification with descriptive text.
+5. **No auto-reply**: No confirmation message sent back to Gorn on Telegram (per Gorn's request).
 
-### 4. Security (Bertus-approved)
+### 4. Beast Replies
+
+Beasts reply to Gorn via their bot's outbound Telegram API:
+```bash
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+  -d "chat_id=${TELEGRAM_CHAT_ID}" -d "text=Your message"
+```
+
+Beasts can also send photos to Gorn via `sendPhoto`.
+
+Each Beast stores their own bot token in their `.env` for outbound use.
+
+### 5. Security (Bertus-approved)
 
 - Sender validation: string-coerced chat_id, strict `===`
 - Token from .env only, never logged or exposed
 - File downloads use `crypto.randomUUID()` filenames — no path traversal
-- DMs use parameterized SQL via `sendDm` — no injection
 - 20MB file size limit (defense-in-depth)
-- `sendDm` wrapped in `withRetry` to prevent silent message loss
 - Polling loop has try/catch — cannot crash server
 - Status endpoint owner-only
+- No guest access to Telegram — only Gorn's chat_id accepted
 
-### 5. API Endpoint
+### 6. API Endpoint
 
 ```
 GET /api/telegram/status — returns array of bot states (owner only)
@@ -67,35 +74,50 @@ Response:
 ```json
 {
   "bots": [
-    { "beast": "karo", "polling": true, "chat_id": "1786****", "last_message_at": "...", "message_count": 3 }
+    { "beast": "karo", "polling": true, "chat_id": "1786****", "last_message_at": "...", "message_count": 5 },
+    { "beast": "sable", "polling": true, "chat_id": "1786****", "last_message_at": "...", "message_count": 3 },
+    { "beast": "leonard", "polling": true, "chat_id": "1786****", "last_message_at": null, "message_count": 0 },
+    { "beast": "gnarl", "polling": true, "chat_id": "1786****", "last_message_at": null, "message_count": 0 }
   ],
   "poll_interval_ms": 3000,
-  "total_bots": 1
+  "total_bots": 4
 }
 ```
 
-### 6. Frontend Changes
+### 7. Frontend Changes
 
-None. Messages appear as DMs in the existing interface.
+None.
 
-### 7. Testing
+### 8. Testing — End-to-End Verified
 
-- Send text to bot → DM from gorn to that Beast
-- Send photo with caption → DM with image + caption
-- Send photo without caption → DM with image + "[Photo]"
-- Send from different Telegram account → ignored
-- Restart server → polling resumes, no duplicate messages (offset tracked)
-- Multiple bots → each polls independently, messages route to correct Beast
+- Gorn sent text → Karo received tmux notification, replied via Telegram
+- Gorn sent photo (airline menu) → saved to uploads, Karo viewed via link, replied
+- Gorn sent to Sable's bot → Sable received, replied from 35,000 feet
+- Gorn sent from different chat → silently ignored
+- Server restart → polling resumes, no duplicates
+- 4 bots polling simultaneously → correct routing per Beast
 
 ## Commits
 
-1. `f3bbb51` — Feature: two-way Telegram chat (single bot)
+1. `f3bbb51` — Feature: two-way Telegram chat (single bot, DM-based)
 2. `d01be76` — Hardening: file size check + withRetry (Bertus review)
 3. `21cae54` — Fix: routing to correct Beast
 4. `cd49322` — Refactor: multi-bot support
+5. `7190da2` — Fix: tmux notifications instead of DMs (per Gorn)
+6. `04bf067` — Fix: remove auto-reply confirmation (per Gorn)
+7. `2942413` — Feature: photo download + viewable link in notifications
+
+## Active Bots
+
+| Beast | Bot | Status |
+|-------|-----|--------|
+| Karo | @gorn_karo_bot | Live |
+| Sable | (sable's bot) | Live |
+| Leonard | (leonard's bot) | Live |
+| Gnarl | @gorn_gnarl_bot | Live |
 
 ## Future (separate task)
 
 - Settings page UI for managing bot tokens per Beast
-- Beast → Gorn direction (reply from Den Book, send via Telegram)
-- Group chat support
+- Guest → Beast Telegram chat
+- More Beasts on Telegram

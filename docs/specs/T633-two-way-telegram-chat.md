@@ -1,168 +1,101 @@
-# Two-Way Telegram Chat
+# Two-Way Telegram Chat (Multi-Bot)
 
 **Task**: T#633
 **Author**: Karo
 **Priority**: High
-**Reviewer**: Bertus (security — webhook + auth), Gnarl (architecture)
-**Deadline**: 2026-04-03 ~12:35 ICT (Gorn landing in Zurich)
+**Reviewer**: Bertus (security — approved), Gnarl (architecture — approved)
+**Status**: Shipped, in review
 
 ## Problem
 
-The Telegram bot (@gorn_karo_bot) is one-way — it sends notifications TO Gorn but cannot receive messages back. Gorn is traveling to Switzerland and wants to send messages and photos to Sable via Telegram while away from his desk.
+The Telegram bots are one-way — they send notifications TO Gorn but cannot receive messages back. Gorn needs to send messages and photos to Beasts via Telegram while traveling.
 
-## Current State
+## Design — Multi-Bot Architecture
 
-- Telegram bot exists with token in Karo's `.env` (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
-- `scripts/telegram-send.sh` sends outbound messages via Telegram Bot API
-- No webhook or polling — bot cannot receive incoming messages
-- Den Book server (oracle-v2) has no Telegram integration
-- Withings webhook pattern exists in server as prior art
+Each Beast can have its own Telegram bot. Gorn sends a message to a Beast's bot, the server receives it via long polling and forwards it as a DM from "gorn" to that Beast.
 
-## Design
+### 1. Long Polling (not webhooks)
 
-### 1. Telegram Update Receiver — Long Polling
+- No public URL / SSL cert needed (Den Book runs locally)
+- Each bot polls independently every 3 seconds with staggered start
+- Reliable for low-volume single-sender use
 
-Use **long polling** (`getUpdates`) instead of webhooks. Reasons:
-- No public URL / SSL cert needed on the bot endpoint (Den Book runs locally)
-- Simpler setup — no webhook registration, no nginx config changes
-- Withings webhook works because Withings calls a public URL; Telegram would need the same, but our server is behind a reverse proxy that may not be configured for this path
-- Long polling is reliable for low-volume use (one user sending messages)
+### 2. Configuration
 
-**Implementation**: A polling loop in the Den Book server that calls `getUpdates` every 3 seconds. Runs as a background interval on server start.
-
-### 2. Environment Variables
-
-Add to oracle-v2 `.env`:
-
+**Option A — JSON array** (preferred for multi-bot):
 ```
-TELEGRAM_BOT_TOKEN=<same token as Karo's bot>
-TELEGRAM_CHAT_ID=<Gorn's chat ID: 1786526199>
-TELEGRAM_FORWARD_TO=sable
+TELEGRAM_BOTS=[{"token":"bot1_token","beast":"karo"},{"token":"bot2_token","beast":"sable"}]
+TELEGRAM_CHAT_ID=1786526199
 ```
 
-`TELEGRAM_FORWARD_TO` — the Beast who receives forwarded messages as DMs from "gorn".
+**Option B — Legacy single-bot** (fallback):
+```
+TELEGRAM_BOT_TOKEN=<token>
+TELEGRAM_CHAT_ID=<gorn's chat ID>
+TELEGRAM_FORWARD_TO=<beast name>
+```
 
 ### 3. Message Processing
 
-When a Telegram update is received:
+Per bot, when a Telegram update is received:
 
-1. **Validate sender**: Only process messages from `TELEGRAM_CHAT_ID` (Gorn). Ignore all others silently.
-2. **Text messages**: Forward as DM from "gorn" to `TELEGRAM_FORWARD_TO` via existing DM API.
-3. **Photos**: Download the photo via Telegram `getFile` API, save to Den Book uploads directory, create a DM with the image attached. Use caption as message text if present, otherwise "[Photo]".
-4. **Other message types** (stickers, voice, video, documents): Forward as text DM with description, e.g. "[Voice message]", "[Document: filename.pdf]". Photo support is the priority; other types are best-effort.
+1. **Validate sender**: Only process messages from `TELEGRAM_CHAT_ID` (Gorn). Reject all others.
+2. **Text messages**: Forward as DM from "gorn" to the bot's Beast.
+3. **Photos**: Download largest size via `getFile`, process with sharp (resize >1920px, strip EXIF GPS), save to uploads, DM with markdown image.
+4. **Documents**: Forward as text DM with filename note.
+5. **Voice/Stickers/Other**: Forward as descriptive text DM.
+6. **Confirmation**: Reply to Gorn on Telegram (e.g. `✓ Forwarded to karo`).
 
-### 4. Backend Changes (src/server.ts)
+### 4. Security (Bertus-approved)
 
-**New code block — Telegram polling**:
+- Sender validation: string-coerced chat_id, strict `===`
+- Token from .env only, never logged or exposed
+- File downloads use `crypto.randomUUID()` filenames — no path traversal
+- DMs use parameterized SQL via `sendDm` — no injection
+- 20MB file size limit (defense-in-depth)
+- `sendDm` wrapped in `withRetry` to prevent silent message loss
+- Polling loop has try/catch — cannot crash server
+- Status endpoint owner-only
 
-```typescript
-// Telegram long polling — receive messages from Gorn
-const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TG_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const TG_FORWARD_TO = process.env.TELEGRAM_FORWARD_TO || 'sable';
+### 5. API Endpoint
 
-if (TG_TOKEN && TG_CHAT_ID) {
-  let tgOffset = 0;
-  
-  const pollTelegram = async () => {
-    try {
-      const res = await fetch(
-        `https://api.telegram.org/bot${TG_TOKEN}/getUpdates?offset=${tgOffset}&timeout=3`
-      );
-      const data = await res.json();
-      if (data.ok && data.result?.length) {
-        for (const update of data.result) {
-          tgOffset = update.update_id + 1;
-          const msg = update.message;
-          if (!msg || String(msg.chat.id) !== TG_CHAT_ID) continue;
-          
-          // Process message — text, photo, or other
-          await handleTelegramMessage(msg);
-        }
-      }
-    } catch (e) {
-      console.error('[Telegram] Poll error:', e);
-    }
-  };
-  
-  setInterval(pollTelegram, 3000);
-  console.log('[Telegram] Polling started');
+```
+GET /api/telegram/status — returns array of bot states (owner only)
+```
+
+Response:
+```json
+{
+  "bots": [
+    { "beast": "karo", "polling": true, "chat_id": "1786****", "last_message_at": "...", "message_count": 3 }
+  ],
+  "poll_interval_ms": 3000,
+  "total_bots": 1
 }
 ```
 
-**handleTelegramMessage function**:
-- Text → DM from "gorn" to TELEGRAM_FORWARD_TO
-- Photo → download largest photo size via `getFile`, save to uploads, DM with attachment
-- Other → DM with type description
+### 6. Frontend Changes
 
-**New API endpoint** (admin only):
+None. Messages appear as DMs in the existing interface.
 
-```
-GET /api/telegram/status — returns polling state, last message timestamp, message count
-```
+### 7. Testing
 
-Owner-only, for debugging.
+- Send text to bot → DM from gorn to that Beast
+- Send photo with caption → DM with image + caption
+- Send photo without caption → DM with image + "[Photo]"
+- Send from different Telegram account → ignored
+- Restart server → polling resumes, no duplicate messages (offset tracked)
+- Multiple bots → each polls independently, messages route to correct Beast
 
-### 5. Photo Handling Detail
+## Commits
 
-```typescript
-async function handleTelegramPhoto(msg) {
-  // Telegram provides multiple sizes — use the largest
-  const photo = msg.photo[msg.photo.length - 1];
-  const fileRes = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/getFile?file_id=${photo.file_id}`);
-  const fileData = await fileRes.json();
-  const filePath = fileData.result.file_path;
-  
-  // Download the file
-  const imageRes = await fetch(`https://api.telegram.org/file/bot${TG_TOKEN}/${filePath}`);
-  const buffer = await imageRes.arrayBuffer();
-  
-  // Save to uploads directory with timestamp filename
-  const ext = filePath.split('.').pop() || 'jpg';
-  const filename = `telegram_${Date.now()}.${ext}`;
-  // Save to uploads dir, create DM with image_url
-}
-```
+1. `f3bbb51` — Feature: two-way Telegram chat (single bot)
+2. `d01be76` — Hardening: file size check + withRetry (Bertus review)
+3. `21cae54` — Fix: routing to correct Beast
+4. `cd49322` — Refactor: multi-bot support
 
-### 6. Confirmation Reply
+## Future (separate task)
 
-After successfully forwarding a message to Sable, send a brief confirmation back to Gorn on Telegram:
-
-```
-✓ Forwarded to Sable
-```
-
-This gives Gorn confidence the message went through without opening Den Book.
-
-### 7. Security Considerations
-
-- **Sender validation**: Only process messages from TELEGRAM_CHAT_ID — reject all others
-- **No bot token in responses**: Never echo the token or internal state to Telegram
-- **Photo size limit**: Reject photos > 20MB (Telegram's own limit is 20MB)
-- **Rate limiting**: Not needed for v1 — single sender (Gorn), low volume
-- **Token storage**: Bot token in .env, same pattern as existing secrets
-- **No command injection**: Message content is stored as text via parameterized SQL (existing DM pattern)
-
-### 8. Frontend Changes
-
-None. Messages appear as DMs from "gorn" to "sable" in the existing DM interface.
-
-### 9. Migration
-
-No database changes. Uses existing DM and file upload tables.
-
-### 10. Testing
-
-- Send text message to bot → appears as DM from gorn to sable
-- Send photo with caption → appears as DM with image and caption text
-- Send photo without caption → appears as DM with image and "[Photo]"
-- Send message from different Telegram account → ignored
-- Kill and restart server → polling resumes, no duplicate messages (offset tracked)
-
-## Out of Scope (v1)
-
-- Sable replying BACK to Gorn via Telegram (Sable → Telegram direction)
+- Settings page UI for managing bot tokens per Beast
+- Beast → Gorn direction (reply from Den Book, send via Telegram)
 - Group chat support
-- Inline keyboards or bot commands
-- Message editing/deletion sync
-- Other Beasts receiving Telegram forwards (only Sable for now)

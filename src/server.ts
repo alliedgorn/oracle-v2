@@ -11346,125 +11346,46 @@ async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> 
   }
 
   try {
+    let notifyText: string;
+    let confirmText: string;
+
     if (msg.photo && msg.photo.length > 0) {
-      // Photo message — download largest size
-      const photo = msg.photo[msg.photo.length - 1];
-      const fileInfo = await tgApi(bot.token, 'getFile', { file_id: photo.file_id });
-      if (!fileInfo.ok || !fileInfo.result?.file_path) {
-        console.error(`[Telegram:${bot.beast}] Failed to get file info:`, fileInfo);
-        return;
-      }
-
-      const filePath = fileInfo.result.file_path;
-      const imageRes = await fetch(`https://api.telegram.org/file/bot${bot.token}/${filePath}`);
-      if (!imageRes.ok) {
-        console.error(`[Telegram:${bot.beast}] Failed to download photo:`, imageRes.status);
-        return;
-      }
-
-      const buffer = Buffer.from(await imageRes.arrayBuffer());
-
-      // Defense-in-depth: reject oversized files (Telegram caps at 20MB)
-      if (buffer.length > 20 * 1024 * 1024) {
-        console.log(`[Telegram:${bot.beast}] Photo rejected: ${buffer.length} bytes exceeds 20MB limit`);
-        await tgSendReply(bot.token, bot.chatId, '✗ Photo too large (max 20MB)');
-        return;
-      }
-
-      // Process with sharp if available (strip EXIF GPS, resize if huge)
-      let processedBuffer = buffer;
-      let ext = '.' + (filePath.split('.').pop() || 'jpg');
-      try {
-        const sharp = require('sharp');
-        const metadata = await sharp(buffer).metadata();
-        if (metadata.width && metadata.width > 1920) {
-          processedBuffer = await sharp(buffer)
-            .rotate()
-            .resize(1920, null, { withoutEnlargement: true })
-            .jpeg({ quality: 95 })
-            .withMetadata({ orientation: undefined })
-            .toBuffer();
-          ext = '.jpg';
-        } else {
-          processedBuffer = await sharp(buffer)
-            .rotate()
-            .withMetadata({ orientation: undefined })
-            .toBuffer();
-        }
-      } catch { /* sharp not available — save original */ }
-
-      // Save to uploads dir
-      if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-      const filename = `telegram_${crypto.randomUUID()}${ext}`;
-      const savePath = path.join(UPLOADS_DIR, filename);
-      fs.writeFileSync(savePath, processedBuffer);
-
-      // Record in files table
-      const now = Date.now();
-      try {
-        sqlite.prepare(`
-          INSERT INTO files (filename, original_name, mime_type, size_bytes, uploaded_by, context, created_at)
-          VALUES (?, ?, ?, ?, 'gorn', 'telegram', ?)
-        `).run(filename, `telegram_photo${ext}`, ext === '.jpg' ? 'image/jpeg' : 'image/png', processedBuffer.length, now);
-      } catch { /* files table may not have all columns */ }
-
-      // Build DM text with image
       const caption = msg.caption || '';
-      const imageUrl = `/api/f/${filename}`;
-      const dmText = caption
-        ? `${caption}\n\n![Photo](${imageUrl})`
-        : `![Photo](${imageUrl})`;
-
-      const result = await withRetry(() => sendDm('gorn', bot.beast, dmText));
-      wsBroadcast('new_dm', { conversation_id: result.conversationId });
-
-      console.log(`[Telegram:${bot.beast}] Photo forwarded (${filename})`);
-      bot.messageCount++;
-      bot.lastMessageAt = new Date().toISOString();
-      await tgSendReply(bot.token, bot.chatId, `✓ Photo forwarded to ${bot.beast}`);
+      notifyText = caption ? `[Telegram from Gorn] Photo: ${caption}` : '[Telegram from Gorn] Photo received';
+      confirmText = `✓ Notified ${bot.beast}`;
 
     } else if (msg.text) {
-      // Text message
-      const result = await withRetry(() => sendDm('gorn', bot.beast, msg.text));
-      wsBroadcast('new_dm', { conversation_id: result.conversationId });
-
-      console.log(`[Telegram:${bot.beast}] Text forwarded: ${msg.text.slice(0, 50)}...`);
-      bot.messageCount++;
-      bot.lastMessageAt = new Date().toISOString();
-      await tgSendReply(bot.token, bot.chatId, `✓ Forwarded to ${bot.beast}`);
+      notifyText = `[Telegram from Gorn] ${msg.text}`;
+      confirmText = `✓ Notified ${bot.beast}`;
 
     } else if (msg.document) {
       const docName = msg.document.file_name || 'unknown';
-      const dmText = `[Document: ${docName}]${msg.caption ? ' — ' + msg.caption : ''}`;
-      const result = await withRetry(() => sendDm('gorn', bot.beast, dmText));
-      wsBroadcast('new_dm', { conversation_id: result.conversationId });
-
-      console.log(`[Telegram:${bot.beast}] Document note forwarded: ${docName}`);
-      bot.messageCount++;
-      bot.lastMessageAt = new Date().toISOString();
-      await tgSendReply(bot.token, bot.chatId, `✓ Document note forwarded to ${bot.beast} (${docName})`);
+      notifyText = `[Telegram from Gorn] Document: ${docName}${msg.caption ? ' — ' + msg.caption : ''}`;
+      confirmText = `✓ Notified ${bot.beast}`;
 
     } else if (msg.voice) {
-      const result = await withRetry(() => sendDm('gorn', bot.beast, '[Voice message]'));
-      wsBroadcast('new_dm', { conversation_id: result.conversationId });
-      bot.messageCount++;
-      bot.lastMessageAt = new Date().toISOString();
-      await tgSendReply(bot.token, bot.chatId, `✓ Voice message note forwarded to ${bot.beast}`);
+      notifyText = '[Telegram from Gorn] Voice message';
+      confirmText = `✓ Notified ${bot.beast}`;
 
     } else if (msg.sticker) {
       const emoji = msg.sticker.emoji || '';
-      const result = await withRetry(() => sendDm('gorn', bot.beast, `[Sticker ${emoji}]`));
-      wsBroadcast('new_dm', { conversation_id: result.conversationId });
-      bot.messageCount++;
-      bot.lastMessageAt = new Date().toISOString();
-      await tgSendReply(bot.token, bot.chatId, `✓ Sticker forwarded to ${bot.beast}`);
+      notifyText = `[Telegram from Gorn] Sticker ${emoji}`;
+      confirmText = `✓ Notified ${bot.beast}`;
 
     } else {
-      const result = await withRetry(() => sendDm('gorn', bot.beast, '[Unsupported message type]'));
-      wsBroadcast('new_dm', { conversation_id: result.conversationId });
-      bot.messageCount++;
-      bot.lastMessageAt = new Date().toISOString();
+      notifyText = '[Telegram from Gorn] Message received';
+      confirmText = `✓ Notified ${bot.beast}`;
     }
+
+    // Send tmux notification to the Beast — they reply via Telegram
+    const notification = `${notifyText}\\n\\nReply via Telegram to respond to Gorn.`;
+    enqueueNotification(bot.beast, notification);
+
+    console.log(`[Telegram:${bot.beast}] Notified: ${notifyText.slice(0, 80)}`);
+    bot.messageCount++;
+    bot.lastMessageAt = new Date().toISOString();
+    await tgSendReply(bot.token, bot.chatId, confirmText);
+
   } catch (err) {
     console.error(`[Telegram:${bot.beast}] Error handling message:`, err);
   }

@@ -160,6 +160,13 @@ export function getGuestByUsername(sqlite: Database, username: string): GuestAcc
 }
 
 /**
+ * Look up a guest by display name (case-insensitive). Falls back for DM recipient resolution.
+ */
+export function getGuestByDisplayName(sqlite: Database, displayName: string): GuestAccount | null {
+  return sqlite.prepare('SELECT * FROM guest_accounts WHERE LOWER(display_name) = ?').get(displayName.toLowerCase().trim()) as GuestAccount | null;
+}
+
+/**
  * Update a guest account.
  */
 export function updateGuest(

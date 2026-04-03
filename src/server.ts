@@ -94,6 +94,7 @@ import {
   listGuests,
   getGuest,
   getGuestByUsername,
+  getGuestByDisplayName,
   updateGuest,
   deleteGuest,
   banGuest,
@@ -4795,13 +4796,22 @@ app.post('/api/dm', async (c) => {
         return c.json({ error: 'Sender impersonation blocked. as must match from.' }, 403);
       }
     }
-    // Validate recipient exists — must be a beast, guest username, or "gorn"
+    // Validate recipient exists — must be a beast, guest username/display name, or "gorn"
     const rawTo = data.to.replace(/^\[Guest\]\s*/, ''); // Strip [Guest] prefix if present
     const recipientBeast = getBeastProfile(rawTo);
-    const recipientGuest = getGuestByUsername(sqlite, rawTo);
+    let recipientGuest = getGuestByUsername(sqlite, rawTo);
+    // T#635: Fall back to display name lookup if username not found
+    if (!recipientGuest) recipientGuest = getGuestByDisplayName(sqlite, rawTo);
     const isOwner = rawTo.toLowerCase() === 'gorn';
     if (!recipientBeast && !recipientGuest && !isOwner) {
-      return c.json({ error: `Recipient "${data.to}" not found. Must be a valid beast name or guest username.` }, 404);
+      // T#635: Suggest similar guest usernames on mismatch
+      const allGuests = listGuests(sqlite);
+      const suggestions = allGuests
+        .filter(g => g.username.includes(rawTo.toLowerCase()) || (g.display_name || '').toLowerCase().includes(rawTo.toLowerCase()))
+        .map(g => `${g.username} (${g.display_name || g.username})`)
+        .slice(0, 3);
+      const hint = suggestions.length > 0 ? ` Did you mean: ${suggestions.join(', ')}?` : '';
+      return c.json({ error: `Recipient "${data.to}" not found. Must be a valid beast name or guest username.${hint}` }, 404);
     }
 
     // Resolve guest usernames to [Guest] tags so messages land in the same conversation

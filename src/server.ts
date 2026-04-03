@@ -6191,12 +6191,18 @@ app.get('/api/teams/beast/:beast', (c) => {
   return c.json({ beast, teams, total: teams.length });
 });
 
-const VALID_INTERVALS: Record<string, number> = {
-  '10m': 600, '15m': 900, '20m': 1200, '30m': 1800, '45m': 2700,
-  '1h': 3600, '2h': 7200, '3h': 10800, '4h': 14400,
-  '6h': 21600, '8h': 28800, '12h': 43200,
-  '1d': 86400, '2d': 172800, '3d': 259200, '7d': 604800,
-};
+// Parse interval strings like "540m", "8h", "2d" into seconds
+function parseInterval(interval: string): number | null {
+  const match = interval.match(/^(\d+)(m|h|d)$/);
+  if (!match) return null;
+  const value = parseInt(match[1], 10);
+  if (value <= 0) return null;
+  const unit = match[2];
+  if (unit === 'm') return value * 60;
+  if (unit === 'h') return value * 3600;
+  if (unit === 'd') return value * 86400;
+  return null;
+}
 
 // Compute next occurrence of schedule_time (HH:MM) in UTC+7
 function computeNextFixedTime(scheduleTime: string, intervalDays: number): string {
@@ -6309,10 +6315,11 @@ app.post('/api/schedules', async (c) => {
     intervalSeconds = 0;
   } else {
     // Recurring schedule: validate interval
-    intervalSeconds = VALID_INTERVALS[interval];
-    if (!intervalSeconds) {
-      return c.json({ error: `Invalid interval. Valid: ${Object.keys(VALID_INTERVALS).join(', ')}` }, 400);
+    const parsed = parseInterval(interval);
+    if (!parsed) {
+      return c.json({ error: 'Invalid interval. Use format: Nm (minutes), Nh (hours), or Nd (days). Examples: 540m, 8h, 2d' }, 400);
     }
+    intervalSeconds = parsed;
   }
 
   // Prevent duplicate: same beast + same task name + enabled
@@ -6378,8 +6385,8 @@ app.patch('/api/schedules/:id', async (c) => {
   if (data.task !== undefined) { updates.push('task = ?'); params.push(data.task); }
   if (data.command !== undefined) { updates.push('command = ?'); params.push(data.command); }
   if (data.interval !== undefined) {
-    const secs = VALID_INTERVALS[data.interval];
-    if (!secs) return c.json({ error: `Invalid interval. Valid: ${Object.keys(VALID_INTERVALS).join(', ')}` }, 400);
+    const secs = parseInterval(data.interval);
+    if (!secs) return c.json({ error: 'Invalid interval. Use format: Nm (minutes), Nh (hours), or Nd (days). Examples: 540m, 8h, 2d' }, 400);
     updates.push('interval = ?', 'interval_seconds = ?');
     params.push(data.interval, secs);
   }

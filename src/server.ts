@@ -11298,7 +11298,10 @@ async function tgSendReply(chatId: string, text: string): Promise<void> {
 
 async function handleTelegramMessage(msg: any): Promise<void> {
   // Only accept messages from Gorn's chat
-  if (String(msg.chat.id) !== TG_CHAT_ID) return;
+  if (String(msg.chat.id) !== TG_CHAT_ID) {
+    console.log(`[Telegram] Rejected: chat_id ${msg.chat.id} !== expected ${TG_CHAT_ID}`);
+    return;
+  }
 
   try {
     if (msg.photo && msg.photo.length > 0) {
@@ -11318,6 +11321,13 @@ async function handleTelegramMessage(msg: any): Promise<void> {
       }
 
       const buffer = Buffer.from(await imageRes.arrayBuffer());
+
+      // Defense-in-depth: reject oversized files (Telegram caps at 20MB)
+      if (buffer.length > 20 * 1024 * 1024) {
+        console.log(`[Telegram] Photo rejected: ${buffer.length} bytes exceeds 20MB limit`);
+        await tgSendReply(TG_CHAT_ID, '✗ Photo too large (max 20MB)');
+        return;
+      }
 
       // Process with sharp if available (strip EXIF GPS, resize if huge)
       let processedBuffer = buffer;
@@ -11363,7 +11373,7 @@ async function handleTelegramMessage(msg: any): Promise<void> {
         ? `${caption}\n\n![Photo](${imageUrl})`
         : `![Photo](${imageUrl})`;
 
-      const result = sendDm('gorn', TG_FORWARD_TO, dmText);
+      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, dmText));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
 
       console.log(`[Telegram] Photo forwarded to ${TG_FORWARD_TO} (${filename})`);
@@ -11373,7 +11383,7 @@ async function handleTelegramMessage(msg: any): Promise<void> {
 
     } else if (msg.text) {
       // Text message
-      const result = sendDm('gorn', TG_FORWARD_TO, msg.text);
+      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, msg.text));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
 
       console.log(`[Telegram] Text forwarded to ${TG_FORWARD_TO}: ${msg.text.slice(0, 50)}...`);
@@ -11385,7 +11395,7 @@ async function handleTelegramMessage(msg: any): Promise<void> {
       // Document — note it but don't download for v1
       const docName = msg.document.file_name || 'unknown';
       const dmText = `[Document: ${docName}]${msg.caption ? ' — ' + msg.caption : ''}`;
-      const result = sendDm('gorn', TG_FORWARD_TO, dmText);
+      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, dmText));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
 
       console.log(`[Telegram] Document note forwarded to ${TG_FORWARD_TO}: ${docName}`);
@@ -11394,7 +11404,7 @@ async function handleTelegramMessage(msg: any): Promise<void> {
       await tgSendReply(TG_CHAT_ID, `✓ Document note forwarded to Sable (${docName})`);
 
     } else if (msg.voice) {
-      const result = sendDm('gorn', TG_FORWARD_TO, '[Voice message]');
+      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, '[Voice message]'));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
       tgMessageCount++;
       tgLastMessageAt = new Date().toISOString();
@@ -11402,7 +11412,7 @@ async function handleTelegramMessage(msg: any): Promise<void> {
 
     } else if (msg.sticker) {
       const emoji = msg.sticker.emoji || '';
-      const result = sendDm('gorn', TG_FORWARD_TO, `[Sticker ${emoji}]`);
+      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, `[Sticker ${emoji}]`));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
       tgMessageCount++;
       tgLastMessageAt = new Date().toISOString();
@@ -11410,7 +11420,7 @@ async function handleTelegramMessage(msg: any): Promise<void> {
 
     } else {
       // Unknown type — forward a note
-      const result = sendDm('gorn', TG_FORWARD_TO, '[Unsupported message type]');
+      const result = await withRetry(() => sendDm('gorn', TG_FORWARD_TO, '[Unsupported message type]'));
       wsBroadcast('new_dm', { conversation_id: result.conversationId });
       tgMessageCount++;
       tgLastMessageAt = new Date().toISOString();
@@ -11431,8 +11441,10 @@ async function pollTelegram(): Promise<void> {
     if (data.ok && data.result?.length) {
       for (const update of data.result) {
         tgOffset = update.update_id + 1;
-        if (update.message) {
-          await handleTelegramMessage(update.message);
+        const msg = update.message;
+        if (msg) {
+          console.log(`[Telegram] Update ${update.update_id}: chat_id=${msg.chat?.id} from=${msg.from?.username || msg.from?.id} text=${(msg.text || '[non-text]').slice(0, 50)}`);
+          await handleTelegramMessage(msg);
         }
       }
     }

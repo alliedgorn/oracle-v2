@@ -94,12 +94,12 @@ function checkRate(map: Map<string, RateWindow>, key: string, limit: number, win
 export function checkGuestPostRate(username: string): { allowed: boolean; error?: string } {
   const hourly = checkRate(guestPostRates, username, LIMITS.postsPerHour, HOUR_MS);
   if (!hourly.allowed) {
-    return { allowed: false, error: `Post rate limit exceeded (${LIMITS.postsPerHour}/hour). Try again in ${Math.ceil((hourly.retryAfterMs || 0) / 60000)} minutes.` };
+    return { allowed: false, error: `You're posting a bit fast! Take a breather and try again shortly.` };
   }
 
   const daily = checkRate(guestDailyRates, username, LIMITS.postsPerDay, DAY_MS);
   if (!daily.allowed) {
-    return { allowed: false, error: `Daily post limit exceeded (${LIMITS.postsPerDay}/day).` };
+    return { allowed: false, error: `You've posted a lot today! Come back tomorrow.` };
   }
 
   return { allowed: true };

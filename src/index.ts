@@ -19,6 +19,7 @@ import { createVectorStore } from './vector/factory.ts';
 import type { VectorStoreAdapter } from './vector/types.ts';
 import path from 'path';
 import fs from 'fs';
+import { logMcpToolCall } from './mcp-audit.ts';
 
 // Tool handlers (all extracted to src/tools/)
 import type { ToolContext } from './tools/types.ts';
@@ -208,7 +209,10 @@ class OracleMCPServer {
     // Handle tool calls — route to extracted handlers
     // ================================================================
     this.server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> => {
+      const startTime = Date.now();
+
       if (this.readOnly && WRITE_TOOLS.includes(request.params.name)) {
+        logMcpToolCall(this.repoRoot, request.params.name, request.params.arguments as Record<string, unknown>, 'read_only_blocked', Date.now() - startTime);
         return {
           content: [{
             type: 'text',
@@ -221,67 +225,72 @@ class OracleMCPServer {
       const ctx = this.toolCtx;
 
       try {
+        let result: any;
         switch (request.params.name) {
           // Core tools (delegated to src/tools/)
           case 'oracle_search':
-            return await handleSearch(ctx, request.params.arguments as unknown as OracleSearchInput);
+            result = await handleSearch(ctx, request.params.arguments as unknown as OracleSearchInput); break;
           case 'oracle_read':
-            return await handleRead(ctx, request.params.arguments as unknown as OracleReadInput);
+            result = await handleRead(ctx, request.params.arguments as unknown as OracleReadInput); break;
           case 'oracle_reflect':
-            return await handleReflect(ctx, request.params.arguments as unknown as OracleReflectInput);
+            result = await handleReflect(ctx, request.params.arguments as unknown as OracleReflectInput); break;
           case 'oracle_learn':
-            return await handleLearn(ctx, request.params.arguments as unknown as OracleLearnInput);
+            result = await handleLearn(ctx, request.params.arguments as unknown as OracleLearnInput); break;
           case 'oracle_list':
-            return await handleList(ctx, request.params.arguments as unknown as OracleListInput);
+            result = await handleList(ctx, request.params.arguments as unknown as OracleListInput); break;
           case 'oracle_stats':
-            return await handleStats(ctx, request.params.arguments as unknown as OracleStatsInput);
+            result = await handleStats(ctx, request.params.arguments as unknown as OracleStatsInput); break;
           case 'oracle_concepts':
-            return await handleConcepts(ctx, request.params.arguments as unknown as OracleConceptsInput);
+            result = await handleConcepts(ctx, request.params.arguments as unknown as OracleConceptsInput); break;
           case 'oracle_supersede':
-            return await handleSupersede(ctx, request.params.arguments as unknown as OracleSupersededInput);
+            result = await handleSupersede(ctx, request.params.arguments as unknown as OracleSupersededInput); break;
           case 'oracle_handoff':
-            return await handleHandoff(ctx, request.params.arguments as unknown as OracleHandoffInput);
+            result = await handleHandoff(ctx, request.params.arguments as unknown as OracleHandoffInput); break;
           case 'oracle_inbox':
-            return await handleInbox(ctx, request.params.arguments as unknown as OracleInboxInput);
+            result = await handleInbox(ctx, request.params.arguments as unknown as OracleInboxInput); break;
           case 'oracle_verify':
-            return await handleVerify(ctx, request.params.arguments as unknown as OracleVerifyInput);
+            result = await handleVerify(ctx, request.params.arguments as unknown as OracleVerifyInput); break;
           case 'oracle_schedule_add':
-            return await handleScheduleAdd(ctx, request.params.arguments as unknown as OracleScheduleAddInput);
+            result = await handleScheduleAdd(ctx, request.params.arguments as unknown as OracleScheduleAddInput); break;
           case 'oracle_schedule_list':
-            return await handleScheduleList(ctx, request.params.arguments as unknown as OracleScheduleListInput);
+            result = await handleScheduleList(ctx, request.params.arguments as unknown as OracleScheduleListInput); break;
 
           // Forum tools (delegated to src/tools/forum.ts)
           case 'oracle_thread':
-            return await handleThread(request.params.arguments as unknown as OracleThreadInput);
+            result = await handleThread(request.params.arguments as unknown as OracleThreadInput); break;
           case 'oracle_threads':
-            return await handleThreads(request.params.arguments as unknown as OracleThreadsInput);
+            result = await handleThreads(request.params.arguments as unknown as OracleThreadsInput); break;
           case 'oracle_thread_read':
-            return await handleThreadRead(request.params.arguments as unknown as OracleThreadReadInput);
+            result = await handleThreadRead(request.params.arguments as unknown as OracleThreadReadInput); break;
           case 'oracle_thread_update':
-            return await handleThreadUpdate(request.params.arguments as unknown as OracleThreadUpdateInput);
+            result = await handleThreadUpdate(request.params.arguments as unknown as OracleThreadUpdateInput); break;
 
           // Trace tools (delegated to src/tools/trace.ts)
           case 'oracle_trace':
-            return await handleTrace(request.params.arguments as unknown as CreateTraceInput);
+            result = await handleTrace(request.params.arguments as unknown as CreateTraceInput); break;
           case 'oracle_trace_list':
-            return await handleTraceList(request.params.arguments as unknown as ListTracesInput);
+            result = await handleTraceList(request.params.arguments as unknown as ListTracesInput); break;
           case 'oracle_trace_get':
-            return await handleTraceGet(request.params.arguments as unknown as GetTraceInput);
+            result = await handleTraceGet(request.params.arguments as unknown as GetTraceInput); break;
           case 'oracle_trace_link':
-            return await handleTraceLink(request.params.arguments as unknown as { prevTraceId: string; nextTraceId: string });
+            result = await handleTraceLink(request.params.arguments as unknown as { prevTraceId: string; nextTraceId: string }); break;
           case 'oracle_trace_unlink':
-            return await handleTraceUnlink(request.params.arguments as unknown as { traceId: string; direction: 'prev' | 'next' });
+            result = await handleTraceUnlink(request.params.arguments as unknown as { traceId: string; direction: 'prev' | 'next' }); break;
           case 'oracle_trace_chain':
-            return await handleTraceChain(request.params.arguments as unknown as { traceId: string });
+            result = await handleTraceChain(request.params.arguments as unknown as { traceId: string }); break;
 
           default:
             throw new Error(`Unknown tool: ${request.params.name}`);
         }
+        logMcpToolCall(this.repoRoot, request.params.name, request.params.arguments as Record<string, unknown>, 'success', Date.now() - startTime);
+        return result;
       } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        logMcpToolCall(this.repoRoot, request.params.name, request.params.arguments as Record<string, unknown>, 'error', Date.now() - startTime, errMsg);
         return {
           content: [{
             type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`
+            text: `Error: ${errMsg}`
           }],
           isError: true
         };

@@ -52,12 +52,13 @@
     "vault:rsync": "./scripts/vault-rsync.sh"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.12",
     "@lancedb/lancedb": "^0.26.2",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@qdrant/js-client-rest": "^1.17.0",
     "commander": "^14.0.3",
     "drizzle-orm": "^0.45.1",
-    "hono": "^4.12.8",
+    "hono": "^4.12.10",
     "meilisearch": "^0.56.0",
     "sharp": "^0.34.5",
     "sqlite-vec": "^0.1.7-alpha.2"

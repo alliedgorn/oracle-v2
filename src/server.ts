@@ -11521,6 +11521,15 @@ async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> 
     let notifyText: string;
     let confirmText: string;
 
+    // Build reply-to context if this message is a reply
+    let replyContext = '';
+    if (msg.reply_to_message) {
+      const replied = msg.reply_to_message;
+      const repliedText = replied.text || replied.caption || '[media]';
+      const repliedPreview = repliedText.length > 80 ? repliedText.slice(0, 80) + '...' : repliedText;
+      replyContext = `(replying to: "${repliedPreview}")\\n`;
+    }
+
     if (msg.photo && msg.photo.length > 0) {
       // Download and save photo so Beasts can view it
       let photoUrl = '';
@@ -11571,7 +11580,7 @@ async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> 
       confirmText = `✓ Notified ${bot.beast}`;
 
     } else if (msg.text) {
-      notifyText = `[Telegram from Gorn] ${msg.text}`;
+      notifyText = `[Telegram from Gorn] ${replyContext}${msg.text}`;
       confirmText = `✓ Notified ${bot.beast}`;
 
     } else if (msg.document) {

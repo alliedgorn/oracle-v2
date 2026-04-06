@@ -33,6 +33,7 @@ const guestTopNavItems = [
   { path: '/welcome', label: 'Welcome' },
   { path: '/pack', label: 'Pack' },
   { path: '/forum', label: 'Forum' },
+  { path: '/village', label: 'Village' },
 ];
 
 // Grouped navigation (dropdowns for secondary items)
@@ -69,6 +70,7 @@ const navGroups = [
           { path: '/overview', label: 'Overview' },
           { path: '/graph', label: 'Graph' },
           { path: '/map', label: 'Map' },
+          { path: '/village', label: 'Village' },
           { path: '/evolution', label: 'Evolution' },
           { path: '/traces', label: 'Traces' },
         ],

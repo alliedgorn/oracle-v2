@@ -18,6 +18,7 @@ import { Login } from './pages/Login';
 import { Settings } from './pages/Settings';
 import { Playground } from './pages/Playground';
 import { Map } from './pages/Map';
+import { Village } from './pages/Village';
 import { PackPage } from './pages/PackPage';
 import { TerminalView } from './pages/TerminalView';
 import { BeastProfile } from './pages/BeastProfile';
@@ -46,7 +47,7 @@ import { getStats } from './api/oracle';
 import { setVaultRepo } from './utils/docDisplay';
 
 // Guest-accessible routes (no redirect for guests)
-const GUEST_ROUTES = new Set(['/', '/pack', '/forum', '/dms', '/beast', '/welcome', '/terminal', '/settings', '/library']);
+const GUEST_ROUTES = new Set(['/', '/pack', '/forum', '/dms', '/beast', '/welcome', '/terminal', '/settings', '/library', '/village']);
 
 function isGuestRoute(pathname: string): boolean {
   if (GUEST_ROUTES.has(pathname)) return true;
@@ -114,6 +115,7 @@ function AppContent() {
         <Route path="/search" element={<RequireAuth><Search /></RequireAuth>} />
         <Route path="/playground" element={<RequireAuth><Playground /></RequireAuth>} />
         <Route path="/map" element={<RequireAuth><Map /></RequireAuth>} />
+        <Route path="/village" element={<RequireAuth><Village /></RequireAuth>} />
         <Route path="/graph" element={<RequireAuth><Graph /></RequireAuth>} />
         <Route path="/graph3d" element={<Navigate to="/graph" replace />} />
         <Route path="/handoff" element={<RequireAuth><Handoff /></RequireAuth>} />

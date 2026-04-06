@@ -10,7 +10,7 @@ interface MapVersion {
 const MAP_VERSIONS: MapVersion[] = [
   {
     version: 'v2',
-    date: '2026-04-07',
+    date: '2026-04-07 05:11 GMT+7',
     changes: [
       'Added the bakery (east end, near the square)',
       'Added the hidden fig courtyard (behind the print shop)',
@@ -22,7 +22,7 @@ const MAP_VERSIONS: MapVersion[] = [
   },
   {
     version: 'v1',
-    date: '2026-04-07',
+    date: '2026-04-07 04:55 GMT+7',
     changes: [
       'First map of the village',
       'River, bridge, path, forest patches, hills',

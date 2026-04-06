@@ -213,6 +213,69 @@ export function VillageMap() {
         </text>
       </g>
 
+      {/* === v2 additions — earned via the three rule === */}
+
+      {/* The bakery — east end of town, near the square */}
+      <g transform="translate(900, 320)">
+        <rect x="-7" y="-5" width="14" height="10" fill="currentColor" opacity="0.28" />
+        <path d="M -7 -5 L 0 -10 L 7 -5" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.7" />
+        <text x="-12" y="14" fontSize="11" fill="currentColor" opacity="0.85" fontFamily="system-ui, sans-serif">
+          bakery
+        </text>
+      </g>
+
+      {/* The hidden courtyard — behind the print shop, with the fig tree */}
+      <g transform="translate(820, 240)">
+        <circle cx="0" cy="0" r="9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.6" strokeDasharray="2 2" />
+        <circle cx="0" cy="-1" r="3" fill="currentColor" opacity="0.4" />
+        <text x="-22" y="-12" fontSize="10" fill="currentColor" opacity="0.75" fontFamily="system-ui, sans-serif">
+          fig courtyard
+        </text>
+      </g>
+
+      {/* Karo's flat warm rock — sun-soaked, near the village edge */}
+      <g transform="translate(680, 460)">
+        <ellipse cx="0" cy="0" rx="14" ry="6" fill="currentColor" opacity="0.22" />
+        <text x="-8" y="14" fontSize="10" fill="currentColor" opacity="0.75" fontFamily="system-ui, sans-serif">
+          warm rock
+        </text>
+      </g>
+
+      {/* Pork belly place — eastern edge, food landmark */}
+      <g transform="translate(960, 380)">
+        <rect x="-5" y="-5" width="10" height="10" fill="currentColor" opacity="0.3" />
+        <line x1="-3" y1="-7" x2="-3" y2="-5" stroke="currentColor" strokeWidth="1" />
+        <line x1="0" y1="-8" x2="0" y2="-5" stroke="currentColor" strokeWidth="1" />
+        <line x1="3" y1="-7" x2="3" y2="-5" stroke="currentColor" strokeWidth="1" />
+        <text x="-14" y="18" fontSize="10" fill="currentColor" opacity="0.75" fontFamily="system-ui, sans-serif">
+          pork belly
+        </text>
+      </g>
+
+      {/* Mist hollow — past the mill, in the birch stand */}
+      <g transform="translate(620, 60)">
+        <ellipse cx="0" cy="0" rx="18" ry="6" fill="currentColor" opacity="0.12" />
+        <ellipse cx="-4" cy="-2" rx="10" ry="3" fill="currentColor" opacity="0.1" />
+        <text x="22" y="3" fontSize="10" fill="currentColor" opacity="0.7" fontFamily="system-ui, sans-serif">
+          mist hollow
+        </text>
+      </g>
+
+      {/* Refine the upstream pool — moved to match Flint's geography (west bank, second bend, root cluster) */}
+
+      {/* === Nyx's perch layer — small bird markers === */}
+      <g opacity="0.6">
+        {/* Bakery chimney perch */}
+        <circle cx="900" cy="306" r="2" fill="currentColor" />
+        {/* Overlook above the village — Leonard's spot */}
+        <circle cx="640" cy="120" r="2" fill="currentColor" />
+        <text x="630" y="110" fontSize="9" fill="currentColor" opacity="0.6" fontFamily="system-ui, sans-serif">
+          overlook
+        </text>
+        {/* Fence post on the east lane */}
+        <circle cx="980" cy="440" r="2" fill="currentColor" />
+      </g>
+
       {/* Compass — bottom right corner, small and quiet */}
       <g transform="translate(1130, 720)" opacity="0.5">
         <circle cx="0" cy="0" r="18" fill="none" stroke="currentColor" strokeWidth="1" />

@@ -9458,13 +9458,13 @@ try {
 const ROUTINE_UPLOADS = path.join(ORACLE_DATA_DIR, 'uploads', 'routine');
 if (!fs.existsSync(ROUTINE_UPLOADS)) fs.mkdirSync(ROUTINE_UPLOADS, { recursive: true });
 
-// Auth helper: only Gorn (session) + Sable (trusted local request with identity)
+// Auth helper: Gorn (session) + Sable (gatekeeper) + Karo (partner, added 2026-04-09 by Gorn's verbal authorization)
 function isForgeAuthorized(c: any): boolean {
   if (hasSessionAuth(c)) return true; // Gorn browser session
-  // Sable access: must be a trusted local request (localhost) AND identify as sable
+  // Trusted local request + identity gate. Allowlist: gorn (owner), sable (gatekeeper), karo (partner).
   if (isTrustedRequest(c)) {
     const as = (c.req.query('as') || '').toLowerCase();
-    return ['gorn', 'sable'].includes(as);
+    return ['gorn', 'sable', 'karo'].includes(as);
   }
   return false;
 }

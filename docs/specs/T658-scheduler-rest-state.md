@@ -28,7 +28,13 @@ Add `rest_status TEXT DEFAULT 'active'` to `beast_profiles`. Idempotent migratio
 
 ### 2. Handoff endpoint — auto-set rest
 File: `src/server.ts` `POST /api/handoff` (lines 7414-7451)
-After writing the handoff file, set the requesting Beast's `rest_status = 'rest'`. Beast identity is verified from the request (existing `?as=` or `isTrustedRequest`). **Cross-Beast rest writes are rejected** — one Beast cannot write a handoff that sets another Beast's rest_status. The endpoint will only update the rest_status of the verified requester. Log: `[Handoff] ${beast} → rest_status=rest`.
+After writing the handoff file, set `rest_status = 'rest'` for the Beast named in `?as=`. The endpoint trusts `?as=` per the **existing local-trust auth model** — `isTrustedRequest()` (local network OR valid session) is the gate, and identity is **not independently verified** beyond that. Any local actor or session-authed user can pass `?as=<any-beast>` and force that Beast into rest_status.
+
+This matches every other `?as=` endpoint in the codebase (DM, schedules, etc) and is consistent with the current pack auth model (all local processes are trusted). Tighter Beast identity binding is out of scope for this task and belongs in the inter-Beast trust Decree work being drafted by Bertus + Nyx + Gnarl.
+
+Log: `[Handoff] ${beast} → rest_status=rest`.
+
+**Known gap**: a malicious local actor could call `POST /api/handoff?as=<other-beast>` and force another Beast into rest, suppressing their schedules. Acceptable under the current threat model (local processes are trusted). Will be tightened when the broader Beast identity binding pattern lands.
 
 ### 3. Scheduler firing query — skip rest
 File: `src/server.ts` `runSchedulerCycle()` (line 6728-6739)

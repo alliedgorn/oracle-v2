@@ -6845,7 +6845,7 @@ console.log('[Scheduler] Auto-trigger daemon started (10s interval)');
 // ============================================================================
 
 const DRAIN_INTERVAL = 1000; // Check queues every 1s
-const DRAIN_SPACING = 3000; // 3s between sends to same Beast
+const DRAIN_SPACING = 1000; // 1s between sends to same Beast (was 3s — Tier 1 of notification queue smoothness fix, 2026-04-08)
 const DRAIN_DIR = '/tmp/den-notify';
 const drainLastSent: Map<string, number> = new Map(); // beast → last send timestamp
 

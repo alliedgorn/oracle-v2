@@ -3317,6 +3317,8 @@ app.get('/api/beasts', (c) => {
 
 // Migration: add sex column to beast_profiles (T#411)
 try { sqlite.prepare('ALTER TABLE beast_profiles ADD COLUMN sex TEXT DEFAULT NULL').run(); } catch { /* exists */ }
+// T#658 — Norm #65 (Nap vs Rest) — scheduler-aware rest state
+try { sqlite.prepare("ALTER TABLE beast_profiles ADD COLUMN rest_status TEXT DEFAULT 'active'").run(); } catch { /* exists */ }
 
 // Get beast profile by name
 app.get('/api/beast/:name', (c) => {
@@ -6725,11 +6727,13 @@ function runSchedulerCycle() {
     // - 'failed': previous attempt failed — retry after schedule's own interval cooldown
     // - 'triggered': already notified, waiting for beast — do NOT re-trigger (beast will /run when ready)
     // - 'completed': one-time schedule finished — never re-trigger
+    // T#658 — Norm #65 — skip beasts at rest (rest_status = 'rest')
     const overdue = sqlite.prepare(
       `SELECT * FROM beast_schedules
        WHERE enabled = 1 AND datetime(next_due_at) <= datetime(?)
        AND trigger_status IS NOT 'completed'
        AND trigger_status IS NOT 'triggered'
+       AND beast NOT IN (SELECT name FROM beast_profiles WHERE rest_status = 'rest')
        AND (
          trigger_status IS NULL
          OR trigger_status = 'pending'
@@ -7438,11 +7442,88 @@ app.post('/api/handoff', async (c) => {
     fs.mkdirSync(dirPath, { recursive: true });
     fs.writeFileSync(filePath, data.content, 'utf-8');
 
+    // T#658 — Norm #65 — auto-set requesting Beast to rest_status='rest'
+    // Identity comes from ?as= param. Cross-Beast rest writes are rejected:
+    // we only ever update the verified requester's rest_status, never another Beast.
+    let restedBeast: string | null = null;
+    const asParam = c.req.query('as')?.toLowerCase();
+    if (asParam && isTrustedRequest(c)) {
+      const beastRow = sqlite.prepare('SELECT name FROM beast_profiles WHERE name = ?').get(asParam) as any;
+      if (beastRow) {
+        sqlite.prepare("UPDATE beast_profiles SET rest_status = 'rest', updated_at = ? WHERE name = ?")
+          .run(Date.now(), asParam);
+        restedBeast = asParam;
+        console.log(`[Handoff] ${asParam} → rest_status=rest`);
+        wsBroadcast('beast_state_change', { beast: asParam, rest_status: 'rest' });
+      }
+    }
+
     return c.json({
       success: true,
       file: `ψ/inbox/handoff/${filename}`,
-      message: 'Handoff written.'
+      rested_beast: restedBeast,
+      message: restedBeast
+        ? `Handoff written. ${restedBeast} → rest_status=rest. Schedules paused until /wake.`
+        : 'Handoff written.'
     }, 201);
+  } catch (error) {
+    return c.json({
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// T#658 — Norm #65 — Wake a Beast from rest. Resumes scheduler firing.
+// On wake, schedules overdue by more than SCHEDULER_STORM_CAP_HOURS (default 24)
+// are silently dropped — their next_due_at is advanced past the storm window.
+app.post('/api/beast/:name/wake', (c) => {
+  try {
+    const name = c.req.param('name').toLowerCase();
+    const asParam = c.req.query('as')?.toLowerCase();
+
+    // Auth: requester must be the beast itself or gorn (same as schedule mutations)
+    if (!isTrustedRequest(c)) {
+      return c.json({ error: 'Local network only' }, 403);
+    }
+    if (asParam && asParam !== name && asParam !== 'gorn') {
+      return c.json({ error: 'Cross-Beast wake denied. You can only wake yourself or be Gorn.' }, 403);
+    }
+
+    const beastRow = sqlite.prepare('SELECT name, rest_status FROM beast_profiles WHERE name = ?').get(name) as any;
+    if (!beastRow) {
+      return c.json({ error: `Beast '${name}' not found` }, 404);
+    }
+
+    const previousStatus = beastRow.rest_status || 'active';
+
+    // Schedule storm cap — drop schedules overdue by more than the cap
+    const stormCapHours = parseInt(process.env.SCHEDULER_STORM_CAP_HOURS || '24');
+    const cutoff = new Date(Date.now() - stormCapHours * 3600 * 1000).toISOString();
+    const dropResult = sqlite.prepare(
+      `UPDATE beast_schedules
+       SET next_due_at = datetime('now', '+' || CAST(interval_seconds AS TEXT) || ' seconds'),
+           trigger_status = 'pending',
+           updated_at = datetime('now')
+       WHERE beast = ?
+         AND enabled = 1
+         AND datetime(next_due_at) < datetime(?)`
+    ).run(name, cutoff);
+
+    // Set rest_status back to active
+    sqlite.prepare("UPDATE beast_profiles SET rest_status = 'active', updated_at = ? WHERE name = ?")
+      .run(Date.now(), name);
+
+    console.log(`[Wake] ${name}: rest_status ${previousStatus} → active. Dropped ${dropResult.changes} schedules overdue by >${stormCapHours}h.`);
+    wsBroadcast('beast_state_change', { beast: name, rest_status: 'active' });
+
+    return c.json({
+      beast: name,
+      previous_status: previousStatus,
+      current_status: 'active',
+      schedules_dropped: dropResult.changes,
+      storm_cap_hours: stormCapHours,
+      resumed_at: new Date().toISOString(),
+    });
   } catch (error) {
     return c.json({
       error: error instanceof Error ? error.message : 'Unknown error'

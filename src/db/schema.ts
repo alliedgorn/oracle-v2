@@ -310,6 +310,7 @@ export const beastProfiles = sqliteTable('beast_profiles', {
   role: text('role'),                           // Beast role: Software Engineering, PM, etc.
   birthdate: text('birthdate'),                 // Date string: YYYY-MM-DD (chosen birthday)
   sex: text('sex'),                              // male, female, or null
+  restStatus: text('rest_status').default('active'), // T#658 — Norm #65: active | rest (nap reserved)
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });

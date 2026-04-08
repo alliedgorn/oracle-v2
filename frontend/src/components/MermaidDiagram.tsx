@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify';
 
 mermaid.initialize({
   startOnLoad: false,
+  securityLevel: 'strict',
   theme: 'dark',
   themeVariables: {
     primaryColor: '#d97706',
@@ -36,7 +37,7 @@ export function MermaidDiagram({ code }: { code: string }) {
       try {
         const { svg } = await mermaid.render(id, code.trim());
         if (containerRef.current) {
-          containerRef.current.innerHTML = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ['foreignObject'] });
+          containerRef.current.innerHTML = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } });
           setError(null);
         }
       } catch (e) {

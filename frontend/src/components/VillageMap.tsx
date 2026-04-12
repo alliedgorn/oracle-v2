@@ -276,6 +276,57 @@ export function VillageMap() {
         <circle cx="980" cy="440" r="2" fill="currentColor" />
       </g>
 
+      {/* === v3 additions — earned 2026-04-12 === */}
+
+      {/* The tailor — south side of the square */}
+      <g transform="translate(750, 365)">
+        <rect x="-6" y="-5" width="12" height="10" fill="currentColor" opacity="0.25" />
+        <text x="-14" y="16" fontSize="10" fill="currentColor" opacity="0.75" fontFamily="system-ui, sans-serif">
+          tailor
+        </text>
+      </g>
+
+      {/* The print shop — near fig courtyard (courtyard is behind it) */}
+      <g transform="translate(800, 262)">
+        <rect x="-6" y="-5" width="12" height="10" fill="currentColor" opacity="0.25" />
+        <text x="10" y="3" fontSize="10" fill="currentColor" opacity="0.75" fontFamily="system-ui, sans-serif">
+          print shop
+        </text>
+      </g>
+
+      {/* Sable's alley shortcut — tailor to print shop, drops to canal path */}
+      <path
+        d="M 758 358 Q 770 330 775 310 Q 780 290 795 268"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeOpacity="0.4"
+        strokeDasharray="3 4"
+      />
+      <text x="782" y="312" fontSize="9" fill="currentColor" opacity="0.6" fontFamily="system-ui, sans-serif" transform="rotate(-72, 782, 312)">
+        alley
+      </text>
+
+      {/* Mill foundation stones — four cut stones near the old mill */}
+      <g transform="translate(535, 105)">
+        <rect x="-10" y="-3" width="6" height="6" fill="currentColor" opacity="0.3" />
+        <rect x="-2" y="-3" width="6" height="6" fill="currentColor" opacity="0.3" />
+        <rect x="6" y="-3" width="6" height="6" fill="currentColor" opacity="0.3" />
+        <rect x="2" y="5" width="6" height="6" fill="currentColor" opacity="0.25" />
+        <text x="-12" y="20" fontSize="10" fill="currentColor" opacity="0.7" fontFamily="system-ui, sans-serif">
+          cut stones
+        </text>
+      </g>
+
+      {/* Irrigation slab — concrete with rusted gate valve, past the south bend */}
+      <g transform="translate(340, 590)">
+        <rect x="-8" y="-5" width="16" height="10" fill="currentColor" opacity="0.18" />
+        <line x1="0" y1="-7" x2="0" y2="-5" stroke="currentColor" strokeWidth="2" strokeOpacity="0.5" />
+        <text x="-20" y="16" fontSize="10" fill="currentColor" opacity="0.7" fontFamily="system-ui, sans-serif">
+          old sluice
+        </text>
+      </g>
+
       {/* Compass — bottom right corner, small and quiet */}
       <g transform="translate(1130, 720)" opacity="0.5">
         <circle cx="0" cy="0" r="18" fill="none" stroke="currentColor" strokeWidth="1" />

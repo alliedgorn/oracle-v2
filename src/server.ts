@@ -6845,7 +6845,7 @@ console.log('[Scheduler] Auto-trigger daemon started (10s interval)');
 // ============================================================================
 
 const DRAIN_INTERVAL = 1000; // Check queues every 1s
-const DRAIN_SPACING = 3000; // 3s between sends to same Beast
+const DRAIN_SPACING = 1000; // 1s between sends to same Beast (was 3s — Tier 1 of notification queue smoothness fix, 2026-04-08)
 const DRAIN_DIR = '/tmp/den-notify';
 const drainLastSent: Map<string, number> = new Map(); // beast → last send timestamp
 
@@ -9458,13 +9458,13 @@ try {
 const ROUTINE_UPLOADS = path.join(ORACLE_DATA_DIR, 'uploads', 'routine');
 if (!fs.existsSync(ROUTINE_UPLOADS)) fs.mkdirSync(ROUTINE_UPLOADS, { recursive: true });
 
-// Auth helper: only Gorn (session) + Sable (trusted local request with identity)
+// Auth helper: Gorn (session) + Sable (gatekeeper) + Karo (partner, added 2026-04-09 by Gorn's verbal authorization)
 function isForgeAuthorized(c: any): boolean {
   if (hasSessionAuth(c)) return true; // Gorn browser session
-  // Sable access: must be a trusted local request (localhost) AND identify as sable
+  // Trusted local request + identity gate. Allowlist: gorn (owner), sable (gatekeeper), karo (partner).
   if (isTrustedRequest(c)) {
     const as = (c.req.query('as') || '').toLowerCase();
-    return ['gorn', 'sable'].includes(as);
+    return ['gorn', 'sable', 'karo'].includes(as);
   }
   return false;
 }

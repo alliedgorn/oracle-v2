@@ -3047,7 +3047,7 @@ app.get('/api/pack/spinner-verbs', (c) => {
 
 // Capture live terminal output for a Beast
 app.get('/api/beast/:name/terminal', (c) => {
-  if (!hasSessionAuth(c)) return c.json({ error: 'Browser session required' }, 403);
+  if (!hasSessionAuth(c)) return c.json({ error: 'forbidden' }, 403);
   const name = c.req.param('name');
   const sessionName = name.charAt(0).toUpperCase() + name.slice(1);
   const rows = parseInt(c.req.query('rows') || '50');
@@ -3094,7 +3094,7 @@ app.get('/api/beast/:name/terminal', (c) => {
 
 // Send input to a Beast's terminal
 app.post('/api/beast/:name/terminal/input', async (c) => {
-  if (!hasSessionAuth(c)) return c.json({ error: 'Browser session required' }, 403);
+  if (!hasSessionAuth(c)) return c.json({ error: 'forbidden' }, 403);
   const name = c.req.param('name');
   const sessionName = name.charAt(0).toUpperCase() + name.slice(1);
 
@@ -3125,7 +3125,7 @@ app.post('/api/beast/:name/terminal/input', async (c) => {
 
 // Send special keys (Enter, Ctrl-C, etc.)
 app.post('/api/beast/:name/terminal/key', async (c) => {
-  if (!hasSessionAuth(c)) return c.json({ error: 'Browser session required' }, 403);
+  if (!hasSessionAuth(c)) return c.json({ error: 'forbidden' }, 403);
   const name = c.req.param('name');
   const sessionName = name.charAt(0).toUpperCase() + name.slice(1);
 
@@ -7483,7 +7483,7 @@ app.post('/api/beast/:name/wake', (c) => {
 
     // Auth: requester must be the beast itself or gorn (same as schedule mutations)
     if (!isTrustedRequest(c)) {
-      return c.json({ error: 'Local network only' }, 403);
+      return c.json({ error: 'forbidden' }, 403);
     }
     if (asParam && asParam !== name && asParam !== 'gorn') {
       return c.json({ error: 'Cross-Beast wake denied. You can only wake yourself or be Gorn.' }, 403);

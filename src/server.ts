@@ -11539,6 +11539,10 @@ interface TelegramBot {
   messageCount: number;
   active: boolean;
   timer: ReturnType<typeof setInterval> | null;
+  polling: boolean;    // Concurrent-poll guard. If a poll tick fires while a
+                       // previous poll is still running, skip — otherwise both
+                       // call getUpdates with the same offset and re-deliver
+                       // the same update twice (dup-delivery bug found 2026-04-17).
 }
 
 // Parse bot configs from env
@@ -11556,7 +11560,7 @@ function parseTelegramBots(): TelegramBot[] {
             token: b.token,
             beast: b.beast,
             chatId: b.chatId || TG_CHAT_ID,
-            offset: 0, lastMessageAt: null, messageCount: 0, active: false, timer: null,
+            offset: 0, lastMessageAt: null, messageCount: 0, active: false, timer: null, polling: false,
           });
         }
       }
@@ -11570,7 +11574,7 @@ function parseTelegramBots(): TelegramBot[] {
     if (token && TG_CHAT_ID) {
       bots.push({
         token, beast, chatId: TG_CHAT_ID,
-        offset: 0, lastMessageAt: null, messageCount: 0, active: false, timer: null,
+        offset: 0, lastMessageAt: null, messageCount: 0, active: false, timer: null, polling: false,
       });
     }
   }
@@ -11683,8 +11687,16 @@ async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> 
       confirmText = `✓ Notified ${bot.beast}`;
     }
 
+    // UTC+7 timestamp using the TG message's send time (msg.date is unix seconds)
+    // so the Beast sees when Gorn actually SENT the message, not when polling caught
+    // it. Important on bad connectivity (trains, tunnels) where the gap can be
+    // meaningful. Falls back to server receive time if msg.date missing.
+    const msgTime = msg.date ? new Date(msg.date * 1000) : new Date();
+    const utc7 = new Date(msgTime.getTime() + 7 * 60 * 60 * 1000);
+    const timeStr = `${utc7.getUTCHours().toString().padStart(2, '0')}:${utc7.getUTCMinutes().toString().padStart(2, '0')} UTC+7`;
+
     // Send tmux notification to the Beast — they reply via Telegram
-    const notification = `${notifyText}\\n\\nReply via Telegram to respond to Gorn.`;
+    const notification = `[${timeStr}] ${notifyText}\\n\\nReply via Telegram to respond to Gorn.`;
     enqueueNotification(bot.beast, notification);
 
     console.log(`[Telegram:${bot.beast}] Notified: ${notifyText.slice(0, 80)}`);
@@ -11697,6 +11709,12 @@ async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> 
 }
 
 async function pollTelegramBot(bot: TelegramBot): Promise<void> {
+  // Concurrent-poll guard: if a previous poll hasn't returned yet (common when
+  // long-poll timeout + async handleTelegramMessage exceed TG_POLL_INTERVAL),
+  // skip this tick. Without this, two polls race on the same bot.offset and
+  // re-deliver the same update_id twice.
+  if (bot.polling) return;
+  bot.polling = true;
   try {
     const data = await tgApi(bot.token, 'getUpdates', {
       offset: String(bot.offset),
@@ -11716,6 +11734,8 @@ async function pollTelegramBot(bot: TelegramBot): Promise<void> {
     }
   } catch (err) {
     console.error(`[Telegram:${bot.beast}] Poll error:`, err);
+  } finally {
+    bot.polling = false;
   }
 }
 

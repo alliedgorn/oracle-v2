@@ -11687,17 +11687,17 @@ async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> 
       confirmText = `✓ Notified ${bot.beast}`;
     }
 
-    // UTC+7 timestamp using the TG message's send time (msg.date is unix seconds)
-    // so the Beast sees when Gorn actually SENT the message, not when polling caught
-    // it. Important on bad connectivity (trains, tunnels) where the gap can be
+    // Use the TG message's send time (msg.date is unix seconds) so the Beast
+    // sees when Gorn actually SENT the message, not when polling caught it.
+    // Important on bad connectivity (trains, tunnels) where the gap can be
     // meaningful. Falls back to server receive time if msg.date missing.
+    // The timestamp itself is stamped by enqueueNotification — we just pass
+    // the event time through via opts.sentAt.
     const msgTime = msg.date ? new Date(msg.date * 1000) : new Date();
-    const utc7 = new Date(msgTime.getTime() + 7 * 60 * 60 * 1000);
-    const timeStr = `${utc7.getUTCHours().toString().padStart(2, '0')}:${utc7.getUTCMinutes().toString().padStart(2, '0')} UTC+7`;
 
     // Send tmux notification to the Beast — they reply via Telegram
-    const notification = `[${timeStr}] ${notifyText}\\n\\nReply via Telegram to respond to Gorn.`;
-    enqueueNotification(bot.beast, notification);
+    const notification = `${notifyText}\\n\\nReply via Telegram to respond to Gorn.`;
+    enqueueNotification(bot.beast, notification, { sentAt: msgTime });
 
     console.log(`[Telegram:${bot.beast}] Notified: ${notifyText.slice(0, 80)}`);
     bot.messageCount++;

@@ -4,9 +4,11 @@
  * Messages are queued to /tmp/den-notify/<beast>.queue and drained
  * by notify-drain.sh with 3s spacing to prevent prompt corruption.
  *
- * Every queued message is prefixed with `[YYYY-MM-DD HH:MM UTC+7]` so
+ * Every queued message is prefixed with `[YYYY-MM-DD HH:MM:SS UTC+7]` so
  * Beasts can tell at a glance when a notification was sent, even across
- * rest boundaries. Callers that care about send-time vs. enqueue-time
+ * rest boundaries. Seconds precision matters for the crossed-message rule
+ * — within-minute collisions (common on fast turn-taking) were ambiguous
+ * at minute granularity. Callers that care about send-time vs. enqueue-time
  * (e.g. Telegram polling, where msg.date is meaningful on bad connectivity)
  * can pass `opts.sentAt` to stamp the source event time.
  */
@@ -22,7 +24,8 @@ function formatUtc7Timestamp(date: Date): string {
   const d = String(utc7.getUTCDate()).padStart(2, '0');
   const h = String(utc7.getUTCHours()).padStart(2, '0');
   const mi = String(utc7.getUTCMinutes()).padStart(2, '0');
-  return `[${y}-${mo}-${d} ${h}:${mi} UTC+7]`;
+  const s = String(utc7.getUTCSeconds()).padStart(2, '0');
+  return `[${y}-${mo}-${d} ${h}:${mi}:${s} UTC+7]`;
 }
 
 export interface EnqueueOpts {

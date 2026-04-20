@@ -4,6 +4,16 @@ import styles from './Prowl.module.css';
 import { EmojiButton } from '../components/EmojiButton';
 import { FileUpload } from '../components/FileUpload';
 
+interface ChecklistItem {
+  id: number;
+  task_id: number;
+  text: string;
+  checked: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 interface ProwlTask {
   id: number;
   title: string;
@@ -19,6 +29,7 @@ interface ProwlTask {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  checklist?: ChecklistItem[];
 }
 
 interface Counts {
@@ -44,6 +55,7 @@ export function Prowl() {
   const [newRemindBefore, setNewRemindBefore] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editData, setEditData] = useState<Partial<ProwlTask>>({});
+  const [newChecklistText, setNewChecklistText] = useState<Record<number, string>>({});
 
   const loadTasks = useCallback(async () => {
     const params = new URLSearchParams();
@@ -102,6 +114,53 @@ export function Prowl() {
   async function deleteTask(id: number) {
     await fetch(`/api/prowl/${id}`, { method: 'DELETE' });
     setExpandedId(null);
+    await loadTasks();
+  }
+
+  async function toggleChecklistItem(taskId: number, itemId: number) {
+    await fetch(`/api/prowl/${taskId}/checklist/${itemId}/toggle`, { method: 'POST' });
+    await loadTasks();
+  }
+
+  async function addChecklistItem(taskId: number) {
+    const text = (newChecklistText[taskId] || '').trim();
+    if (!text) return;
+    await fetch(`/api/prowl/${taskId}/checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    setNewChecklistText(prev => ({ ...prev, [taskId]: '' }));
+    await loadTasks();
+  }
+
+  async function deleteChecklistItem(taskId: number, itemId: number) {
+    await fetch(`/api/prowl/${taskId}/checklist/${itemId}`, { method: 'DELETE' });
+    await loadTasks();
+  }
+
+  async function moveChecklistItem(taskId: number, itemId: number, direction: 'up' | 'down') {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task?.checklist) return;
+    const items = [...task.checklist].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+    const idx = items.findIndex(i => i.id === itemId);
+    if (idx < 0) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= items.length) return;
+    const a = items[idx];
+    const b = items[targetIdx];
+    await Promise.all([
+      fetch(`/api/prowl/${taskId}/checklist/${a.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sort_order: b.sort_order }),
+      }),
+      fetch(`/api/prowl/${taskId}/checklist/${b.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sort_order: a.sort_order }),
+      }),
+    ]);
     await loadTasks();
   }
 
@@ -357,6 +416,85 @@ export function Prowl() {
                       placeholder="Optional notes..."
                     />
                   </div>
+                  {(() => {
+                    const items = (task.checklist || []).slice().sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+                    const done = items.filter(i => i.checked).length;
+                    return (
+                      <div className={styles.expandedField}>
+                        <label>
+                          Checklist
+                          {items.length > 0 && <span className={styles.checklistCounter}> · {done}/{items.length} done</span>}
+                        </label>
+                        {items.length > 0 && (
+                          <div className={styles.checklistList}>
+                            {items.map((item, idx) => (
+                              <div key={item.id} className={styles.checklistItem}>
+                                <div
+                                  className={`${styles.checklistCheckbox} ${item.checked ? styles.checklistCheckboxChecked : ''}`}
+                                  onClick={() => toggleChecklistItem(task.id, item.id)}
+                                >
+                                  {item.checked ? '\u2713' : ''}
+                                </div>
+                                <span className={`${styles.checklistText} ${item.checked ? styles.checklistTextDone : ''}`}>
+                                  {item.text}
+                                </span>
+                                <div className={styles.checklistActions}>
+                                  <button
+                                    type="button"
+                                    className={styles.checklistMoveBtn}
+                                    onClick={() => moveChecklistItem(task.id, item.id, 'up')}
+                                    disabled={idx === 0}
+                                    title="Move up"
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={styles.checklistMoveBtn}
+                                    onClick={() => moveChecklistItem(task.id, item.id, 'down')}
+                                    disabled={idx === items.length - 1}
+                                    title="Move down"
+                                  >
+                                    ↓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={styles.checklistDeleteBtn}
+                                    onClick={() => deleteChecklistItem(task.id, item.id)}
+                                    title="Delete"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className={styles.checklistAdd}>
+                          <input
+                            type="text"
+                            value={newChecklistText[task.id] || ''}
+                            onChange={e => setNewChecklistText(prev => ({ ...prev, [task.id]: e.target.value }))}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addChecklistItem(task.id);
+                              }
+                            }}
+                            placeholder="Add checklist item..."
+                          />
+                          <button
+                            type="button"
+                            className={styles.checklistAddBtn}
+                            onClick={() => addChecklistItem(task.id)}
+                            disabled={!(newChecklistText[task.id] || '').trim()}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className={styles.expandedActions}>
                     <FileUpload onUploadComplete={(md) => setEditData((prev: any) => ({ ...prev, notes: (prev.notes || '') + md }))} />
                     <EmojiButton onSelect={(e) => setEditData((prev: any) => ({ ...prev, notes: (prev.notes || '') + e }))} />

@@ -381,6 +381,146 @@
   color: #fff;
 }
 
+/* Checklist */
+.checklistCounter {
+  color: var(--text-muted);
+  font-weight: normal;
+}
+
+.checklistList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.checklistItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: background 0.12s;
+}
+
+.checklistItem:hover {
+  background: var(--bg-surface);
+}
+
+.checklistCheckbox {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  transition: all 0.15s;
+}
+
+.checklistCheckbox:hover {
+  border-color: var(--accent);
+}
+
+.checklistCheckboxChecked {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.checklistText {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9em;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.checklistTextDone {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.checklistActions {
+  display: flex;
+  gap: 2px;
+  opacity: 0.5;
+  transition: opacity 0.12s;
+}
+
+.checklistItem:hover .checklistActions {
+  opacity: 1;
+}
+
+.checklistMoveBtn,
+.checklistDeleteBtn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checklistMoveBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.checklistMoveBtn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.checklistDeleteBtn:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.checklistAdd {
+  display: flex;
+  gap: 6px;
+}
+
+.checklistAdd input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.9em;
+}
+
+.checklistAdd input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.checklistAddBtn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.checklistAddBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Empty State */
 .empty {
   text-align: center;

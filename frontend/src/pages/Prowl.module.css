@@ -451,7 +451,8 @@
   transition: opacity 0.12s;
 }
 
-.checklistItem:hover .checklistActions {
+.checklistItem:hover .checklistActions,
+.checklistItem:focus-within .checklistActions {
   opacity: 1;
 }
 

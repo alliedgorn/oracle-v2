@@ -327,6 +327,66 @@ export function VillageMap() {
         </text>
       </g>
 
+      {/* === v4 additions — underground storm drain lines === */}
+      {/* Survey: Sable + Rax (Line 1 canal→bakery, 2026-04-14 + 2026-04-20 confirm), Sable (Line 2 cistern→woodshed, 2026-04-18) */}
+
+      {/* Line 1 — Canal footbridge → SE square junction → bakery (left fork) + east stub (right fork, metalworker exit pending placement) */}
+      <g opacity="0.45">
+        {/* Entry-to-junction: low arch at canal footbridge → under main road, SE corner of square */}
+        <path
+          d="M 530 670 Q 640 580 720 470 Q 770 410 798 348"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeDasharray="5 4"
+        />
+        {/* Junction dot */}
+        <circle cx="800" cy="348" r="3" fill="currentColor" opacity="0.8" />
+        {/* Left fork: junction → W side of bakery foundation */}
+        <path
+          d="M 800 348 Q 840 335 893 320"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeDasharray="5 4"
+        />
+        {/* Right fork: junction → east stub (metalworker's shop exit confirmed, exact location pending) */}
+        <path
+          d="M 800 348 Q 830 358 862 354"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeDasharray="5 4"
+        />
+        <text x="640" y="560" fontSize="9" fill="currentColor" opacity="0.55" fontFamily="system-ui, sans-serif" fontStyle="italic">
+          storm drain
+        </text>
+      </g>
+
+      {/* Line 2 — Spice cistern → disused woodshed (straight south, ~30m, no branches) */}
+      <g opacity="0.45">
+        {/* Cistern landmark — small circle, old stone cistern */}
+        <circle cx="790" cy="225" r="4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="790" cy="225" r="1.5" fill="currentColor" opacity="0.5" />
+        <text x="798" y="228" fontSize="9" fill="currentColor" opacity="0.7" fontFamily="system-ui, sans-serif">
+          cistern
+        </text>
+        {/* Woodshed landmark — small rect with roof */}
+        <rect x="784" y="280" width="12" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M 783 280 L 790 275 L 797 280" fill="none" stroke="currentColor" strokeWidth="1" />
+        <text x="800" y="288" fontSize="9" fill="currentColor" opacity="0.7" fontFamily="system-ui, sans-serif">
+          woodshed
+        </text>
+        {/* Straight south run, cistern → woodshed */}
+        <path
+          d="M 790 230 L 790 275"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeDasharray="5 4"
+        />
+      </g>
+
       {/* Compass — bottom right corner, small and quiet */}
       <g transform="translate(1130, 720)" opacity="0.5">
         <circle cx="0" cy="0" r="18" fill="none" stroke="currentColor" strokeWidth="1" />

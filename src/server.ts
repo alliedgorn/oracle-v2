@@ -9461,10 +9461,11 @@ if (!fs.existsSync(ROUTINE_UPLOADS)) fs.mkdirSync(ROUTINE_UPLOADS, { recursive: 
 // Auth helper: Gorn (session) + Sable (gatekeeper) + Karo (partner, added 2026-04-09 by Gorn's verbal authorization)
 function isForgeAuthorized(c: any): boolean {
   if (hasSessionAuth(c)) return true; // Gorn browser session
-  // Trusted local request + identity gate. Allowlist: gorn (owner), sable (gatekeeper), karo (partner).
+  // Trusted local request + identity gate. Allowlist: gorn (owner), sable (gatekeeper),
+  // karo (partner), boro (coach — professional-lane access for program design + progression reads).
   if (isTrustedRequest(c)) {
     const as = (c.req.query('as') || '').toLowerCase();
-    return ['gorn', 'sable', 'karo'].includes(as);
+    return ['gorn', 'sable', 'karo', 'boro'].includes(as);
   }
   return false;
 }

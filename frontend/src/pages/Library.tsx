@@ -322,6 +322,7 @@ export function Library() {
                 {!isGuest && <button className={styles.editButton} onClick={startEditing}>Edit</button>}
               </div>
               <div className={styles.detailMeta}>
+                <span className={styles.entryId}>#{selectedDoc.id}</span>
                 <span className={styles.author}>
                   <span className={styles.authorDot} style={{ backgroundColor: 'var(--text-muted)' }} />
                   {selectedDoc.author}
@@ -498,6 +499,7 @@ export function Library() {
           >
             <div className={styles.cardHeader}>
               <span className={styles.cardTitle}>{doc.title}</span>
+              <span className={styles.entryId}>#{doc.id}</span>
               <span className={styles.cardDate}>{formatDate(doc.created_at)}</span>
             </div>
             {doc.content && (

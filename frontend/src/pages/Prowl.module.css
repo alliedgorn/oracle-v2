@@ -345,7 +345,7 @@
 }
 
 .expandedField textarea {
-  min-height: 150px;
+  min-height: 300px;
   resize: vertical;
   font-family: inherit;
 }

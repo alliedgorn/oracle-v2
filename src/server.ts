@@ -8650,7 +8650,7 @@ app.get('/api/oauth/withings/callback', async (c) => {
 
 // GET /api/oauth/withings/status — connection status
 app.get('/api/oauth/withings/status', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access required' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge access required' }, 403);
   const token = sqlite.prepare("SELECT provider, user_id, expires_at, scopes, updated_at FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
   if (!token) return c.json({ connected: false });
   const now = Math.floor(Date.now() / 1000);
@@ -8675,7 +8675,7 @@ app.get('/api/oauth/withings/status', (c) => {
 
 // GET /api/withings/devices — proxy to Withings device list (T#478)
 app.get('/api/withings/devices', async (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access required' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge access required' }, 403);
   try {
     const tokenData = await ensureFreshWithingsToken();
     if (!tokenData) return c.json({ error: 'Withings not connected' }, 400);
@@ -8825,7 +8825,7 @@ app.post('/api/webhooks/withings', async (c) => {
 
 // POST /api/oauth/withings/sync — manual sync trigger (T#415)
 app.post('/api/oauth/withings/sync', async (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access required' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge access required' }, 403);
 
   const token = sqlite.prepare("SELECT * FROM oauth_tokens WHERE provider = 'withings' LIMIT 1").get() as any;
   if (!token) return c.json({ error: 'Withings not connected' }, 400);
@@ -9092,7 +9092,7 @@ app.get('/api/oauth/google/callback', async (c) => {
 
 // GET /api/oauth/google/status — connection status
 app.get('/api/oauth/google/status', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Authentication required' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Authentication required' }, 403);
   const token = sqlite.prepare("SELECT provider, user_id, expires_at, scopes, updated_at FROM oauth_tokens WHERE provider = 'google' LIMIT 1").get() as any;
   if (!token) return c.json({ connected: false });
   const now = Math.floor(Date.now() / 1000);
@@ -9458,21 +9458,32 @@ try {
 const ROUTINE_UPLOADS = path.join(ORACLE_DATA_DIR, 'uploads', 'routine');
 if (!fs.existsSync(ROUTINE_UPLOADS)) fs.mkdirSync(ROUTINE_UPLOADS, { recursive: true });
 
-// Auth helper: Gorn (session) + Sable (gatekeeper) + Karo (partner, added 2026-04-09 by Gorn's verbal authorization)
-function isForgeAuthorized(c: any): boolean {
-  if (hasSessionAuth(c)) return true; // Gorn browser session
-  // Trusted local request + identity gate. Allowlist: gorn (owner), sable (gatekeeper),
-  // karo (partner), boro (coach — professional-lane access for program design + progression reads).
+// Forge beast → mode map. 'write' implies 'read'. Owner session always full write.
+// Library #96 lever 1: scope-for-post-compromise-damage — grant the minimum mode each lane needs.
+const FORGE_BEAST_MODES: Record<string, 'read' | 'write'> = {
+  gorn: 'write',   // owner
+  sable: 'write',  // gatekeeper — logs meals for bear
+  karo: 'write',   // partner — bedrock 04-09 grant
+  boro: 'read',    // coach — periodization + progression reads only; writes route through Sable
+};
+
+// Auth helper: Gorn (session) + allowlisted beasts per FORGE_BEAST_MODES.
+// mode='read' permits any allowlisted beast; mode='write' requires write-mode beast.
+function isForgeAuthorized(c: any, options: { mode: 'read' | 'write' } = { mode: 'write' }): boolean {
+  if (hasSessionAuth(c)) return true; // Gorn browser session — owner, full write
   if (isTrustedRequest(c)) {
     const as = (c.req.query('as') || '').toLowerCase();
-    return ['gorn', 'sable', 'karo', 'boro'].includes(as);
+    const beastMode = FORGE_BEAST_MODES[as];
+    if (!beastMode) return false;
+    if (options.mode === 'read') return true; // either mode satisfies read
+    return beastMode === 'write';              // write requires write
   }
   return false;
 }
 
 // GET /api/routine/logs — list logs
 app.get('/api/routine/logs', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const type = c.req.query('type');
   const from = c.req.query('from');
   const to = c.req.query('to');
@@ -9494,7 +9505,7 @@ app.get('/api/routine/logs', (c) => {
 
 // GET /api/routine/today — today's logs grouped by type
 app.get('/api/routine/today', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const today = new Date().toISOString().slice(0, 10);
   const logs = sqlite.prepare(
     "SELECT * FROM routine_logs WHERE deleted_at IS NULL AND date(logged_at) = ? ORDER BY logged_at DESC"
@@ -9504,7 +9515,7 @@ app.get('/api/routine/today', (c) => {
 
 // GET /api/routine/weight — weight history for chart (with time-based grouping)
 app.get('/api/routine/weight', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const range = c.req.query('range'); // week, month, year, 3y, 10y, all
   let dateFilter = '';
   if (range) {
@@ -9576,7 +9587,7 @@ function parseExerciseString(raw: string): { name: string; sets: { weight: numbe
 
 // GET /api/routine/workout-trends — exercise progress over time (T#397)
 app.get('/api/routine/workout-trends', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const range = c.req.query('range') || 'year';
   const exercise = c.req.query('exercise'); // optional: filter to specific exercise
 
@@ -9678,7 +9689,7 @@ app.get('/api/routine/workout-trends', (c) => {
 
 // GET /api/routine/body-composition — body comp history from Withings (T#479, Spec #28)
 app.get('/api/routine/body-composition', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access required' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge access required' }, 403);
   const range = c.req.query('range') || 'month';
   const rangeMap: Record<string, string> = {
     '1w': '-7 days', week: '-7 days', '1m': '-30 days', month: '-30 days',
@@ -9729,7 +9740,7 @@ app.get('/api/routine/body-composition', (c) => {
 
 // GET /api/routine/stats — summary stats
 app.get('/api/routine/stats', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const totalLogs = (sqlite.prepare('SELECT COUNT(*) as c FROM routine_logs WHERE deleted_at IS NULL').get() as any).c;
   const byType = sqlite.prepare('SELECT type, COUNT(*) as count FROM routine_logs WHERE deleted_at IS NULL GROUP BY type').all();
   const thisWeek = (sqlite.prepare("SELECT COUNT(*) as c FROM routine_logs WHERE deleted_at IS NULL AND type = 'workout' AND logged_at >= datetime('now', '-7 days')").get() as any).c;
@@ -9739,7 +9750,7 @@ app.get('/api/routine/stats', (c) => {
 
 // GET /api/routine/summary — enhanced summary for Stats tab (T#410)
 app.get('/api/routine/summary', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const range = c.req.query('range') || 'week';
   const rangeMap: Record<string, number> = { week: 7, month: 30, '3m': 90, year: 365 };
   const days = rangeMap[range] || 7;
@@ -9804,7 +9815,7 @@ app.get('/api/routine/summary', (c) => {
 
 // GET /api/routine/exercises — exercise library (T#410)
 app.get('/api/routine/exercises', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const q = c.req.query('q');
   const muscleGroup = c.req.query('muscle_group');
 
@@ -9820,7 +9831,7 @@ app.get('/api/routine/exercises', (c) => {
 
 // POST /api/routine/exercises — add custom exercise (T#410)
 app.post('/api/routine/exercises', async (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   try {
     const body = await c.req.json();
     const { name, muscle_group, equipment } = body;
@@ -9840,7 +9851,7 @@ app.post('/api/routine/exercises', async (c) => {
 
 // POST /api/routine/exercises/seed — seed exercise library from existing workout data (T#410)
 app.post('/api/routine/exercises/seed', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
 
   const rows = sqlite.prepare(
     "SELECT data FROM routine_logs WHERE type = 'workout' AND deleted_at IS NULL"
@@ -9873,7 +9884,7 @@ app.post('/api/routine/exercises/seed', (c) => {
 
 // GET /api/routine/personal-records — personal records list (T#410, T#543)
 app.get('/api/routine/personal-records', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const exercise = c.req.query('exercise');
   const range = c.req.query('range');
   const grouped = c.req.query('grouped'); // 'true' = best lift per exercise
@@ -9911,7 +9922,7 @@ app.get('/api/routine/personal-records', (c) => {
 
 // POST /api/routine/personal-records/seed — backfill PRs from all workout logs (T#543)
 app.post('/api/routine/personal-records/seed', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const workouts = sqlite.prepare(
     "SELECT id, logged_at, data FROM routine_logs WHERE type = 'workout' AND deleted_at IS NULL"
   ).all() as any[];
@@ -9958,7 +9969,7 @@ app.post('/api/routine/personal-records/seed', (c) => {
 
 // GET /api/routine/photos — photo gallery
 app.get('/api/routine/photos', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const tag = c.req.query('tag');
   let query = "SELECT * FROM routine_logs WHERE type = 'photo' AND deleted_at IS NULL";
   const params: any[] = [];
@@ -9970,7 +9981,7 @@ app.get('/api/routine/photos', (c) => {
 
 // POST /api/routine/logs — create log entry
 app.post('/api/routine/logs', async (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   try {
     const data = await c.req.json();
     const { type, logged_at } = data;
@@ -10082,7 +10093,7 @@ app.post('/api/routine/logs', async (c) => {
 
 // PATCH /api/routine/logs/:id — edit log
 app.patch('/api/routine/logs/:id', async (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const id = parseInt(c.req.param('id'), 10);
   const existing = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ? AND deleted_at IS NULL').get(id);
   if (!existing) return c.json({ error: 'Log not found' }, 404);
@@ -10127,7 +10138,7 @@ app.patch('/api/routine/logs/:id', async (c) => {
 
 // DELETE /api/routine/logs/:id — soft delete
 app.delete('/api/routine/logs/:id', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const id = parseInt(c.req.param('id'), 10);
   const existing = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ? AND deleted_at IS NULL').get(id);
   if (!existing) return c.json({ error: 'Log not found' }, 404);
@@ -10137,7 +10148,7 @@ app.delete('/api/routine/logs/:id', (c) => {
 
 // GET /api/routine/logs/deleted — list soft-deleted entries for recovery
 app.get('/api/routine/logs/deleted', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const limit = parseInt(c.req.query('limit') || '50');
   const rows = sqlite.prepare('SELECT * FROM routine_logs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ?').all(limit);
   return c.json({ logs: rows, total: (rows as any[]).length });
@@ -10145,7 +10156,7 @@ app.get('/api/routine/logs/deleted', (c) => {
 
 // PATCH /api/routine/logs/:id/restore — undelete a soft-deleted log
 app.patch('/api/routine/logs/:id/restore', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const id = parseInt(c.req.param('id'), 10);
   const existing = sqlite.prepare('SELECT * FROM routine_logs WHERE id = ? AND deleted_at IS NOT NULL').get(id);
   if (!existing) return c.json({ error: 'Deleted log not found' }, 404);
@@ -10155,7 +10166,7 @@ app.patch('/api/routine/logs/:id/restore', (c) => {
 
 // POST /api/routine/photo/upload — upload progress photo
 app.post('/api/routine/photo/upload', async (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   try {
     let formData: FormData;
     try { formData = await c.req.formData(); } catch { return c.json({ error: 'No file provided. Send multipart/form-data with a file field.' }, 400); }
@@ -10213,7 +10224,7 @@ app.post('/api/routine/photo/upload', async (c) => {
 
 // GET /api/routine/photo/:filename — serve routine photo
 app.get('/api/routine/photo/:filename', (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const filename = c.req.param('filename').replace(/[^a-zA-Z0-9._-]/g, '');
   const filePath = path.join(ROUTINE_UPLOADS, filename);
   if (!fs.existsSync(filePath)) return c.json({ error: 'Not found' }, 404);
@@ -10224,7 +10235,7 @@ app.get('/api/routine/photo/:filename', (c) => {
 
 // POST /api/routine/import/alpha-progression — import Alpha Progression CSV (T#389)
 app.post('/api/routine/import/alpha-progression', async (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access denied' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge access denied' }, 403);
 
   try {
     const formData = await c.req.formData();
@@ -10373,7 +10384,7 @@ app.post('/api/routine/import/alpha-progression', async (c) => {
 
 // POST /api/routine/import/alpha-measurements — import Alpha Progression Measurements CSV (T#392)
 app.post('/api/routine/import/alpha-measurements', async (c) => {
-  if (!isForgeAuthorized(c)) return c.json({ error: 'Forge access denied' }, 403);
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge access denied' }, 403);
 
   try {
     const formData = await c.req.formData();

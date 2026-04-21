@@ -10480,6 +10480,107 @@ app.post('/api/routine/import/alpha-measurements', async (c) => {
   }
 });
 
+// POST /api/routine/hevy/sync — pull recent workouts from Hevy into Forge (T#703)
+// Owner-session or write-auth forge access.
+// Query: ?days=7 (default window, max 90).
+// Dedupes on hevy workout id stored in data.hevy_id.
+app.post('/api/routine/hevy/sync', async (c) => {
+  if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge access denied' }, 403);
+
+  const token = process.env.HEVY_API_TOKEN;
+  if (!token) return c.json({ error: 'HEVY_API_TOKEN not configured on server' }, 500);
+
+  const daysParam = parseInt(c.req.query('days') || '7', 10);
+  const days = Math.min(90, Math.max(1, daysParam));
+  const sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
+
+  try {
+    // Fetch pages until we reach workouts older than the window.
+    const fetched: any[] = [];
+    let page = 1;
+    const pageSize = 10;
+    while (true) {
+      const url = `https://api.hevyapp.com/v1/workouts?page=${page}&pageSize=${pageSize}`;
+      const resp = await fetch(url, { headers: { 'api-key': token, 'accept': 'application/json' } });
+      if (!resp.ok) return c.json({ error: `Hevy API ${resp.status}: ${await resp.text()}` }, 502);
+      const body = await resp.json() as any;
+      const workouts = body.workouts || [];
+      if (workouts.length === 0) break;
+
+      let hitOld = false;
+      for (const w of workouts) {
+        const startMs = new Date(w.start_time).getTime();
+        if (startMs < sinceMs) { hitOld = true; continue; }
+        fetched.push(w);
+      }
+      if (hitOld || page >= (body.page_count || 1) || page >= 10) break;
+      page++;
+    }
+
+    // Existing hevy-source workouts — dedupe set on hevy_id.
+    const existingIds = new Set<string>();
+    const existingRows = sqlite.prepare(
+      "SELECT data FROM routine_logs WHERE type = 'workout' AND source = 'hevy' AND deleted_at IS NULL"
+    ).all() as any[];
+    for (const row of existingRows) {
+      try {
+        const d = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+        if (d?.hevy_id) existingIds.add(d.hevy_id);
+      } catch { /* skip malformed */ }
+    }
+
+    const insert = sqlite.prepare(
+      'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
+    );
+    let inserted = 0;
+    let skipped = 0;
+    const nowIso = new Date().toISOString();
+
+    for (const w of fetched) {
+      if (existingIds.has(w.id)) { skipped++; continue; }
+
+      // Map Hevy → Forge workout shape.
+      const startMs = new Date(w.start_time).getTime();
+      const endMs = new Date(w.end_time).getTime();
+      const durSec = Math.max(0, Math.round((endMs - startMs) / 1000));
+      const h = Math.floor(durSec / 3600);
+      const m = Math.floor((durSec % 3600) / 60);
+      const duration = h > 0 ? `${h}:${String(m).padStart(2, '0')} hr` : `${m} min`;
+
+      const exercises = (w.exercises || []).map((ex: any, idx: number) => ({
+        name: `${idx + 1}. ${ex.title || 'Unknown'}`,
+        sets: (ex.sets || []).map((s: any, sIdx: number) => ({
+          set: sIdx + 1,
+          weight: s.weight_kg ?? null,
+          reps: s.reps ?? null,
+          unit: 'KG',
+        })),
+        unit: 'KG',
+      }));
+
+      const data = JSON.stringify({
+        workout_name: w.title || 'Untitled',
+        duration,
+        exercises,
+        hevy_id: w.id,
+        description: w.description || null,
+      });
+
+      insert.run('workout', w.end_time, data, 'hevy', nowIso);
+      inserted++;
+    }
+
+    return c.json({
+      window_days: days,
+      fetched: fetched.length,
+      inserted,
+      skipped_duplicates: skipped,
+    });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Hevy sync failed' }, 500);
+  }
+});
+
 // ============================================================================
 // Rules — Decree and Norm governance (T#360)
 // ============================================================================

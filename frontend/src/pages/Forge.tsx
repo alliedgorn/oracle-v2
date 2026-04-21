@@ -493,6 +493,42 @@ function formatDateNav(date: Date): string {
   return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+function HevySync() {
+  const [syncing, setSyncing] = useState(false);
+  const [result, setResult] = useState<string>('');
+  const [error, setError] = useState('');
+
+  async function handleSync() {
+    setSyncing(true);
+    setError('');
+    setResult('');
+    try {
+      const res = await fetch(`${API_BASE}/routine/hevy/sync?days=14`, { method: 'POST' });
+      const data = await res.json();
+      if (data.error) setError(data.error);
+      else {
+        setResult(`+${data.inserted} workouts (${data.skipped_duplicates} already synced)`);
+        setTimeout(() => setResult(''), 5000);
+      }
+    } catch { setError('Hevy sync failed'); }
+    setSyncing(false);
+  }
+
+  return (
+    <div className={styles.withingsBar}>
+      <span className={styles.withingsStatus}>
+        <span className={styles.withingsDot} style={{ background: '#7c3aed' }} />
+        Hevy
+      </span>
+      <button className={styles.withingsSyncBtn} onClick={handleSync} disabled={syncing}>
+        {syncing ? 'Syncing...' : 'Sync Now'}
+      </button>
+      {result && <span className={styles.withingsMeta} style={{ color: '#10b981' }}>{result}</span>}
+      {error && <span style={{ color: '#ef4444', fontSize: 12 }}>{error}</span>}
+    </div>
+  );
+}
+
 function WithingsStatus() {
   const [status, setStatus] = useState<any>(null);
   const [syncing, setSyncing] = useState(false);
@@ -838,6 +874,7 @@ export function Forge() {
           </div>
         )}
         <WithingsStatus />
+        <HevySync />
       </div>
 
       {/* Tab navigation */}

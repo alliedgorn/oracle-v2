@@ -10096,6 +10096,55 @@ app.get('/api/routine/photos', (c) => {
   return c.json({ photos });
 });
 
+// T#710 Bertus P1 fold: extract workout validation so POST + PATCH enforce
+// identically. Also addresses the inconsistency between create-path and
+// edit-path discipline (same shape as T#706 parseDaysOfWeek helper).
+// Mutates workoutData in place to coerce rpe to Number.
+function validateWorkoutData(workoutData: any): { ok: true; data: any } | { ok: false; error: string; hint?: string } {
+  if (!workoutData || typeof workoutData !== 'object' || !workoutData.exercises || !Array.isArray(workoutData.exercises)) {
+    return {
+      ok: false,
+      error: 'Workout must include an exercises array.',
+      hint: 'Expected format: { exercises: [{ name: "Chest Press", equipment: "Machine", sets: [{ weight: 80, reps: 10, unit: "kg" }] }] }',
+    };
+  }
+  for (let i = 0; i < workoutData.exercises.length; i++) {
+    const ex = workoutData.exercises[i];
+    if (typeof ex === 'string') {
+      return {
+        ok: false,
+        error: `Exercise ${i + 1} is a string ("${ex.slice(0, 60)}"). Exercises must be objects with name and sets.`,
+        hint: 'Expected format: { name: "Chest Press", equipment: "Machine", sets: [{ weight: 80, reps: 10, unit: "kg" }] }',
+      };
+    }
+    if (!ex.name?.trim()) {
+      return { ok: false, error: `Exercise ${i + 1}: name is required.`, hint: '{ name: "Bench Press", sets: [{ weight: 80, reps: 10, unit: "kg" }] }' };
+    }
+    if (!ex.sets || !Array.isArray(ex.sets) || ex.sets.length === 0) {
+      return { ok: false, error: `Exercise ${i + 1} ("${ex.name}"): sets array is required with at least one set.`, hint: 'sets: [{ weight: 80, reps: 10, unit: "kg" }]' };
+    }
+    // T#710: per-exercise notes — optional string
+    if (ex.notes != null && typeof ex.notes !== 'string') {
+      return { ok: false, error: `Exercise ${i + 1} ("${ex.name}"): notes must be a string if provided.`, hint: 'notes: "felt strong, depth good"' };
+    }
+    for (let j = 0; j < ex.sets.length; j++) {
+      const s = ex.sets[j];
+      if (s.weight == null || s.reps == null) {
+        return { ok: false, error: `Exercise ${i + 1} ("${ex.name}"), set ${j + 1}: weight and reps are required.`, hint: '{ weight: 80, reps: 10, unit: "kg" }' };
+      }
+      // T#710: per-set RPE — optional number 1-10
+      if (s.rpe != null) {
+        const rpeNum = Number(s.rpe);
+        if (isNaN(rpeNum) || rpeNum < 1 || rpeNum > 10) {
+          return { ok: false, error: `Exercise ${i + 1} ("${ex.name}"), set ${j + 1}: rpe must be a number between 1 and 10 if provided.`, hint: '{ weight: 80, reps: 10, rpe: 8 }' };
+        }
+        s.rpe = rpeNum;
+      }
+    }
+  }
+  return { ok: true, data: workoutData };
+}
+
 // POST /api/routine/logs — create log entry
 app.post('/api/routine/logs', async (c) => {
   if (!isForgeAuthorized(c, { mode: 'write' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
@@ -10138,49 +10187,12 @@ app.post('/api/routine/logs', async (c) => {
         return c.json({ error: 'Meal items required. Each meal must include an items array with individual food items and per-item macros (name, calories, protein, carbs, fat).' }, 400);
       }
     }
-    // Workout validation — enforce structured exercise format (T#521, T#522)
+    // Workout validation — enforce structured exercise format (T#521, T#522, T#710)
     if (type === 'workout') {
       const workoutData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
-      if (!workoutData.exercises || !Array.isArray(workoutData.exercises)) {
-        return c.json({
-          error: 'Workout must include an exercises array.',
-          hint: 'Expected format: { exercises: [{ name: "Chest Press", equipment: "Machine", sets: [{ weight: 80, reps: 10, unit: "kg" }] }] }',
-        }, 400);
-      }
-      for (let i = 0; i < workoutData.exercises.length; i++) {
-        const ex = workoutData.exercises[i];
-        if (typeof ex === 'string') {
-          return c.json({
-            error: `Exercise ${i + 1} is a string ("${ex.slice(0, 60)}"). Exercises must be objects with name and sets.`,
-            hint: 'Expected format: { name: "Chest Press", equipment: "Machine", sets: [{ weight: 80, reps: 10, unit: "kg" }] }',
-          }, 400);
-        }
-        if (!ex.name?.trim()) {
-          return c.json({ error: `Exercise ${i + 1}: name is required.`, hint: '{ name: "Bench Press", sets: [{ weight: 80, reps: 10, unit: "kg" }] }' }, 400);
-        }
-        if (!ex.sets || !Array.isArray(ex.sets) || ex.sets.length === 0) {
-          return c.json({ error: `Exercise ${i + 1} ("${ex.name}"): sets array is required with at least one set.`, hint: 'sets: [{ weight: 80, reps: 10, unit: "kg" }]' }, 400);
-        }
-        // T#710: per-exercise notes — optional string
-        if (ex.notes != null && typeof ex.notes !== 'string') {
-          return c.json({ error: `Exercise ${i + 1} ("${ex.name}"): notes must be a string if provided.`, hint: 'notes: "felt strong, depth good"' }, 400);
-        }
-        for (let j = 0; j < ex.sets.length; j++) {
-          const s = ex.sets[j];
-          if (s.weight == null || s.reps == null) {
-            return c.json({ error: `Exercise ${i + 1} ("${ex.name}"), set ${j + 1}: weight and reps are required.`, hint: '{ weight: 80, reps: 10, unit: "kg" }' }, 400);
-          }
-          // T#710: per-set RPE — optional number 1-10
-          if (s.rpe != null) {
-            const rpeNum = Number(s.rpe);
-            if (isNaN(rpeNum) || rpeNum < 1 || rpeNum > 10) {
-              return c.json({ error: `Exercise ${i + 1} ("${ex.name}"), set ${j + 1}: rpe must be a number between 1 and 10 if provided.`, hint: '{ weight: 80, reps: 10, rpe: 8 }' }, 400);
-            }
-            s.rpe = rpeNum;
-          }
-        }
-      }
-      data.data = workoutData;
+      const result = validateWorkoutData(workoutData);
+      if (!result.ok) return c.json({ error: result.error, hint: result.hint }, 400);
+      data.data = result.data;
     }
     const jsonData = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
     const now = new Date().toISOString();
@@ -10248,6 +10260,14 @@ app.patch('/api/routine/logs/:id', async (c) => {
           }
           body.data = mealData;
         }
+      }
+      // T#710 Bertus P1 fold: PATCH must validate workout data the same way
+      // POST does — prevents malformed notes/rpe slipping through edit path.
+      if (existingData === 'workout') {
+        const workoutData = typeof body.data === 'string' ? JSON.parse(body.data) : body.data;
+        const result = validateWorkoutData(workoutData);
+        if (!result.ok) return c.json({ error: result.error, hint: result.hint }, 400);
+        body.data = result.data;
       }
       updates.push('data = ?'); values.push(typeof body.data === 'string' ? body.data : JSON.stringify(body.data));
     }

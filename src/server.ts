@@ -1545,7 +1545,7 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/routine/exercises', desc: 'List exercises', params: null },
     { method: 'POST', path: '/api/routine/exercises', desc: 'Add exercise', params: 'body: { name, equipment?, muscle_group? }' },
     { method: 'GET', path: '/api/routine/personal-records', desc: 'Personal records', params: null },
-    { method: 'POST', path: '/api/routine/logs', desc: 'Create routine log', params: 'body: { type, date, ... }' },
+    { method: 'POST', path: '/api/routine/logs', desc: 'Create routine log (workout: exercises[].notes optional str, exercises[].sets[].rpe optional 1-10 per T#710)', params: 'body: { type, logged_at, data: { exercises?: [{name, notes?, sets: [{weight, reps, rpe?, unit?}]}], items?: [...meal], ... } }' },
     { method: 'PATCH', path: '/api/routine/logs/:id', desc: 'Update routine log', params: 'body: { ... }' },
     { method: 'DELETE', path: '/api/routine/logs/:id', desc: 'Soft-delete routine log', params: null },
     { method: 'PATCH', path: '/api/routine/logs/:id/restore', desc: 'Restore deleted log', params: null },

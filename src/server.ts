@@ -10696,16 +10696,31 @@ app.post('/api/routine/hevy/sync', async (c) => {
       const m = Math.floor((durSec % 3600) / 60);
       const duration = h > 0 ? `${h}:${String(m).padStart(2, '0')} hr` : `${m} min`;
 
-      const exercises = (w.exercises || []).map((ex: any, idx: number) => ({
-        name: `${idx + 1}. ${ex.title || 'Unknown'}`,
-        sets: (ex.sets || []).map((s: any, sIdx: number) => ({
-          set: sIdx + 1,
-          weight: s.weight_kg ?? null,
-          reps: s.reps ?? null,
+      const exercises = (w.exercises || []).map((ex: any, idx: number) => {
+        const mapped: any = {
+          name: `${idx + 1}. ${ex.title || 'Unknown'}`,
+          sets: (ex.sets || []).map((s: any, sIdx: number) => {
+            const set: any = {
+              set: sIdx + 1,
+              weight: s.weight_kg ?? null,
+              reps: s.reps ?? null,
+              unit: 'KG',
+            };
+            // T#710: pass through Hevy RPE if present (1-10 numeric).
+            if (s.rpe != null) {
+              const rpeNum = Number(s.rpe);
+              if (!isNaN(rpeNum) && rpeNum >= 1 && rpeNum <= 10) set.rpe = rpeNum;
+            }
+            return set;
+          }),
           unit: 'KG',
-        })),
-        unit: 'KG',
-      }));
+        };
+        // T#710: pass through Hevy exercise notes if present.
+        if (typeof ex.notes === 'string' && ex.notes.trim()) {
+          mapped.notes = ex.notes;
+        }
+        return mapped;
+      });
 
       const data = JSON.stringify({
         workout_name: w.title || 'Untitled',

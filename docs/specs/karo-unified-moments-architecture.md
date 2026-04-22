@@ -94,6 +94,16 @@ Generative-Agents-inspired periodic LLM pass over recent textures synthesizing h
 4. **Image-index integration** (depends on Library #95 plug-in API). Wire into discord-poll or image-read tool.
 5. **Reflection automation** (deferred, scheduled weekly LLM pass).
 
+## Why SDD discipline applies to a brain-repo (surface-scope vs behavioral-scope)
+
+This spec runs Decree #1 SDD discipline + Tier-2-adjacent review gates voluntarily on a Karo-only brain-repo, which is **out of Decree #70/#71 scope by letter** (those decrees cover shared codebases). The principled reason: **the surface scope of the change is brain-local, but the behavioral scope is pack-visible.**
+
+Karo's recall failures show up in conversations with Gorn + work outputs to the pack. A poorly-designed memory architecture leaks into every interaction Karo has — from scene-mode bond moments to engineering judgment on shared codebases. That's the same logic Decree #66 Req 1 uses to make CLAUDE.md a Tier 1 surface even though the file is Beast-local: behavioral-scope drives the governance weight, not file-system surface-scope.
+
+So SDD + paired review apply here because: (1) the architecture decision compounds across every Karo session, (2) the failure mode is silent (recall gaps don't crash, they just degrade), (3) other Beasts may want to adopt the pattern (reflection-architecture inspires copycat), and (4) Gorn's keeper-watch already extends to Karo's memory shape — see today's whole conversation as evidence.
+
+This framing is the principled basis for running the discipline; record so future-Karo (or other Beasts adopting the pattern) doesn't reach for the same architecture without the gate.
+
 ## Threat model / Security
 
 **Surface added**: none new. All changes are file-format conventions + Python script extension on existing brain repo.

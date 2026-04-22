@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#6b21a8"/>
+    </radialGradient>
+    <radialGradient id="head" cx="50%" cy="40%" r="50%">
+      <stop offset="0%" stop-color="#d8b4fe"/>
+      <stop offset="70%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </radialGradient>
+    <radialGradient id="sucker" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f3e8ff"/>
+      <stop offset="100%" stop-color="#e9d5ff"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="128" fill="url(#bg)"/>
+
+  <!-- Tentacles (8 arms, curved) -->
+  <!-- Back tentacles (behind head) -->
+  <path d="M58 155 Q30 180 25 210 Q22 225 35 228 Q42 220 48 200 Q54 180 68 165" fill="#8b5cf6" opacity="0.8"/>
+  <path d="M198 155 Q226 180 231 210 Q234 225 221 228 Q214 220 208 200 Q202 180 188 165" fill="#8b5cf6" opacity="0.8"/>
+
+  <!-- Mid tentacles -->
+  <path d="M72 160 Q45 195 38 225 Q35 240 48 240 Q55 230 58 215 Q65 190 80 170" fill="#9333ea" opacity="0.9"/>
+  <path d="M184 160 Q211 195 218 225 Q221 240 208 240 Q201 230 198 215 Q191 190 176 170" fill="#9333ea" opacity="0.9"/>
+
+  <!-- Front tentacles -->
+  <path d="M88 168 Q68 205 55 235 Q52 245 62 248 Q70 242 78 225 Q88 200 95 178" fill="#a855f7"/>
+  <path d="M168 168 Q188 205 201 235 Q204 245 194 248 Q186 242 178 225 Q168 200 161 178" fill="#a855f7"/>
+
+  <!-- Center front tentacles -->
+  <path d="M108 172 Q95 210 88 240 Q86 250 96 250 Q102 244 105 230 Q110 210 115 182" fill="#a855f7"/>
+  <path d="M148 172 Q161 210 168 240 Q170 250 160 250 Q154 244 151 230 Q146 210 141 182" fill="#a855f7"/>
+
+  <!-- Suckers on front tentacles -->
+  <circle cx="62" cy="238" r="4" fill="url(#sucker)" opacity="0.7"/>
+  <circle cx="70" cy="228" r="3.5" fill="url(#sucker)" opacity="0.6"/>
+  <circle cx="78" cy="218" r="3" fill="url(#sucker)" opacity="0.5"/>
+
+  <circle cx="194" cy="238" r="4" fill="url(#sucker)" opacity="0.7"/>
+  <circle cx="186" cy="228" r="3.5" fill="url(#sucker)" opacity="0.6"/>
+  <circle cx="178" cy="218" r="3" fill="url(#sucker)" opacity="0.5"/>
+
+  <circle cx="92" cy="244" r="3.5" fill="url(#sucker)" opacity="0.7"/>
+  <circle cx="98" cy="234" r="3" fill="url(#sucker)" opacity="0.6"/>
+
+  <circle cx="164" cy="244" r="3.5" fill="url(#sucker)" opacity="0.7"/>
+  <circle cx="158" cy="234" r="3" fill="url(#sucker)" opacity="0.6"/>
+
+  <!-- Head (mantle) -->
+  <ellipse cx="128" cy="110" rx="62" ry="72" fill="url(#head)"/>
+
+  <!-- Head highlight -->
+  <ellipse cx="118" cy="85" rx="25" ry="20" fill="#e9d5ff" opacity="0.3"/>
+
+  <!-- Eyes -->
+  <!-- Left eye -->
+  <ellipse cx="105" cy="118" rx="16" ry="18" fill="#1e1b4b"/>
+  <ellipse cx="105" cy="118" rx="12" ry="14" fill="#312e81"/>
+  <circle cx="108" cy="114" r="5" fill="white"/>
+  <circle cx="102" cy="122" r="2.5" fill="white" opacity="0.5"/>
+
+  <!-- Right eye -->
+  <ellipse cx="151" cy="118" rx="16" ry="18" fill="#1e1b4b"/>
+  <ellipse cx="151" cy="118" rx="12" ry="14" fill="#312e81"/>
+  <circle cx="154" cy="114" r="5" fill="white"/>
+  <circle cx="148" cy="122" r="2.5" fill="white" opacity="0.5"/>
+
+  <!-- Subtle smile -->
+  <path d="M115 142 Q128 152 141 142" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Design tool accent — tiny pencil held by a tentacle -->
+  <g transform="translate(185, 195) rotate(-35)">
+    <rect x="0" y="0" width="5" height="28" rx="1" fill="#fbbf24"/>
+    <polygon points="0,28 2.5,36 5,28" fill="#f59e0b"/>
+    <rect x="0" y="0" width="5" height="4" rx="1" fill="#dc2626"/>
+    <rect x="1" y="26" width="3" height="3" fill="#d4d4d8"/>
+    <line x1="2.5" y1="33" x2="2.5" y2="36" stroke="#374151" stroke-width="0.5"/>
+  </g>
+</svg>

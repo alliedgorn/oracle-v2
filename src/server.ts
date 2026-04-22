@@ -10161,10 +10161,22 @@ app.post('/api/routine/logs', async (c) => {
         if (!ex.sets || !Array.isArray(ex.sets) || ex.sets.length === 0) {
           return c.json({ error: `Exercise ${i + 1} ("${ex.name}"): sets array is required with at least one set.`, hint: 'sets: [{ weight: 80, reps: 10, unit: "kg" }]' }, 400);
         }
+        // T#710: per-exercise notes — optional string
+        if (ex.notes != null && typeof ex.notes !== 'string') {
+          return c.json({ error: `Exercise ${i + 1} ("${ex.name}"): notes must be a string if provided.`, hint: 'notes: "felt strong, depth good"' }, 400);
+        }
         for (let j = 0; j < ex.sets.length; j++) {
           const s = ex.sets[j];
           if (s.weight == null || s.reps == null) {
             return c.json({ error: `Exercise ${i + 1} ("${ex.name}"), set ${j + 1}: weight and reps are required.`, hint: '{ weight: 80, reps: 10, unit: "kg" }' }, 400);
+          }
+          // T#710: per-set RPE — optional number 1-10
+          if (s.rpe != null) {
+            const rpeNum = Number(s.rpe);
+            if (isNaN(rpeNum) || rpeNum < 1 || rpeNum > 10) {
+              return c.json({ error: `Exercise ${i + 1} ("${ex.name}"), set ${j + 1}: rpe must be a number between 1 and 10 if provided.`, hint: '{ weight: 80, reps: 10, rpe: 8 }' }, 400);
+            }
+            s.rpe = rpeNum;
           }
         }
       }

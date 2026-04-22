@@ -34,6 +34,17 @@ function parseExerciseName(raw: string): { name: string; equipment: string } {
 function formatSets(sets: any[]): string {
   if (!sets?.length) return '';
   const unit = sets[0]?.unit || 'KG';
+  // T#710: if any set has RPE, render each set individually with RPE suffix.
+  // Otherwise use the compressed count x reps @ weight format.
+  const hasRpe = sets.some((s: any) => s.rpe != null);
+  if (hasRpe) {
+    return sets
+      .map((s: any) => {
+        const base = `${s.reps} @ ${s.weight} ${unit.toLowerCase()}`;
+        return s.rpe != null ? `${base} · RPE ${s.rpe}` : base;
+      })
+      .join(', ');
+  }
   const groups: string[] = [];
   let i = 0;
   while (i < sets.length) {
@@ -73,6 +84,11 @@ function WorkoutCard({ data }: { data: any }) {
                   {equipment && <span className={styles.exerciseEquip}>{equipment}</span>}
                   {setsStr && <span className={styles.exerciseSets}>{setsStr}</span>}
                 </span>
+                {typeof ex.notes === 'string' && ex.notes.trim() && (
+                  <span style={{ fontSize: '0.85em', opacity: 0.75, fontStyle: 'italic', display: 'block', marginTop: '2px' }}>
+                    {ex.notes}
+                  </span>
+                )}
               </div>
             </div>
           );

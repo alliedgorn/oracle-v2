@@ -680,4 +680,176 @@ describe("Scheduler API Integration", () => {
       expect(found.trigger_status).toBe("pending");
     });
   });
+
+  // =====================
+  // T#706: Weekday-anchored recurring (days_of_week)
+  // =====================
+  describe("Weekday-anchored recurring (days_of_week)", () => {
+    test("POST accepts valid days_of_week with interval=7d + schedule_time", async () => {
+      const { res, data } = await createSchedule({
+        interval: "7d",
+        schedule_time: "09:00",
+        days_of_week: [1, 4],
+      });
+      expect(res.ok).toBe(true);
+      expect(data).toBeTruthy();
+      expect(data.days_of_week).toBe("[1,4]");
+      // next_due_at should be a future ISO string falling on Mon or Thu
+      const nextDue = new Date(data.next_due_at);
+      const utc7 = new Date(nextDue.getTime() + 7 * 60 * 60 * 1000);
+      const isoWeekday = utc7.getUTCDay() === 0 ? 7 : utc7.getUTCDay();
+      expect([1, 4]).toContain(isoWeekday);
+      expect(utc7.getUTCHours()).toBe(9);
+      expect(utc7.getUTCMinutes()).toBe(0);
+    });
+
+    test("POST rejects days_of_week without interval=7d", async () => {
+      const { res, data } = await createSchedule({
+        interval: "1d",
+        schedule_time: "09:00",
+        days_of_week: [1, 4],
+      });
+      expect(res.status).toBe(400);
+      expect(data).toBeNull();
+    });
+
+    test("POST rejects days_of_week without schedule_time", async () => {
+      const { res, data } = await createSchedule({
+        interval: "7d",
+        days_of_week: [1, 4],
+      });
+      expect(res.status).toBe(400);
+      expect(data).toBeNull();
+    });
+
+    test("POST rejects days_of_week with one-off (once=true)", async () => {
+      const future = new Date(Date.now() + 86400000).toISOString();
+      const { res, data } = await createSchedule({
+        interval: "7d",
+        schedule_time: "09:00",
+        once: true,
+        run_at: future,
+        days_of_week: [1, 4],
+      });
+      expect(res.status).toBe(400);
+      expect(data).toBeNull();
+    });
+
+    test("POST rejects empty days_of_week", async () => {
+      const { res, data } = await createSchedule({
+        interval: "7d",
+        schedule_time: "09:00",
+        days_of_week: [],
+      });
+      expect(res.status).toBe(400);
+      expect(data).toBeNull();
+    });
+
+    test("POST rejects days_of_week with invalid weekday ints", async () => {
+      const cases: unknown[][] = [[0, 1], [1, 8], [1.5], ["mon"], [1, 1, 1, 1, 1, 1, 1, 1]];
+      for (const dow of cases) {
+        const { res, data } = await createSchedule({
+          interval: "7d",
+          schedule_time: "09:00",
+          days_of_week: dow,
+          task: `${TEST_PREFIX}invalid_${Math.random()}`,
+        });
+        expect(res.status).toBe(400);
+        expect(data).toBeNull();
+      }
+    });
+
+    test("POST accepts all-seven days_of_week (degenerate weekly)", async () => {
+      const { res, data } = await createSchedule({
+        interval: "7d",
+        schedule_time: "09:00",
+        days_of_week: [1, 2, 3, 4, 5, 6, 7],
+      });
+      expect(res.ok).toBe(true);
+      expect(data.days_of_week).toBe("[1,2,3,4,5,6,7]");
+    });
+
+    test("POST deduplicates and sorts days_of_week", async () => {
+      const { res, data } = await createSchedule({
+        interval: "7d",
+        schedule_time: "09:00",
+        days_of_week: [4, 1, 4],
+      });
+      expect(res.ok).toBe(true);
+      expect(data.days_of_week).toBe("[1,4]");
+    });
+
+    test("PATCH /run advances to next qualifying weekday strictly future", async () => {
+      const { res, data: created } = await createSchedule({
+        interval: "7d",
+        schedule_time: "09:00",
+        days_of_week: [1, 4],
+      });
+      expect(res.ok).toBe(true);
+      const runRes = await fetch(`${BASE_URL}/api/schedules/${created.id}/run?as=${TEST_BEAST}`, {
+        method: "PATCH",
+      });
+      expect(runRes.ok).toBe(true);
+      const updated = await runRes.json();
+      const nextDue = new Date(updated.next_due_at);
+      const utc7 = new Date(nextDue.getTime() + 7 * 60 * 60 * 1000);
+      const isoWeekday = utc7.getUTCDay() === 0 ? 7 : utc7.getUTCDay();
+      expect([1, 4]).toContain(isoWeekday);
+      expect(nextDue.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    test("PATCH days_of_week recomputes next_due_at and rejects invalid", async () => {
+      const { res, data: created } = await createSchedule({
+        interval: "7d",
+        schedule_time: "09:00",
+        days_of_week: [1, 4],
+      });
+      expect(res.ok).toBe(true);
+      // Update to Tue+Fri
+      const upd = await fetch(`${BASE_URL}/api/schedules/${created.id}?as=${TEST_BEAST}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ as: TEST_BEAST, days_of_week: [2, 5] }),
+      });
+      expect(upd.ok).toBe(true);
+      const updated = await upd.json();
+      expect(updated.days_of_week).toBe("[2,5]");
+      const nextDue = new Date(updated.next_due_at);
+      const utc7 = new Date(nextDue.getTime() + 7 * 60 * 60 * 1000);
+      const isoWeekday = utc7.getUTCDay() === 0 ? 7 : utc7.getUTCDay();
+      expect([2, 5]).toContain(isoWeekday);
+      // Invalid update rejected
+      const bad = await fetch(`${BASE_URL}/api/schedules/${created.id}?as=${TEST_BEAST}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ as: TEST_BEAST, days_of_week: [0] }),
+      });
+      expect(bad.status).toBe(400);
+    });
+
+    test("PATCH days_of_week=null clears the field", async () => {
+      const { res, data: created } = await createSchedule({
+        interval: "7d",
+        schedule_time: "09:00",
+        days_of_week: [1, 4],
+      });
+      expect(res.ok).toBe(true);
+      const upd = await fetch(`${BASE_URL}/api/schedules/${created.id}?as=${TEST_BEAST}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ as: TEST_BEAST, days_of_week: null }),
+      });
+      expect(upd.ok).toBe(true);
+      const updated = await upd.json();
+      expect(updated.days_of_week).toBeNull();
+    });
+
+    test("Backwards-compat: existing schedules without days_of_week unaffected", async () => {
+      const { res, data } = await createSchedule({
+        interval: "1d",
+      });
+      expect(res.ok).toBe(true);
+      expect(data.days_of_week).toBeNull();
+    });
+  });
 });

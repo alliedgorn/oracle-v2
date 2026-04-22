@@ -5980,6 +5980,8 @@ try {
   // v4: one-off schedules
   try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN once INTEGER DEFAULT 0`).run(); } catch { /* exists */ }
   try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN run_at TEXT`).run(); } catch { /* exists */ }
+  // v5: weekday-anchored recurring (T#706 — Boro coach lane)
+  try { sqlite.prepare(`ALTER TABLE beast_schedules ADD COLUMN days_of_week TEXT`).run(); } catch { /* exists */ }
 } catch { /* already exists */ }
 
 // ============================================================================
@@ -6387,6 +6389,60 @@ function computeNextFixedTimeAfterRun(scheduleTime: string, intervalDays: number
   return new Date(target.getTime() - 7 * 60 * 60 * 1000).toISOString();
 }
 
+// T#706: validate days_of_week (ISO weekday array, 1=Mon..7=Sun)
+// Returns parsed sorted unique array, or null if invalid
+function parseDaysOfWeek(input: unknown): number[] | null {
+  if (!Array.isArray(input)) return null;
+  if (input.length === 0 || input.length > 7) return null;
+  const set = new Set<number>();
+  for (const d of input) {
+    if (!Number.isInteger(d)) return null;
+    if (d < 1 || d > 7) return null;
+    set.add(d);
+  }
+  return Array.from(set).sort((a, b) => a - b);
+}
+
+// T#706: weekday-anchored next-due computation (UTC+7 / Asia/Bangkok)
+// Finds the next occurrence of any weekday in `daysOfWeek` at `scheduleTime`,
+// strictly AFTER `nowUtc` (use for /run advance). Set `inclusiveToday=true` for
+// create-time anchoring (allows today if the time is still future).
+function computeNextWeekdayFixedTime(
+  scheduleTime: string,
+  daysOfWeek: number[],
+  inclusiveToday: boolean,
+): string {
+  const [hours, minutes] = scheduleTime.split(':').map(Number);
+  if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    throw new Error('Invalid schedule_time format (HH:MM)');
+  }
+  if (!daysOfWeek.length) {
+    throw new Error('days_of_week must be non-empty');
+  }
+  // Work in UTC+7 (Asia/Bangkok, no DST).
+  const now = new Date();
+  const utc7Now = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  // Walk forward day by day. Bangkok-day weekday: Sun=0..Sat=6 from getUTCDay() of utc7-shifted Date.
+  // Convert to ISO 1=Mon..7=Sun.
+  const toIso = (jsDay: number) => (jsDay === 0 ? 7 : jsDay);
+  // Search up to 8 days forward (covers any 7-day cycle starting today)
+  for (let offset = 0; offset < 8; offset++) {
+    const candidate = new Date(utc7Now);
+    candidate.setUTCDate(candidate.getUTCDate() + offset);
+    candidate.setUTCHours(hours, minutes, 0, 0);
+    const isoWeekday = toIso(candidate.getUTCDay());
+    if (!daysOfWeek.includes(isoWeekday)) continue;
+    if (offset === 0) {
+      // Today candidate — inclusive only on create-time, and only if still future
+      if (!inclusiveToday) continue;
+      if (candidate <= utc7Now) continue;
+    }
+    return new Date(candidate.getTime() - 7 * 60 * 60 * 1000).toISOString();
+  }
+  // Defensive: should never reach (any non-empty subset of 7 weekdays fires within 7d).
+  throw new Error('Failed to compute next weekday-anchored due time');
+}
+
 // GET /api/schedules — all schedules (optional ?beast=, ?type=once|recurring filters)
 app.get('/api/schedules', (c) => {
   const beast = c.req.query('beast');
@@ -6496,10 +6552,31 @@ app.post('/api/schedules', async (c) => {
     return c.json({ error: `Invalid timezone. Valid: ${VALID_TIMEZONES.join(', ')}` }, 400);
   }
 
+  // T#706: weekday-anchored recurring (days_of_week). ISO 1=Mon..7=Sun.
+  let daysOfWeek: number[] | null = null;
+  if (data.days_of_week !== undefined && data.days_of_week !== null) {
+    if (isOnce) {
+      return c.json({ error: 'days_of_week cannot be used with one-off schedules' }, 400);
+    }
+    if (data.interval !== '7d') {
+      return c.json({ error: "days_of_week requires interval='7d' (weekly cadence with explicit days)" }, 400);
+    }
+    if (!scheduleTime) {
+      return c.json({ error: 'days_of_week requires schedule_time (HH:MM)' }, 400);
+    }
+    const parsed = parseDaysOfWeek(data.days_of_week);
+    if (!parsed) {
+      return c.json({ error: 'days_of_week must be a non-empty array of ISO weekday integers (1=Mon..7=Sun), max length 7' }, 400);
+    }
+    daysOfWeek = parsed;
+  }
+
   let nextDue: string;
   const runAt = data.run_at || null;
   if (isOnce) {
     nextDue = new Date(data.run_at).toISOString();
+  } else if (daysOfWeek) {
+    nextDue = computeNextWeekdayFixedTime(scheduleTime!, daysOfWeek, true);
   } else if (scheduleTime) {
     const intervalDays = interval === '7d' ? 7 : 1;
     nextDue = computeNextFixedTime(scheduleTime, intervalDays);
@@ -6509,9 +6586,9 @@ app.post('/api/schedules', async (c) => {
   }
 
   const result = sqlite.prepare(
-    `INSERT INTO beast_schedules (beast, task, command, interval, interval_seconds, next_due_at, schedule_time, timezone, source, once, run_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(beast, task, command || null, interval, intervalSeconds, nextDue, scheduleTime, tz, source || null, isOnce ? 1 : 0, runAt);
+    `INSERT INTO beast_schedules (beast, task, command, interval, interval_seconds, next_due_at, schedule_time, timezone, source, once, run_at, days_of_week)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(beast, task, command || null, interval, intervalSeconds, nextDue, scheduleTime, tz, source || null, isOnce ? 1 : 0, runAt, daysOfWeek ? JSON.stringify(daysOfWeek) : null);
   const created = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(result.lastInsertRowid) as any;
   wsBroadcast('schedule_update', { action: 'created', id: (created as any).id });
   return c.json(created, 201);
@@ -6569,6 +6646,32 @@ app.patch('/api/schedules/:id', async (c) => {
     }
     updates.push('timezone = ?'); params.push(data.timezone);
   }
+  // T#706: days_of_week update path
+  if (data.days_of_week !== undefined) {
+    if (data.days_of_week === null) {
+      updates.push('days_of_week = ?'); params.push(null);
+    } else {
+      if (existing.once) {
+        return c.json({ error: 'days_of_week cannot be used with one-off schedules' }, 400);
+      }
+      const effectiveInterval = data.interval || existing.interval;
+      const effectiveScheduleTime = data.schedule_time !== undefined ? data.schedule_time : existing.schedule_time;
+      if (effectiveInterval !== '7d') {
+        return c.json({ error: "days_of_week requires interval='7d'" }, 400);
+      }
+      if (!effectiveScheduleTime) {
+        return c.json({ error: 'days_of_week requires schedule_time (HH:MM)' }, 400);
+      }
+      const parsed = parseDaysOfWeek(data.days_of_week);
+      if (!parsed) {
+        return c.json({ error: 'days_of_week must be a non-empty array of ISO weekday integers (1=Mon..7=Sun), max length 7' }, 400);
+      }
+      updates.push('days_of_week = ?'); params.push(JSON.stringify(parsed));
+      // Recompute next_due_at to honor the new weekday set immediately
+      const newNext = computeNextWeekdayFixedTime(effectiveScheduleTime, parsed, true);
+      updates.push('next_due_at = ?'); params.push(newNext);
+    }
+  }
   if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
   updates.push("updated_at = datetime('now')");
   params.push(id);
@@ -6611,7 +6714,21 @@ app.patch('/api/schedules/:id/run', async (c) => {
   }
 
   let nextDue: string;
-  if (existing.schedule_time) {
+  // T#706: weekday-anchored takes precedence over plain weekly fixed-time
+  if (existing.days_of_week && existing.schedule_time) {
+    let parsedDays: number[] | null = null;
+    try {
+      const arr = JSON.parse(existing.days_of_week);
+      parsedDays = parseDaysOfWeek(arr);
+    } catch { /* invalid stored value, fall through */ }
+    if (parsedDays) {
+      // After-run advance: never include "today" — must move to a strictly-future qualifying weekday
+      nextDue = computeNextWeekdayFixedTime(existing.schedule_time, parsedDays, false);
+    } else {
+      // Stored value corrupt; safely fall back to plain weekly cadence
+      nextDue = computeNextFixedTimeAfterRun(existing.schedule_time, 7);
+    }
+  } else if (existing.schedule_time) {
     const intervalDays = existing.interval === '7d' ? 7 : 1;
     nextDue = computeNextFixedTimeAfterRun(existing.schedule_time, intervalDays);
   } else {

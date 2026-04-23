@@ -34,6 +34,11 @@ while true; do
       if [ -n "$MSG" ]; then
         # Send to tmux — use -l flag for literal text
         tmux send-keys -t "$SESSION" -l "$MSG"
+        # T#713: sleep between text-paste and Enter to break the race with
+        # Claude Code's Ink TUI renderer. Without this delay, Enter could land
+        # mid-frame while the input field was still rendering the paste, and
+        # the message would sit stuck in the input instead of submitting.
+        sleep 0.2
         tmux send-keys -t "$SESSION" Enter
         sleep "$SPACING"
       fi

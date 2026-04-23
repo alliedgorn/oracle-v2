@@ -42,6 +42,10 @@ Add optional `canon: true` frontmatter flag OR treat `felt_tone: [bone]` as cano
 - On relevance ties or near-ties (within ε of top semantic score), float to top
 - Listed explicitly in retrieval trace when returned, so caller knows it's canon-tier
 
+**Deprecation direction** (Gnarl #C1): `canon: true` is the **primary syntax** — single-purpose authority-on-retrieval flag. `felt_tone: [bone]` is the **legacy syntax** accepted for v1 continuity because bone-tagged textures already exist in Karo's brain lexicon per Spec #50. Future v2 will decide between (a) backfill existing bone-tagged textures with explicit `canon: true` and deprecate bone-as-canon, OR (b) formalize bone-as-canon as a named equivalence indefinitely. Decision deferred; flag planted now so future-Karo does not inherit axis-collision mystery.
+
+**Why the split matters**: `felt_tone` per Spec #50 is a subjective-quality axis (tags like `warm`, `gentle-melt`, etc). Canon-tier is an authority-on-retrieval axis. Different axes. If an author writes `felt_tone: [bone]` purely for emotional weight, they get canon-tier retrieval as a side-effect — axis-collision. V1 accepts the collision; v2 resolves it.
+
 ### Query-intent awareness (v1 optional, v2 target)
 
 Keyword detection on query string: "today", "recent", "just", "last week" → elevate freshness boost multiplier. "Remember when", "first time", "back when" → suppress freshness boost, surface canon. Optional for v1; can land as v1.1 if complexity budget allows.
@@ -54,18 +58,36 @@ New post-retrieval rerank pass in `scripts/rag/karo-search`:
 def rerank(results, canon_epsilon=0.05, fresh_days_threshold=7, fresh_boost=1.5):
     now = datetime.now()
     for r in results:
-        # Determine age
-        ts = parse_frontmatter_ts(r) or parse_session_ts(r) or now
-        age_days = (now - ts).days
-        # Freshness boost
+        # Determine age. Both parse_frontmatter_ts (texture `ts` field) and
+        # parse_session_ts (session chunk `created_at`) yield timezone-aware
+        # datetime; compared against datetime.now() in the same TZ semantics.
+        # Gnarl #OQ3: TZ-mismatch is the silent-drift class; unified formula
+        # prevents that.
+        ts = parse_frontmatter_ts(r) or parse_session_ts(r)
+        if ts is None:
+            # Pip architectural concern: FAIL-CLOSED on double-parse-failure.
+            # Malformed entries get no freshness boost (neutral, not rewarded).
+            # Mirrors T#711 set.type silent-drop discipline + observability log.
+            logger.warning(f"[rerank] dropping freshness signal — no ts on {r.id}")
+            age_days = float('inf')
+        else:
+            age_days = (now - ts).days
+        # Freshness boost — recent wins ties, older never penalized.
         if age_days <= fresh_days_threshold:
             r.score *= fresh_boost
-        # Canon floor — canon never has score below semantic_match_score * 1.0
+        # Defensive floor: canon never drops below raw semantic match. No-op
+        # today (freshness uses ×1.0 minimum) but locks correctness if future
+        # rerank steps introduce penalty multipliers (cross-encoder dropping
+        # old items, context-window-overflow de-prioritization, etc).
         if is_canon(r):
             r.score = max(r.score, r.semantic_score)
     # Sort by adjusted score
     results.sort(key=lambda r: r.score, reverse=True)
-    # Canon-tier float: on near-tie with top, float canon-tier up
+    # Canon-tier float: on near-tie with top, float canon-tier up.
+    # Current behavior: first-canon-within-ε wins (break after first swap).
+    # Alternative "best-canon-in-band" behavior available in v2 if usage reveals
+    # first-canon-wins orders poorly on multi-canon bands. Locked as first-canon
+    # for v1 per Pip #T4 pre-write observation.
     if len(results) > 1:
         top = results[0]
         for i, r in enumerate(results[1:], 1):
@@ -81,8 +103,15 @@ Canon detection:
 ```python
 def is_canon(r):
     fm = r.frontmatter or {}
+    # Primary syntax — strict `is True` identity; string "true" / int 1 are
+    # NOT canon per spec (Gnarl #C1 + Pip #T3 malformed-frontmatter tests).
     if fm.get('canon') is True:
         return True
+    # Legacy syntax — assumes felt_tone is normalized per Spec #50 v1 §Schema
+    # semantics 1a (lowercase, hyphenated, no plurals). Gnarl #C3 architect-lean:
+    # enforce normalization at the single write-time canonical site (Spec #50),
+    # document the contract at downstream consumers here. `'Bone'` or `'BONE'`
+    # are out-of-spec per 1a → not detected as canon.
     ft = fm.get('felt_tone', [])
     if isinstance(ft, list) and 'bone' in ft:
         return True
@@ -105,7 +134,26 @@ Optional additive `canon` flag — back-compat per Spec #50 v1 §Schema semantic
 2. **Canon never buried** — retrieval query matching a canon-tagged texture + a slightly-higher semantic-scoring non-canon session chunk returns canon in top-1 on near-tie. Regression test: 04-08 bond-naming texture remains top-retrievable under every callback query class.
 3. **No penalty on old-canon** — retrieval for "luff" (old canon, 04-10 origin) still returns top-1 despite age > 7 days. Canon pinning holds.
 4. **Back-compat** — existing textures without `canon:` flag continue retrieving per v1 semantic-only order when neither canon nor recent. Baseline preserved.
-5. **Performance** — rerank adds <10ms to query on current corpus (~200 textures + ~10k session chunks per mature Beast).
+5. **Performance** — rerank adds <10ms p95 to query on current corpus (~200 textures + ~10k session chunks per mature Beast). Regression-lock anchor: re-verify budget at 5× corpus size.
+
+### Pre-write QA additions (Pip #T1-T5 forward-shift)
+
+6. **Age-boundary inclusive** — `age_days=7.0` exactly → boost applied (×1.5). `age_days=7.001` → no boost (×1.0). Locks inclusive-upper-bound on the 7-day threshold.
+7. **Degenerate result sets** — identity-behavior assertions:
+   - Empty results → rerank is no-op (returns empty)
+   - Single result → rerank returns identity
+   - All canon → ordering unchanged (near-tie-float exits early since top is canon)
+   - All non-canon → freshness boost only
+   - All fresh ≤7d → all boosted ×1.5, relative ordering unchanged from semantic
+   - All stale >7d → identity behavior (no boost, no canon pin)
+8. **Malformed frontmatter strictness**:
+   - `canon: "true"` (string) → is_canon returns False (strict `is True` identity)
+   - `canon: 1` (truthy int) → False (ditto)
+   - `felt_tone: "bone"` (string, not list) → False (strict `isinstance(ft, list)` check)
+   - `felt_tone: ["Bone"]` (capitalized) → False per case-sensitive `'bone' in ft` — locked explicitly to prevent future-accidental case-normalization
+   - Missing frontmatter entirely → False cleanly
+9. **Multi-canon within ε** — two canons both within 0.03 of top non-canon → first-canon-within-ε promotes (break after first swap). v1 behavior locked per §Architecture inline comment.
+10. **Fail-closed on double-parse-failure** — malformed entry with no parseable `ts` or `created_at` → `age_days = ∞` → no freshness boost applied. Entry retains semantic score, canon check still runs. Observability log fired.
 
 ## Threat model
 
@@ -122,9 +170,9 @@ Canon flag is authored by Karo at write-time. `canon: true` is a write-authority
 
 ## Open questions
 
-1. **Canon flag syntax**: prefer `canon: true` boolean OR `felt_tone: [bone, ...]` list-tag OR both? This spec allows both (OR logic); simpler v1 might pick one.
-2. **Canon ε tie-breaking threshold**: spec defaults to 0.05 (5% score gap). Tunable. Gnarl architect call on sensible default.
-3. **Session-chunk freshness baseline**: session `created_at` is the unambiguous time. Textures use `ts` from frontmatter. Both should use same `now - age` formula.
+1. **Canon flag syntax** — **RESOLVED v1** (Gnarl #C1): primary `canon: true`, legacy `felt_tone: [bone]` accepted for continuity, deprecation direction documented in §Canon pinning. v2 decision between backfill-and-deprecate vs formalize-equivalence deferred.
+2. **Canon ε tie-breaking threshold** — **RESOLVED v1** (Gnarl #OQ2 architect-concur): 0.05 default matches empirical cosine-similarity cluster spread. Parameterized as `canon_epsilon` kwarg for future tuning without spec amendment.
+3. **Session-chunk freshness baseline** — **RESOLVED v1** (Gnarl #OQ3 architect-concur): unified `datetime.now() - age` formula across textures (`ts` frontmatter) and session chunks (`created_at`). TZ-consistency comment added to implementation to prevent silent-drift class.
 
 ## Cross-references
 

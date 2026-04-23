@@ -10127,6 +10127,16 @@ function validateWorkoutData(workoutData: any): { ok: true; data: any } | { ok: 
     if (ex.notes != null && typeof ex.notes !== 'string') {
       return { ok: false, error: `Exercise ${i + 1} ("${ex.name}"): notes must be a string if provided.`, hint: 'notes: "felt strong, depth good"' };
     }
+    // T#711: hevy_template_id — optional string, cross-link to Hevy exercise library
+    if (ex.hevy_template_id != null && typeof ex.hevy_template_id !== 'string') {
+      return { ok: false, error: `Exercise ${i + 1} ("${ex.name}"): hevy_template_id must be a string if provided.`, hint: 'hevy_template_id: "D04AC939"' };
+    }
+    // T#711: superset_id — optional finite number, preserves Hevy superset grouping
+    if (ex.superset_id != null) {
+      if (typeof ex.superset_id !== 'number' || !Number.isFinite(ex.superset_id)) {
+        return { ok: false, error: `Exercise ${i + 1} ("${ex.name}"): superset_id must be a finite number if provided.`, hint: 'superset_id: 0' };
+      }
+    }
     for (let j = 0; j < ex.sets.length; j++) {
       const s = ex.sets[j];
       if (s.weight == null || s.reps == null) {
@@ -10139,6 +10149,17 @@ function validateWorkoutData(workoutData: any): { ok: true; data: any } | { ok: 
           return { ok: false, error: `Exercise ${i + 1} ("${ex.name}"), set ${j + 1}: rpe must be a number between 1 and 10 if provided.`, hint: '{ weight: 80, reps: 10, rpe: 8 }' };
         }
         s.rpe = rpeNum;
+      }
+      // T#711: per-set type — optional enum (normal|warmup|dropset|failure)
+      if (s.type != null) {
+        if (typeof s.type !== 'string') {
+          return { ok: false, error: `Exercise ${i + 1} ("${ex.name}"), set ${j + 1}: type must be a string if provided.`, hint: 'type: "warmup" | "normal" | "dropset" | "failure"' };
+        }
+        const t = s.type.toLowerCase();
+        if (t !== 'normal' && t !== 'warmup' && t !== 'dropset' && t !== 'failure') {
+          return { ok: false, error: `Exercise ${i + 1} ("${ex.name}"), set ${j + 1}: type must be one of normal, warmup, dropset, failure.`, hint: 'type: "warmup"' };
+        }
+        s.type = t;
       }
     }
   }
@@ -10711,6 +10732,18 @@ app.post('/api/routine/hevy/sync', async (c) => {
               const rpeNum = Number(s.rpe);
               if (!isNaN(rpeNum) && rpeNum >= 1 && rpeNum <= 10) set.rpe = rpeNum;
             }
+            // T#711: pass through Hevy set type (normal/warmup/dropset/failure).
+            // Silent-drop on unknown per Gnarl/Bertus architect CLEAR — honest-untyped beats
+            // inferred-normal for audit fidelity. Noise-log on drop gives observability signal
+            // for Hevy drift or mapper gap without polluting storage.
+            if (typeof s.type === 'string') {
+              const t = s.type.toLowerCase();
+              if (t === 'normal' || t === 'warmup' || t === 'dropset' || t === 'failure') {
+                set.type = t;
+              } else {
+                console.warn(`[hevy-sync T#711] dropping unknown set.type="${s.type}" on workout ${w.id} exercise ${idx + 1} set ${sIdx + 1}`);
+              }
+            }
             return set;
           }),
           unit: 'KG',
@@ -10718,6 +10751,14 @@ app.post('/api/routine/hevy/sync', async (c) => {
         // T#710: pass through Hevy exercise notes if present.
         if (typeof ex.notes === 'string' && ex.notes.trim()) {
           mapped.notes = ex.notes;
+        }
+        // T#711: pass through Hevy exercise_template_id (cross-link to Hevy library).
+        if (typeof ex.exercise_template_id === 'string' && ex.exercise_template_id.trim()) {
+          mapped.hevy_template_id = ex.exercise_template_id;
+        }
+        // T#711: pass through Hevy supersets_id (preserve superset grouping; number or null).
+        if (typeof ex.supersets_id === 'number' && Number.isFinite(ex.supersets_id)) {
+          mapped.superset_id = ex.supersets_id;
         }
         return mapped;
       });

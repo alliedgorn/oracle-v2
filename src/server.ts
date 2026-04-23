@@ -660,6 +660,28 @@ sqlite.exec(`CREATE TABLE IF NOT EXISTS login_rate_limits (
   first_attempt_at INTEGER NOT NULL
 )`);
 
+// T#712: cache of inbound Telegram messages for reply-to context fetch.
+// Gate-coupling: `msg.chat.id === bot.chatId` upstream check (in handleTelegramMessage)
+// is the PII containment boundary. Expanding that gate (group chats, multi-sender, etc)
+// requires threat-model re-review on telegram_messages.raw_json at the same time.
+// Composite PK (chat_id, id) — TG message_id is per-chat-unique per Bot API spec,
+// not globally unique. Composite PK survives gate-expansion (Boro chat, group chats,
+// sub-bot allowlisting) without migration. v2: TTL cleanup cron, task TBD.
+sqlite.exec(`CREATE TABLE IF NOT EXISTS telegram_messages (
+  chat_id TEXT NOT NULL,
+  id INTEGER NOT NULL,
+  from_id TEXT,
+  text TEXT,
+  caption TEXT,
+  photo_file_id TEXT,
+  date_unix INTEGER NOT NULL,
+  received_at INTEGER NOT NULL,
+  raw_json TEXT NOT NULL,
+  PRIMARY KEY (chat_id, id)
+)`);
+// Retention-shape-reserved index for future cleanup cron (Bertus #887 flag 2).
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_telegram_messages_date_unix ON telegram_messages(date_unix)`);
+
 function getRateLimit(ip: string): { count: number; firstAttempt: number } | null {
   const row = sqlite.prepare('SELECT count, first_attempt_at FROM login_rate_limits WHERE ip = ?').get(ip) as any;
   if (!row) return null;
@@ -1535,6 +1557,7 @@ const HELP_ENDPOINTS = [
     { method: 'POST', path: '/api/prowl/notify-test', desc: 'Test Prowl notification pipeline (Gorn-only)', params: null },
     // Telegram
     { method: 'GET', path: '/api/telegram/status', desc: 'Telegram polling status (owner only)', params: null },
+    { method: 'GET', path: '/api/telegram/message/:id', desc: 'T#712 — cached inbound TG message by id (Gorn + Sable only)', params: null },
     // Routine (Forge)
     { method: 'GET', path: '/api/routine/logs', desc: 'List routine logs', params: '?type=&date=&limit=20&offset=0' },
     { method: 'GET', path: '/api/routine/today', desc: 'Today routine summary', params: null },
@@ -1706,6 +1729,7 @@ const HELP_ENDPOINTS = [
     { method: 'POST', path: '/api/webhooks/withings', desc: 'Withings webhook callback', params: null },
     // Telegram
     { method: 'GET', path: '/api/telegram/status', desc: 'Telegram polling status (owner only)', params: null },
+    { method: 'GET', path: '/api/telegram/message/:id', desc: 'T#712 — cached inbound TG message by id (Gorn + Sable only)', params: null },
     // Board / Pack
     { method: 'GET', path: '/api/board', desc: 'Board overview (tasks summary)', params: null },
     { method: 'GET', path: '/api/pack/spinner-verbs', desc: 'Pack spinner verb list', params: null },
@@ -9598,6 +9622,23 @@ function isForgeAuthorized(c: any, options: { mode: 'read' | 'write' } = { mode:
   return false;
 }
 
+// T#712 Telegram-cache read auth — DELIBERATELY SEPARATE from FORGE_BEAST_MODES per
+// Library #96 lever 1 (scope-for-post-compromise-damage). TG chat content has a
+// different sensitivity profile than Forge workout data: private Gorn-bot chats may
+// carry decisions, personal context, unreleased plans. Default narrow-by-default;
+// expansions require Tier-2-pair CLEAR per T#696 precedent (Bertus #887 flag 1).
+const TELEGRAM_READ_MODES: Record<string, 'read'> = {
+  sable: 'read', // routing-lane — DM→Prowl flow references TG context
+};
+function isTelegramAuthorized(c: any): boolean {
+  if (hasSessionAuth(c)) return true; // Gorn browser session — owner
+  if (isTrustedRequest(c)) {
+    const as = (c.req.query('as') || '').toLowerCase();
+    return TELEGRAM_READ_MODES[as] === 'read';
+  }
+  return false;
+}
+
 // GET /api/routine/logs — list logs
 app.get('/api/routine/logs', (c) => {
   if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
@@ -11914,23 +11955,75 @@ async function tgSendReply(token: string, chatId: string, text: string): Promise
 }
 
 async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> {
-  // Only accept messages from Gorn's chat
+  // Only accept messages from Gorn's chat.
+  // T#712 PII-containment gate — this check is the boundary that makes
+  // telegram_messages.raw_json safe to persist. Expanding this gate (group chats,
+  // multi-sender, Boro chat forwarded) requires threat-model re-review on the
+  // cached raw_json surface at the same time. Gate-to-storage coupling lives here.
   if (String(msg.chat.id) !== bot.chatId) {
     console.log(`[Telegram:${bot.beast}] Rejected: chat_id ${msg.chat.id} !== expected ${bot.chatId}`);
     return;
+  }
+
+  // T#712 cache inbound message before notification build.
+  // Dual-shape mapper-lane per Library #98 canon-pending: silent-drop on malformed
+  // payload with console.warn noise-log (Hevy→Forge pattern mirror). Never rejects
+  // the notification path — just skips the cache write if the payload is shape-bad.
+  try {
+    const msgId = msg.message_id;
+    if (typeof msgId === 'number' && Number.isFinite(msgId)) {
+      // Strip known ephemeral TG-signed URL fields from raw_json before persist
+      // (Bertus #887 flag 3). TG file_paths regenerate on bot-token rotation and
+      // carry implicit auth; don't cache those.
+      const sanitized = JSON.parse(JSON.stringify(msg));
+      const stripEphemeral = (obj: any) => {
+        if (!obj || typeof obj !== 'object') return;
+        for (const k of Object.keys(obj)) {
+          if (k === 'file_path') delete obj[k]; // TG file download path (token-bearing)
+          else if (typeof obj[k] === 'object') stripEphemeral(obj[k]);
+        }
+      };
+      stripEphemeral(sanitized);
+      const rawJson = JSON.stringify(sanitized);
+      // INSERT OR IGNORE for TG retry-delivery dupes (Bertus #887 flag 4).
+      sqlite.prepare(
+        'INSERT OR IGNORE INTO telegram_messages (chat_id, id, from_id, text, caption, photo_file_id, date_unix, received_at, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(
+        String(msg.chat.id),
+        msgId,
+        msg.from?.id ? String(msg.from.id) : null,
+        msg.text || null,
+        msg.caption || null,
+        // photo_file_id: TG file_ids regenerate on bot-token rotation; bytes not
+        // stored per v1 scope (photo bytes fetched separately in media branch below).
+        msg.photo && msg.photo.length > 0 ? (msg.photo[msg.photo.length - 1].file_id || null) : null,
+        msg.date || Math.floor(Date.now() / 1000),
+        Date.now(),
+        rawJson
+      );
+    } else {
+      console.warn(`[Telegram:${bot.beast} T#712] dropping cache — malformed message_id: ${JSON.stringify(msgId)}`);
+    }
+  } catch (cacheErr) {
+    console.warn(`[Telegram:${bot.beast} T#712] dropping cache — persist error:`, cacheErr);
   }
 
   try {
     let notifyText: string;
     let confirmText: string;
 
-    // Build reply-to context if this message is a reply
+    // Build reply-to context if this message is a reply.
+    // T#712 format: `(replying to TG#<id>: "<80-char-preview>...")`
+    // Parseable convention — `TG#` prefix, integer id, `:` delimiter, quoted preview.
+    // Caller can fetch full body via GET /api/telegram/message/:id when the 80-char
+    // preview truncates useful context.
     let replyContext = '';
     if (msg.reply_to_message) {
       const replied = msg.reply_to_message;
+      const repliedId = typeof replied.message_id === 'number' ? replied.message_id : '?';
       const repliedText = replied.text || replied.caption || '[media]';
       const repliedPreview = repliedText.length > 80 ? repliedText.slice(0, 80) + '...' : repliedText;
-      replyContext = `(replying to: "${repliedPreview}")\\n`;
+      replyContext = `(replying to TG#${repliedId}: "${repliedPreview}")\\n`;
     }
 
     if (msg.photo && msg.photo.length > 0) {
@@ -11972,13 +12065,16 @@ async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> 
         }
       } catch (e) { console.error(`[Telegram:${bot.beast}] Photo download error:`, e); }
 
+      // T#712: replyContext threaded to photo branch (walk-all-write-paths per @pip discipline)
       const caption = msg.caption || '';
       if (photoUrl) {
         notifyText = caption
-          ? `[Telegram from Gorn] ${caption}\\n\\nPhoto: ${photoUrl}`
-          : `[Telegram from Gorn] Photo: ${photoUrl}`;
+          ? `[Telegram from Gorn] ${replyContext}${caption}\\n\\nPhoto: ${photoUrl}`
+          : `[Telegram from Gorn] ${replyContext}Photo: ${photoUrl}`;
       } else {
-        notifyText = caption ? `[Telegram from Gorn] Photo: ${caption}` : '[Telegram from Gorn] Photo received (download failed)';
+        notifyText = caption
+          ? `[Telegram from Gorn] ${replyContext}Photo: ${caption}`
+          : `[Telegram from Gorn] ${replyContext}Photo received (download failed)`;
       }
       confirmText = `✓ Notified ${bot.beast}`;
 
@@ -11987,21 +12083,24 @@ async function handleTelegramMessage(bot: TelegramBot, msg: any): Promise<void> 
       confirmText = `✓ Notified ${bot.beast}`;
 
     } else if (msg.document) {
+      // T#712: replyContext threaded to document branch
       const docName = msg.document.file_name || 'unknown';
-      notifyText = `[Telegram from Gorn] Document: ${docName}${msg.caption ? ' — ' + msg.caption : ''}`;
+      notifyText = `[Telegram from Gorn] ${replyContext}Document: ${docName}${msg.caption ? ' — ' + msg.caption : ''}`;
       confirmText = `✓ Notified ${bot.beast}`;
 
     } else if (msg.voice) {
-      notifyText = '[Telegram from Gorn] Voice message';
+      // T#712: replyContext threaded to voice branch
+      notifyText = `[Telegram from Gorn] ${replyContext}Voice message`;
       confirmText = `✓ Notified ${bot.beast}`;
 
     } else if (msg.sticker) {
+      // T#712: replyContext threaded to sticker branch
       const emoji = msg.sticker.emoji || '';
-      notifyText = `[Telegram from Gorn] Sticker ${emoji}`;
+      notifyText = `[Telegram from Gorn] ${replyContext}Sticker ${emoji}`;
       confirmText = `✓ Notified ${bot.beast}`;
 
     } else {
-      notifyText = '[Telegram from Gorn] Message received';
+      notifyText = `[Telegram from Gorn] ${replyContext}Message received`;
       confirmText = `✓ Notified ${bot.beast}`;
     }
 
@@ -12090,6 +12189,38 @@ app.get('/api/telegram/status', (c) => {
     })),
     poll_interval_ms: TG_POLL_INTERVAL,
     total_bots: telegramBots.length,
+  });
+});
+
+// T#712: GET /api/telegram/message/:id — fetch cached inbound TG message body.
+// Use when the 80-char replyContext preview in a Beast notification is insufficient.
+// Narrow-by-default auth (TELEGRAM_READ_MODES: Gorn session + Sable only).
+// `:id` is the TG message_id (integer); resolves against single-chat cache since
+// the chat-gate is Gorn-only upstream. Composite PK in the table allows this to
+// expand cleanly if the chat-gate ever opens.
+app.get('/api/telegram/message/:id', (c) => {
+  if (!isTelegramAuthorized(c)) return c.json({ error: 'Telegram cache is private' }, 403);
+  const idParam = c.req.param('id');
+  const msgId = parseInt(idParam, 10);
+  if (!Number.isFinite(msgId) || String(msgId) !== idParam) {
+    return c.json({ error: 'id must be an integer' }, 400);
+  }
+  const row = sqlite.prepare(
+    'SELECT chat_id, id, from_id, text, caption, photo_file_id, date_unix, received_at, raw_json FROM telegram_messages WHERE id = ? LIMIT 1'
+  ).get(msgId) as any;
+  if (!row) return c.json({ error: 'message not found' }, 404);
+  let raw: any = null;
+  try { raw = JSON.parse(row.raw_json); } catch { /* leave null on parse fail */ }
+  return c.json({
+    chat_id: row.chat_id,
+    id: row.id,
+    from_id: row.from_id,
+    text: row.text,
+    caption: row.caption,
+    photo_file_id: row.photo_file_id,
+    date_unix: row.date_unix,
+    received_at: row.received_at,
+    raw: raw,
   });
 });
 

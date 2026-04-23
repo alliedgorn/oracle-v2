@@ -12205,9 +12205,16 @@ app.get('/api/telegram/message/:id', (c) => {
   if (!Number.isFinite(msgId) || String(msgId) !== idParam) {
     return c.json({ error: 'id must be an integer' }, 400);
   }
+  // T#712 Bertus #890 harden: query uses composite PK scoped to configured
+  // bot chat_ids rather than WHERE id=? alone. Future-proof against chat-gate
+  // expansion without relying on upstream-gate assumption. Single-chat universe
+  // today (all bots share Gorn's chatId) so IN clause is 1-wide.
+  const validChatIds = telegramBots.map(b => b.chatId).filter(Boolean);
+  if (validChatIds.length === 0) return c.json({ error: 'no telegram bots configured' }, 503);
+  const placeholders = validChatIds.map(() => '?').join(',');
   const row = sqlite.prepare(
-    'SELECT chat_id, id, from_id, text, caption, photo_file_id, date_unix, received_at, raw_json FROM telegram_messages WHERE id = ? LIMIT 1'
-  ).get(msgId) as any;
+    `SELECT chat_id, id, from_id, text, caption, photo_file_id, date_unix, received_at, raw_json FROM telegram_messages WHERE chat_id IN (${placeholders}) AND id = ? LIMIT 1`
+  ).get(...validChatIds, msgId) as any;
   if (!row) return c.json({ error: 'message not found' }, 404);
   let raw: any = null;
   try { raw = JSON.parse(row.raw_json); } catch { /* leave null on parse fail */ }

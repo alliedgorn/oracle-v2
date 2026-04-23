@@ -54,6 +54,9 @@ export function enqueueNotification(beast: string, message: string, opts?: Enque
   try {
     const sessionName = beastLower.charAt(0).toUpperCase() + beastLower.slice(1);
     Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', stamped]);
+    // T#714 (follow-up to T#713 scope-miss): sleep 200ms between text-paste and
+    // Enter to break the Claude Code Ink-TUI race. Same fix as runDrainCycle.
+    Bun.sleepSync(200);
     Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
     return true;
   } catch {

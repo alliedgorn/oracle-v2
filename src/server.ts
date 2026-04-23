@@ -7040,6 +7040,12 @@ function runDrainCycle() {
 
         // Send to tmux
         Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', message]);
+        // T#714 (follow-up to T#713 scope-miss): sleep 200ms between text-paste
+        // and Enter to break the race with Claude Code's Ink TUI renderer.
+        // Without this delay, Enter could land mid-frame while the input field
+        // was still rendering the paste, and the message would sit stuck in the
+        // input instead of submitting. Same pattern landed in notify-drain.sh:42.
+        Bun.sleepSync(200);
         Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, 'Enter']);
 
         drainLastSent.set(beast, Date.now());

@@ -62,6 +62,13 @@ session_chunk_ref: "732c1a0e:17:18"
 
 Body: rich texture — narrative + felt detail + verbatim quotes. Not summary.
 
+##### Schema semantics (Gnarl Bundle 1)
+
+- **Required**: `ts` (chronological retrieval depends on it), `title` (retrieval-result legibility). **Optional**: all others — missing fields = empty defaults per back-compat line in Test plan.
+- **`felt_tone` normalization**: lowercase, hyphenated, no plurals (e.g. `gentle-melt` not `GentleMelt` or `gentleMelts`). Ensures `--felt-tone` filter reliability at scale.
+- **`related_to` path-fragility (v1 accepts)**: path-based edges orphan when files move or rename. V2 mitigation lane: stale-edge sweep + optional `moved_to:` frontmatter redirect on rename. Flagged for v2, not a v1 blocker.
+- **`session_chunk_ref` format**: `<session-uuid-prefix>:<hour>:<minute>` — e.g. `732c1a0e:17:18` = session UUID prefix `732c1a0e`, hour 17, minute 18 (local TZ per `ts`). Parseable convention, not a single free-form string.
+
 #### Index/spine
 
 - `felt_tone` array — searchable for similar-tone moments
@@ -73,10 +80,17 @@ Manual on write, retrieval automatic.
 #### Retrieval (`karo-search` extension)
 
 - Query returns target moment(s)
-- **Default behavior change**: also load 1-hop `related_to` neighborhood
+- **Default behavior change**: also load 1-hop `related_to` neighborhood (2-hop max with explicit flag; see §Threat model re graph-poisoning cap)
 - New filter: `--felt-tone [warm,melt]` for tone-based recall
 - New filter: `--spark "voglio i numeri"` for inside-joke recall
 - Result = full texture loaded into context, not just snippet
+
+##### Traversal semantics (Gnarl Bundle 2)
+
+- **Cycle dedup**: traversal dedupes by file-path. A → B → A at 2-hop returns `{A, B}` (not `{A, B, A}`). Prevents misleading result-counts and context bloat on dense neighborhoods.
+- **Edge directionality**: `related_to` is **directed**. A listing B surfaces B from A's 1-hop; 1-hop from B does NOT surface A unless B lists A. This reflects author-intent-at-write rather than symmetric co-occurrence. Bidirectional inference via full-corpus scan is out-of-scope per simplicity principle (§Out of scope).
+- **Result ranking**: neighbors ordered by `ts` descending (most recent first), tie-break by file path. Required for deterministic test assertions + query-result stability.
+- **Scale-threshold watch**: in-memory scan is fine through ~2000 textures. Past that an index becomes necessary (future-watch item, not v1 blocker).
 
 #### Image layer (already shipped, integration needed)
 
@@ -116,6 +130,8 @@ This framing is the principled basis for running the discipline; record so futur
 
 **No external surfaces**: design is local-file + local-script only. No new network calls, no new external API integrations.
 
+**Follow-up scope note**: the deferred image-index integration (§Out of scope) will touch external surfaces — discord-poll API + image-file reads on new inbound images. Threat-model expansion lands with that follow-up task, not this spec. Keeps v1 threat-model honest without blocking approval.
+
 ## Test plan
 
 1. **Format validation**: existing 30+ texture files parse cleanly with the new frontmatter spec (back-compat: missing fields = empty defaults, not errors).
@@ -131,7 +147,7 @@ This framing is the principled basis for running the discipline; record so futur
 - Embedding model swap — current sentence-transformers works fine
 - Reflection automation v1 — deferred to later phase
 - Cross-Beast brain integration — Karo-only for v1, other Beasts can adopt the pattern independently
-- Image-index integration plumbing — depends on Library #95 plug-in shape, separate task
+- Image-index integration plumbing — depends on Library #95 plug-in shape, separate task. Pre-req: pin the Library #95 plug-in API contract (query signature — hash / pHash / CLIP-embedding; response shape — match + confidence + session-chunk-ref; integration call-site — discord-poll handler or tool-invocation hook) before the integration follow-up ships.
 
 ## Open questions
 

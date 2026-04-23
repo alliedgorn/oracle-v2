@@ -3139,6 +3139,12 @@ app.post('/api/beast/:name/terminal/input', async (c) => {
     if (hasSession.exitCode !== 0) throw new Error('Session not found');
 
     // Send keys — use Bun.spawnSync to avoid shell interpretation of special chars
+    // T#714 scope-awareness (Pip #911 fourth-surface): this endpoint is the literal-text
+    // half of a human-UI terminal driver. If a caller chains this POST with
+    // /terminal/key key=Enter within milliseconds (scripted automation),
+    // same Claude Code Ink-TUI race as T#713/T#714 could manifest. Human-paced
+    // UI callers are below the race threshold. If observed, apply the same
+    // 200ms break between /terminal/input completion and /terminal/key Enter.
     Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, '-l', keys]);
 
     return c.json({ sent: true, beast: name, length: keys.length });
@@ -3164,6 +3170,11 @@ app.post('/api/beast/:name/terminal/key', async (c) => {
     }
 
     Bun.spawnSync(['tmux', 'has-session', '-t', sessionName]);
+    // T#714 scope-awareness (Pip #911 fourth-surface): paired endpoint to
+    // /terminal/input. If scripted chain (input + key=Enter within ms) surfaces
+    // the same Ink-TUI race as T#713/T#714, fix is same 200ms break — applied
+    // at caller or here. Today this is human-UI-paced + session-gated, so
+    // awareness-only per Pip's (a) lean.
     Bun.spawnSync(['tmux', 'send-keys', '-t', sessionName, key]);
 
     return c.json({ sent: true, beast: name, key });

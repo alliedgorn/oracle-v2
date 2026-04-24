@@ -1588,6 +1588,8 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/routine/today', desc: 'Today routine summary', params: null },
     { method: 'GET', path: '/api/routine/weight', desc: 'Weight history', params: '?limit=30' },
     { method: 'GET', path: '/api/routine/blood-pressure', desc: 'BP history (Prowl #80)', params: '?range=week,month,year,3y,10y,all' },
+    { method: 'GET', path: '/api/routine/exercise-summary', desc: 'Single-exercise 4-dimension read: peak/recent/trend/frequency (Prowl #83)', params: '?exercise=<name>' },
+    { method: 'GET', path: '/api/routine/prs', desc: 'All-exercises peak summary, alias for /personal-records?grouped=true (Prowl #83)', params: '?range=month' },
     { method: 'GET', path: '/api/routine/body-composition', desc: 'Body composition history from Withings', params: '?range=month (1w,1m,3m,1y,3y,all)' },
     { method: 'GET', path: '/api/routine/stats', desc: 'Routine statistics', params: null },
     { method: 'GET', path: '/api/routine/summary', desc: 'Routine summary with trends', params: null },
@@ -9924,6 +9926,172 @@ app.get('/api/routine/blood-pressure', (c) => {
      ORDER BY period ASC`
   ).all();
   return c.json({ readings: rows, grouping });
+});
+
+// GET /api/routine/exercise-summary?exercise=<name>
+// One-call 4-dimension read (peak, recent, trend, frequency) for a single exercise.
+// Prowl #83 — Boro coach-lane infra-harden on third read-failure recurrence
+// (Bar Shrug 04-22 / Shoulder Press 04-23 / Bench Press 04-24). Replaces
+// 20-page pull-and-filter workflow with a single structured summary.
+app.get('/api/routine/exercise-summary', (c) => {
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const exercise = c.req.query('exercise');
+  if (!exercise) return c.json({ error: 'exercise query param required' }, 400);
+
+  const rows = sqlite.prepare(
+    `SELECT id, logged_at, data FROM routine_logs
+     WHERE type = 'workout' AND deleted_at IS NULL
+     ORDER BY logged_at DESC`
+  ).all() as any[];
+
+  const needle = exercise.toLowerCase().trim();
+
+  interface MatchedSession {
+    date: string;
+    session_title: string;
+    sets: Array<{ weight: number; reps: number; unit: string }>;
+  }
+  const matching: MatchedSession[] = [];
+
+  for (const row of rows) {
+    let data: any;
+    try { data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data; } catch { continue; }
+    const exercises: any[] = data.exercises || [];
+    for (const ex of exercises) {
+      const rawName = typeof ex === 'string' ? ex : (ex.name || '');
+      const { name, equipment } = parseExerciseName(rawName);
+      const fullName = (equipment ? `${name} · ${equipment}` : name).trim();
+      if (!fullName) continue;
+      // Fuzzy match: exact, substring on full, substring on name-only
+      const fullLower = fullName.toLowerCase();
+      const nameLower = name.toLowerCase();
+      if (fullLower === needle || fullLower.includes(needle) || nameLower.includes(needle)) {
+        const sets: Array<{ weight: number; reps: number; unit: string }> = [];
+        if (Array.isArray(ex.sets)) {
+          for (const s of ex.sets) {
+            if (typeof s.weight === 'number' && typeof s.reps === 'number') {
+              sets.push({ weight: s.weight, reps: s.reps, unit: s.unit || 'kg' });
+            }
+          }
+        }
+        if (sets.length > 0) {
+          matching.push({
+            date: row.logged_at,
+            session_title: data.workout_name || 'Workout',
+            sets,
+          });
+        }
+      }
+    }
+  }
+
+  // Helper: convert weight to kg regardless of unit
+  const toKg = (weight: number, unit: string): number => {
+    return (unit || 'kg').toLowerCase().startsWith('lb') ? weight * 0.4536 : weight;
+  };
+
+  if (matching.length === 0) {
+    return c.json({
+      exercise,
+      peak: null,
+      recent: [],
+      trend: 'cold',
+      frequency: { total_sessions: 0, last_session_date: null, sessions_last_30d: 0, sessions_last_90d: 0 },
+      note: 'No matching sessions found. Try broader search term or check spelling.',
+    });
+  }
+
+  // Peak: max weight (kg) across all sets, tiebreak by reps at that weight
+  let peak = { weight_kg: 0, reps: 0, date: '', session_title: '' };
+  for (const m of matching) {
+    for (const s of m.sets) {
+      const wKg = Math.round(toKg(s.weight, s.unit) * 10) / 10;
+      if (wKg > peak.weight_kg || (wKg === peak.weight_kg && s.reps > peak.reps)) {
+        peak = {
+          weight_kg: wKg,
+          reps: s.reps,
+          date: m.date.slice(0, 10),
+          session_title: m.session_title,
+        };
+      }
+    }
+  }
+
+  // Recent: last 5 sessions (already sorted DESC)
+  const recent = matching.slice(0, 5).map(m => ({
+    date: m.date.slice(0, 10),
+    session_title: m.session_title,
+    sets: m.sets,
+  }));
+
+  // Frequency
+  const now = Date.now();
+  const d30 = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const d90 = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const sessions_last_30d = matching.filter(m => m.date >= d30).length;
+  const sessions_last_90d = matching.filter(m => m.date >= d90).length;
+
+  // Trend: compare last 3 sessions peak-weight to prior 3-6 sessions peak-weight
+  let trend: string;
+  if (sessions_last_90d === 0) {
+    trend = 'cold';
+  } else {
+    const getPeakWeight = (sessions: MatchedSession[]): number => {
+      let max = 0;
+      for (const s of sessions) {
+        for (const set of s.sets) {
+          const w = toKg(set.weight, set.unit);
+          if (w > max) max = w;
+        }
+      }
+      return max;
+    };
+    const recentPeak = getPeakWeight(matching.slice(0, 3));
+    const priorPeak = getPeakWeight(matching.slice(3, 9));
+    if (priorPeak === 0) {
+      trend = matching.length >= 3 ? 'plateau' : 'rising';
+    } else {
+      const ratio = recentPeak / priorPeak;
+      if (ratio > 1.05) trend = 'rising';
+      else if (ratio < 0.95) trend = 'dropping';
+      else trend = 'plateau';
+    }
+  }
+
+  return c.json({
+    exercise,
+    peak,
+    recent,
+    trend,
+    frequency: {
+      total_sessions: matching.length,
+      last_session_date: matching[0]?.date.slice(0, 10) || null,
+      sessions_last_30d,
+      sessions_last_90d,
+    },
+  });
+});
+
+// GET /api/routine/prs — sibling endpoint per Boro spec (Prowl #83).
+// Alias to /api/routine/personal-records?grouped=true for cleaner call-site naming.
+app.get('/api/routine/prs', (c) => {
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const range = c.req.query('range');
+  let dateFilter = '';
+  if (range === 'month') dateFilter = "AND achieved_at >= datetime('now', '-30 days')";
+  const records = sqlite.prepare(`
+    SELECT pr.* FROM personal_records pr
+    INNER JOIN (
+      SELECT exercise_name, MAX(weight) as max_weight
+      FROM personal_records
+      WHERE 1=1 ${dateFilter}
+      GROUP BY exercise_name
+    ) best ON pr.exercise_name = best.exercise_name AND pr.weight = best.max_weight
+    WHERE 1=1 ${dateFilter}
+    GROUP BY pr.exercise_name
+    ORDER BY pr.weight DESC, pr.reps DESC
+  `).all();
+  return c.json({ records, total_exercises: records.length });
 });
 
 // Helper: parse exercise name from Alpha Progression format

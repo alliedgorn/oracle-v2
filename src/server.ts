@@ -9783,6 +9783,13 @@ const TELEGRAM_READ_MODES: Record<string, 'read'> = {
 };
 function isTelegramAuthorized(c: any): boolean {
   if (hasSessionAuth(c)) return true; // Gorn browser session — owner
+  // Per Gorn call 2026-04-24 23:42 BKK: any Beast with a configured TG bot
+  // can read the cache. Bearer-token (T#718) derives actor cryptographically;
+  // if actor matches a registered bot-beast, authorize.
+  const actor = (c.get as any)('actor') as string | undefined;
+  if (actor && telegramBots.some(b => b.beast === actor)) return true;
+  // Legacy back-compat: ?as= lookup in TELEGRAM_READ_MODES (preserved for
+  // pre-bearer-token callers until full rollout completes).
   if (isTrustedRequest(c)) {
     const as = (c.req.query('as') || '').toLowerCase();
     return TELEGRAM_READ_MODES[as] === 'read';

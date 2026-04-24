@@ -533,54 +533,66 @@ app.use('/api/*', async (c, next) => {
   // Log after handler completes
   try {
     const ip = c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
-    // Actor extraction chain (updated for T#546 Beast tokens):
+    // Actor extraction chain (T#718 — closes Bertus/Flint #10002 audit-attribution spoof gap):
     // 1. Bearer token identity (set by auth middleware — trusted)
     // 2. Session cookie → "gorn" (browser requests — trusted)
-    // 3. ?as= query param (legacy, logged for migration tracking)
-    // 4. Request body .author or .beast field (legacy)
-    // 5. Path patterns (e.g. /api/dm/karo/...)
-    // 6. X-Beast header (future)
-    // 7. Fallback: "unknown"
+    // 3. Guest session → "[Guest] <username>" (server-set via session — trusted)
+    // 4. ?as= query param — logged as legacy signal but NOT used as actor (spoofable)
+    // 5. Path patterns for path-identity routes (e.g. /api/dm/<beast>/...)
+    // 6. Fallback: "unknown"
+    // REMOVED (T#718): body.author / body.beast / body.from as actor fallback — client-asserted,
+    // spoofable, no cryptographic binding to the calling process. Audit trail now records
+    // true-caller only; forensic integrity preserved per Bertus #10002 + Principle 1.
     const tokenActor = (c.get as any)('actor') as string | undefined;
     const tokenActorType = (c.get as any)('actorType') as string | undefined;
     let actor = tokenActor || '';
     let actorType = tokenActorType || '';
 
     if (!actor) {
-      // Legacy: ?as= parameter (log for migration tracking)
-      const asParam = c.req.query('as') || '';
-      if (asParam) {
-        actor = asParam;
-        logSecurityEvent({
-          eventType: 'settings_changed', // Reuse existing type for legacy tracking
-          severity: 'info',
-          actor: asParam,
-          actorType: 'beast',
-          target: path,
-          details: { auth_method: 'legacy_as_param', deprecation: 'Use Bearer token auth' },
-          ipSource: ip,
-          requestId,
-        });
+      if (hasSessionAuth(c)) {
+        actor = 'gorn';
+        actorType = 'human';
       }
     }
-    if (!actor && bodyData) {
-      if (bodyData.author && typeof bodyData.author === 'string') actor = bodyData.author;
-      else if (bodyData.beast && typeof bodyData.beast === 'string') actor = bodyData.beast;
-      else if (bodyData.from && typeof bodyData.from === 'string') actor = bodyData.from;
+    if (!actor) {
+      const role = (c.get as any)('role');
+      const guestUsername = (c.get as any)('guestUsername');
+      if (role === 'guest' && guestUsername) {
+        actor = `[Guest] ${guestUsername}`;
+        actorType = 'guest';
+      }
     }
     if (!actor) {
+      // Path-identity routes — /api/dm/<beast>/... has the beast in the path itself
       const pathMatch = path.match(/\/api\/(?:dm|schedules)\/(?!messages|dashboard|due|pending)([a-z][\w-]*)/i);
       if (pathMatch) actor = pathMatch[1];
     }
-    if (!actor) {
-      if (hasSessionAuth(c)) actor = 'gorn';
+
+    // ?as= logged as legacy-usage tracking (not used as actor — spoofable)
+    const asParam = c.req.query('as') || '';
+    if (asParam) {
+      logSecurityEvent({
+        eventType: 'settings_changed', // Reuse existing type for legacy tracking
+        severity: 'info',
+        actor: actor || 'unknown',
+        actorType: (actorType as any) || 'unknown',
+        target: path,
+        details: { auth_method: 'legacy_as_param', as_param_value: asParam, deprecation: 'Use Bearer token auth' },
+        ipSource: ip,
+        requestId,
+      });
     }
+
     if (!actor) {
       actor = c.req.header('x-beast') || 'unknown';
     }
     if (!actorType) {
-      actorType = hasSessionAuth(c) ? 'human' : 'beast';
+      actorType = 'unknown';
     }
+
+    // bodyData kept in scope (null-tolerated) for potential future per-route use;
+    // deliberately not consulted here — see REMOVED note above.
+    void bodyData;
     const statusCode = c.res.status;
 
     // Extract resource info from path

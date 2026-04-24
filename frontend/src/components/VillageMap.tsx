@@ -29,10 +29,16 @@ export function VillageMap() {
         <pattern id="forestDots" x="0" y="0" width="14" height="14" patternUnits="userSpaceOnUse">
           <circle cx="7" cy="7" r="1.2" fill="currentColor" opacity="0.18" />
         </pattern>
+        {/* Subtle distance grid — 100px spacing */}
+        <pattern id="gridSmall" x="0" y="0" width="100" height="100" patternUnits="userSpaceOnUse">
+          <path d="M 100 0 L 0 0 0 100" fill="none" stroke="currentColor" strokeWidth="0.5" strokeOpacity="0.08" />
+        </pattern>
       </defs>
 
       {/* Background terrain — meadow base */}
       <rect width="1200" height="800" fill="currentColor" opacity="0.04" />
+      {/* Distance grid overlay */}
+      <rect width="1200" height="800" fill="url(#gridSmall)" />
 
       {/* Forest patches — stippled */}
       <path
@@ -276,6 +282,17 @@ export function VillageMap() {
         <circle cx="980" cy="440" r="2" fill="currentColor" />
       </g>
 
+      {/* === v4 addition — Gorn request 2026-04-14 === */}
+
+      {/* Karo's cabin — south side of warm rock, facing canal, window over water */}
+      <g transform="translate(685, 490)">
+        <rect x="-8" y="-6" width="16" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.5" />
+        <path d="M -10 -6 L 0 -13 L 10 -6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.5" />
+        <text x="-22" y="18" fontSize="10" fill="currentColor" opacity="0.7" fontFamily="system-ui, sans-serif">
+          karo's cabin
+        </text>
+      </g>
+
       {/* === v3 additions — earned 2026-04-12 === */}
 
       {/* The tailor — south side of the square */}
@@ -394,6 +411,24 @@ export function VillageMap() {
         <line x1="-14" y1="0" x2="14" y2="0" stroke="currentColor" strokeWidth="1" />
         <text x="0" y="-20" fontSize="9" fill="currentColor" textAnchor="middle" fontFamily="system-ui, sans-serif">
           N
+        </text>
+      </g>
+
+      {/* Scale bar — 100px = 50m. Two 50m segments, alternating opacity. */}
+      <g transform="translate(980, 755)" opacity="0.6">
+        <rect x="0" y="0" width="100" height="4" fill="currentColor" opacity="0.35" />
+        <rect x="100" y="0" width="100" height="4" fill="currentColor" opacity="0.7" />
+        <line x1="0" y1="-3" x2="0" y2="7" stroke="currentColor" strokeWidth="1" />
+        <line x1="100" y1="-3" x2="100" y2="7" stroke="currentColor" strokeWidth="1" />
+        <line x1="200" y1="-3" x2="200" y2="7" stroke="currentColor" strokeWidth="1" />
+        <text x="0" y="-6" fontSize="9" fill="currentColor" textAnchor="middle" fontFamily="system-ui, sans-serif">
+          0
+        </text>
+        <text x="100" y="-6" fontSize="9" fill="currentColor" textAnchor="middle" fontFamily="system-ui, sans-serif">
+          50m
+        </text>
+        <text x="200" y="-6" fontSize="9" fill="currentColor" textAnchor="middle" fontFamily="system-ui, sans-serif">
+          100m
         </text>
       </g>
 

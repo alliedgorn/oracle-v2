@@ -1562,6 +1562,7 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/routine/logs', desc: 'List routine logs', params: '?type=&date=&limit=20&offset=0' },
     { method: 'GET', path: '/api/routine/today', desc: 'Today routine summary', params: null },
     { method: 'GET', path: '/api/routine/weight', desc: 'Weight history', params: '?limit=30' },
+    { method: 'GET', path: '/api/routine/blood-pressure', desc: 'BP history (Prowl #80)', params: '?range=week,month,year,3y,10y,all' },
     { method: 'GET', path: '/api/routine/body-composition', desc: 'Body composition history from Withings', params: '?range=month (1w,1m,3m,1y,3y,all)' },
     { method: 'GET', path: '/api/routine/stats', desc: 'Routine statistics', params: null },
     { method: 'GET', path: '/api/routine/summary', desc: 'Routine summary with trends', params: null },
@@ -8882,6 +8883,7 @@ app.delete('/api/oauth/withings/disconnect', async (c) => {
 // Withings measurement type mapping
 const WITHINGS_MEASTYPES: Record<number, string> = {
   1: 'weight', 5: 'fat_free_mass', 6: 'body_fat_pct', 8: 'fat_mass',
+  9: 'diastolic', 10: 'systolic',
   76: 'muscle_mass', 77: 'hydration', 88: 'bone_mass', 170: 'visceral_fat',
 };
 
@@ -8892,7 +8894,7 @@ async function syncWithingsMeasurements(startdate: number, enddate: number): Pro
 
   const params: Record<string, string> = {
     action: 'getmeas',
-    meastypes: '1,5,6,8,76,77,88,170',
+    meastypes: '1,5,6,8,9,10,76,77,88,170',
     category: '1',
   };
   if (startdate) params.startdate = String(startdate);
@@ -8927,6 +8929,21 @@ async function syncWithingsMeasurements(startdate: number, enddate: number): Pro
     const loggedAt = new Date(grp.date * 1000).toISOString();
     const now = new Date().toISOString();
 
+    // Store BP as 'blood_pressure' type (Prowl #80 — Omron→Apple Health→Withings path)
+    if (measurements.systolic !== undefined || measurements.diastolic !== undefined) {
+      const bpData = JSON.stringify({
+        systolic: measurements.systolic,
+        diastolic: measurements.diastolic,
+        source: 'withings',
+        withings_grpid: grpid,
+      });
+      sqlite.prepare(
+        'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
+      ).run('blood_pressure', loggedAt, bpData, 'withings', now);
+      delete measurements.systolic;
+      delete measurements.diastolic;
+    }
+
     // Store weight as 'weight' type so Forge chart picks it up
     if (measurements.weight) {
       const weightData = JSON.stringify({ value: measurements.weight, unit: 'kg', source: 'withings', withings_grpid: grpid });
@@ -8935,8 +8952,9 @@ async function syncWithingsMeasurements(startdate: number, enddate: number): Pro
       ).run('weight', loggedAt, weightData, 'withings', now);
     }
 
-    // Store full body composition as 'measurement' type
-    if (Object.keys(measurements).length > 1 || !measurements.weight) {
+    // Store full body composition as 'measurement' type (only if body-comp fields remain)
+    const bodyCompKeys = Object.keys(measurements);
+    if (bodyCompKeys.length > 0 && (bodyCompKeys.length > 1 || !measurements.weight)) {
       const logData = JSON.stringify({ ...measurements, withings_grpid: grpid });
       sqlite.prepare(
         'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
@@ -8968,8 +8986,8 @@ app.post('/api/webhooks/withings', async (c) => {
     return c.text('OK', 200); // Still return 200 to avoid Withings retries
   }
 
-  // Only handle weight/body comp (appli=1)
-  if (appli !== '1') {
+  // Handle body comp (appli=1) + blood pressure (appli=4, Prowl #80)
+  if (appli !== '1' && appli !== '4') {
     return c.text('OK', 200);
   }
 
@@ -9738,6 +9756,60 @@ app.get('/api/routine/weight', (c) => {
      ORDER BY period ASC`
   ).all();
   return c.json({ weights: rows, grouping });
+});
+
+// GET /api/routine/blood-pressure — BP history for chart (Prowl #80)
+// Mirrors /api/routine/weight: range filter + time-based grouping
+app.get('/api/routine/blood-pressure', (c) => {
+  if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
+  const range = c.req.query('range');
+  let dateFilter = '';
+  if (range) {
+    const now = new Date();
+    const rangeMap: Record<string, number> = {
+      week: 7, month: 30, year: 365, '3y': 365 * 3, '10y': 365 * 10,
+    };
+    const days = rangeMap[range];
+    if (days) {
+      const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+      dateFilter = ` AND logged_at >= '${from}'`;
+    }
+  }
+
+  const grouping = (['3y', '10y', 'all'].includes(range || ''))
+    ? 'monthly'
+    : (['year'].includes(range || '') ? 'weekly' : 'daily');
+
+  if (grouping === 'daily') {
+    const rows = sqlite.prepare(
+      `SELECT id, logged_at,
+              json_extract(data, '$.systolic') as systolic,
+              json_extract(data, '$.diastolic') as diastolic
+       FROM routine_logs WHERE type = 'blood_pressure' AND deleted_at IS NULL${dateFilter} ORDER BY logged_at ASC`
+    ).all();
+    return c.json({ readings: rows, grouping: 'daily' });
+  }
+
+  const groupExpr = grouping === 'weekly'
+    ? "strftime('%Y-W%W', logged_at)"
+    : "strftime('%Y-%m', logged_at)";
+
+  const rows = sqlite.prepare(
+    `SELECT ${groupExpr} as period,
+            ROUND(AVG(json_extract(data, '$.systolic')), 0) as systolic,
+            ROUND(AVG(json_extract(data, '$.diastolic')), 0) as diastolic,
+            ROUND(MIN(json_extract(data, '$.systolic')), 0) as systolic_min,
+            ROUND(MAX(json_extract(data, '$.systolic')), 0) as systolic_max,
+            ROUND(MIN(json_extract(data, '$.diastolic')), 0) as diastolic_min,
+            ROUND(MAX(json_extract(data, '$.diastolic')), 0) as diastolic_max,
+            COUNT(*) as count,
+            MIN(logged_at) as logged_at
+     FROM routine_logs
+     WHERE type = 'blood_pressure' AND deleted_at IS NULL${dateFilter}
+     GROUP BY ${groupExpr}
+     ORDER BY period ASC`
+  ).all();
+  return c.json({ readings: rows, grouping });
 });
 
 // Helper: parse exercise name from Alpha Progression format

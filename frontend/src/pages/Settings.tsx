@@ -527,7 +527,7 @@ interface Token {
   active: boolean;
 }
 
-const BEASTS = ['karo', 'gnarl', 'zaghnal', 'bertus', 'leonard', 'mara', 'rax', 'pip', 'nyx', 'dex', 'flint', 'quill', 'snap', 'vigil', 'talon', 'sable'];
+const BEASTS = ['karo', 'gnarl', 'zaghnal', 'bertus', 'leonard', 'mara', 'rax', 'pip', 'nyx', 'dex', 'flint', 'quill', 'snap', 'vigil', 'talon', 'sable', 'boro'];
 
 function TokenManagement() {
   const [tokens, setTokens] = useState<Token[]>([]);

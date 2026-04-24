@@ -379,6 +379,19 @@ function isTrustedRequest(c: Context): boolean {
   return isLocalNetwork(c) || hasSessionAuth(c);
 }
 
+// T#718 — server-derived Beast identity for pack-identity writes.
+// Returns the authenticated caller (lowercase) or null if caller cannot be identified.
+// Priority: bearer-token actor (T#546 per-Beast tokens) > browser session (gorn) > null.
+// Local-bypass alone is NOT sufficient to claim Beast identity — cryptographic auth required.
+// Closes Bertus/Flint DM-spoof finding (thread #20 msg #10002): audit log actor + write-path
+// identity both derive from this helper instead of client-asserted body.from/body.beast/body.author.
+function requireBeastIdentity(c: Context): string | null {
+  const actor = (c.get as any)('actor') as string | undefined;
+  if (actor) return actor.toLowerCase();
+  if (hasSessionAuth(c)) return 'gorn';
+  return null;
+}
+
 // Check if auth is required and user is authenticated
 function isAuthenticated(c: Context): boolean {
   const authEnabled = getSetting('auth_enabled') === 'true';
@@ -3457,10 +3470,19 @@ app.patch('/api/beast/:name/avatar', async (c) => {
 app.post('/api/forum/read', async (c) => {
   try {
     const body = await c.req.json();
-    const { beast, threadId, messageId } = body;
-    if (!beast || !threadId || !messageId) {
-      return c.json({ error: 'beast, threadId, messageId required' }, 400);
+    const { threadId, messageId } = body;
+    if (!threadId || !messageId) {
+      return c.json({ error: 'threadId, messageId required' }, 400);
     }
+    // T#718 — derive beast from auth, reject body.beast mismatch
+    const caller = requireBeastIdentity(c);
+    if (!caller) {
+      return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+    }
+    if (body.beast && body.beast.toLowerCase() !== caller) {
+      return c.json({ error: 'Identity spoof blocked. body.beast must match authenticated caller or be omitted.' }, 403);
+    }
+    const beast = caller;
     const now = Date.now();
     sqlite.prepare(`
       INSERT INTO forum_read_status (beast_name, thread_id, last_read_message_id, updated_at)
@@ -3912,12 +3934,21 @@ try { sqlite.exec("ALTER TABLE forum_messages ADD COLUMN deleted_by TEXT DEFAULT
 app.post('/api/forum/mute', async (c) => {
   try {
     const body = await c.req.json();
-    if (!body.beast || !body.threadId) return c.json({ error: 'beast and threadId required' }, 400);
+    if (!body.threadId) return c.json({ error: 'threadId required' }, 400);
+    // T#718 — derive beast from auth
+    const caller = requireBeastIdentity(c);
+    if (!caller) {
+      return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+    }
+    if (body.beast && body.beast.toLowerCase() !== caller) {
+      return c.json({ error: 'Identity spoof blocked. body.beast must match authenticated caller or be omitted.' }, 403);
+    }
+    const beast = caller;
     const muted = body.muted !== false;
     const level = muted ? 'muted' : 'full';
     const { setSubscription } = await import('./forum/mentions.ts');
-    setSubscription(body.beast, body.threadId, level);
-    return c.json({ success: true, beast: body.beast, thread_id: body.threadId, muted, level });
+    setSubscription(beast, body.threadId, level);
+    return c.json({ success: true, beast, thread_id: body.threadId, muted, level });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : 'Unknown error' }, 500);
   }
@@ -4209,14 +4240,12 @@ app.post('/api/thread', async (c) => {
     if (!data.message) {
       return c.json({ error: 'Missing required field: message' }, 400);
     }
-    if (!data.author) {
-      return c.json({ error: 'Missing required field: author' }, 400);
-    }
 
     // Guest restrictions: can only post in existing public threads, cannot create new threads
     const role = (c.get as any)('role') as Role | undefined;
     if (role === 'guest') {
-      const guestUsername = (c.get as any)('guestUsername') || data.author;
+      const guestUsername = (c.get as any)('guestUsername');
+      if (!guestUsername) return c.json({ error: 'Guest session missing' }, 401);
 
       if (!data.thread_id) {
         return c.json({ error: 'Guests cannot create new threads' }, 403);
@@ -4253,8 +4282,18 @@ app.post('/api/thread', async (c) => {
         });
       }
 
-      // Tag guest author with [Guest] prefix for display
+      // Tag guest author with [Guest] prefix for display (derived from session, not body)
       data.author = `[Guest] ${guestUsername}`;
+    } else {
+      // T#718 — Beast/owner path: derive author from auth, reject client-asserted mismatch
+      const caller = requireBeastIdentity(c);
+      if (!caller) {
+        return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+      }
+      if (data.author && data.author.toLowerCase() !== caller) {
+        return c.json({ error: 'Author impersonation blocked. body.author must match authenticated caller or be omitted.' }, 403);
+      }
+      data.author = caller;
     }
 
     // Block posting to deleted threads
@@ -4386,18 +4425,26 @@ app.patch('/api/message/:id', async (c) => {
   const messageId = parseInt(c.req.param('id'), 10);
   try {
     const body = await c.req.json();
-    if (!body.content?.trim() || !body.beast) {
-      return c.json({ error: 'content (non-empty) and beast are required' }, 400);
+    if (!body.content?.trim()) {
+      return c.json({ error: 'content (non-empty) is required' }, 400);
+    }
+    // T#718 — derive beast from auth, reject client-asserted mismatch
+    const caller = requireBeastIdentity(c);
+    if (!caller) {
+      return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+    }
+    if (body.beast && body.beast.toLowerCase() !== caller) {
+      return c.json({ error: 'Identity spoof blocked. body.beast must match authenticated caller or be omitted.' }, 403);
     }
 
     // Get current content
     const current = sqlite.prepare('SELECT content, author FROM forum_messages WHERE id = ?').get(messageId) as any;
     if (!current) return c.json({ error: 'Message not found' }, 404);
 
-    // Restrict edits to original author only
+    // Restrict edits to original author only (or Gorn)
     const authorLower = (current.author || '').toLowerCase();
-    const beastLower = body.beast.toLowerCase();
-    if (!authorLower.includes(beastLower)) {
+    const beastLower = caller;
+    if (!authorLower.includes(beastLower) && beastLower !== 'gorn') {
       return c.json({ error: 'Only the original author can edit this message' }, 403);
     }
 
@@ -4406,7 +4453,7 @@ app.patch('/api/message/:id', async (c) => {
     sqlite.prepare(`
       INSERT INTO forum_message_edits (message_id, original_content, edited_by, created_at)
       VALUES (?, ?, ?, ?)
-    `).run(messageId, current.content, body.beast, now);
+    `).run(messageId, current.content, caller, now);
 
     // Update message
     sqlite.prepare('UPDATE forum_messages SET content = ?, edited_at = ? WHERE id = ?')
@@ -4546,16 +4593,17 @@ app.post('/api/message/:id/react', async (c) => {
   const messageId = parseInt(c.req.param('id'), 10);
   try {
     const body = await c.req.json();
-    if (!body.beast || !body.emoji) {
-      return c.json({ error: 'beast and emoji are required' }, 400);
+    if (!body.emoji) {
+      return c.json({ error: 'emoji is required' }, 400);
     }
 
     const role = (c.get as any)('role');
 
-    // Guest identity enforcement — override body.beast with session identity
+    // Guest identity enforcement — derive from session, never body
     if (role === 'guest') {
       const guestUsername = (c.get as any)('guestUsername');
-      body.beast = `[Guest] ${guestUsername || 'Guest'}`;
+      if (!guestUsername) return c.json({ error: 'Guest session missing' }, 401);
+      body.beast = `[Guest] ${guestUsername}`;
 
       // Thread visibility check — guests can only react to messages in public threads
       const msg = sqlite.prepare('SELECT thread_id FROM forum_messages WHERE id = ?').get(messageId) as any;
@@ -4565,15 +4613,16 @@ app.post('/api/message/:id/react', async (c) => {
           return c.json({ error: 'Guests cannot react to messages in private threads' }, 403);
         }
       }
-    }
-
-    // Sender validation for non-local requests
-    if (!isTrustedRequest(c)) {
-      const as = body.as?.toLowerCase();
-      if (!as) return c.json({ error: 'as param required for sender validation' }, 400);
-      if (as !== body.beast.toLowerCase() && as !== 'gorn') {
-        return c.json({ error: 'Can only react as yourself' }, 403);
+    } else {
+      // T#718 — Beast/owner path: derive from auth, reject client-asserted mismatch
+      const caller = requireBeastIdentity(c);
+      if (!caller) {
+        return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
       }
+      if (body.beast && body.beast.toLowerCase() !== caller) {
+        return c.json({ error: 'Identity spoof blocked. body.beast must match authenticated caller or be omitted.' }, 403);
+      }
+      body.beast = caller;
     }
     if (!SUPPORTED_EMOJI.has(body.emoji)) {
       return c.json({ error: `Unsupported emoji. Supported: ${[...SUPPORTED_EMOJI].join(' ')}` }, 400);
@@ -4617,23 +4666,26 @@ app.delete('/api/message/:id/react', async (c) => {
   const messageId = parseInt(c.req.param('id'), 10);
   try {
     const body = await c.req.json();
-    if (!body.beast || !body.emoji) {
-      return c.json({ error: 'beast and emoji are required' }, 400);
+    if (!body.emoji) {
+      return c.json({ error: 'emoji is required' }, 400);
     }
 
     const role = (c.get as any)('role');
-    // Guest identity enforcement
+    // Guest identity enforcement — derive from session, never body
     if (role === 'guest') {
       const guestUsername = (c.get as any)('guestUsername');
-      body.beast = `[Guest] ${guestUsername || 'Guest'}`;
-    }
-
-    if (!isTrustedRequest(c)) {
-      const as = body.as?.toLowerCase();
-      if (!as) return c.json({ error: 'as param required' }, 400);
-      if (as !== body.beast.toLowerCase() && as !== 'gorn') {
-        return c.json({ error: 'Can only remove your own reactions' }, 403);
+      if (!guestUsername) return c.json({ error: 'Guest session missing' }, 401);
+      body.beast = `[Guest] ${guestUsername}`;
+    } else {
+      // T#718 — Beast/owner path: derive from auth
+      const caller = requireBeastIdentity(c);
+      if (!caller) {
+        return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
       }
+      if (body.beast && body.beast.toLowerCase() !== caller) {
+        return c.json({ error: 'Identity spoof blocked. body.beast must match authenticated caller or be omitted.' }, 403);
+      }
+      body.beast = caller;
     }
     sqlite.prepare('DELETE FROM forum_reactions WHERE message_id = ? AND beast_name = ? AND emoji = ?')
       .run(messageId, body.beast.toLowerCase(), body.emoji);
@@ -4939,14 +4991,16 @@ app.get('/api/dm/unread-count', (c) => {
 app.post('/api/dm', async (c) => {
   try {
     const data = await c.req.json();
-    if (!data.from || !data.to || !data.message) {
-      return c.json({ error: 'Missing required fields: from, to, message' }, 400);
+    if (!data.to || !data.message) {
+      return c.json({ error: 'Missing required fields: to, message' }, 400);
     }
 
-    // Guest DM restrictions
     const role = (c.get as any)('role') as Role | undefined;
+
     if (role === 'guest') {
-      const guestUsername = (c.get as any)('guestUsername') || data.from;
+      // Guest path — derive sender from guest-session auth (server-set), not body.from
+      const guestUsername = (c.get as any)('guestUsername');
+      if (!guestUsername) return c.json({ error: 'Guest session missing' }, 401);
 
       // Rate limiting
       const rateCheck = checkGuestDmRate(guestUsername);
@@ -4975,17 +5029,20 @@ app.post('/api/dm', async (c) => {
         });
       }
 
-      // Tag guest sender
+      // Tag guest sender — derived from session, not body
       data.from = `[Guest] ${guestUsername}`;
-    }
-
-    // Sender validation: non-local requests must provide 'as' matching 'from'
-    if (!isTrustedRequest(c) && role !== 'guest') {
-      const as = data.as?.toLowerCase();
-      if (!as) return c.json({ error: 'as param required for sender validation' }, 400);
-      if (as !== data.from.toLowerCase() && as !== 'gorn') {
-        return c.json({ error: 'Sender impersonation blocked. as must match from.' }, 403);
+    } else {
+      // T#718 — Beast/owner path: derive from auth-layer, reject client-asserted mismatch.
+      // Closes Bertus/Flint DM-spoof finding (#10002). Any body.from must match the
+      // authenticated caller, or the request is rejected.
+      const caller = requireBeastIdentity(c);
+      if (!caller) {
+        return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
       }
+      if (data.from && data.from.toLowerCase() !== caller) {
+        return c.json({ error: 'Sender impersonation blocked. body.from must match authenticated caller or be omitted.' }, 403);
+      }
+      data.from = caller;
     }
     // Validate recipient exists — must be a beast, guest username/display name, or "gorn"
     const rawTo = data.to.replace(/^\[Guest\]\s*/, ''); // Strip [Guest] prefix if present
@@ -5155,8 +5212,16 @@ app.patch('/api/dm/:name/:other/read-all', (c) => {
 app.delete('/api/dm/messages/:id', (c) => {
   const id = parseInt(c.req.param('id'));
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
-  const as = c.req.query('as')?.toLowerCase() || (hasSessionAuth(c) ? 'gorn' : '');
-  if (!as) return c.json({ error: 'as param required for DELETE' }, 400);
+  // T#718 — derive caller from auth, reject ?as= mismatch
+  const caller = requireBeastIdentity(c);
+  if (!caller) {
+    return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+  }
+  const claimedAs = c.req.query('as')?.toLowerCase();
+  if (claimedAs && claimedAs !== caller) {
+    return c.json({ error: 'Identity spoof blocked. ?as= must match authenticated caller or be omitted.' }, 403);
+  }
+  const as = caller;
   const msg = sqlite.prepare('SELECT m.*, c.participant1, c.participant2 FROM dm_messages m JOIN dm_conversations c ON c.id = m.conversation_id WHERE m.id = ?').get(id) as any;
   if (!msg) return c.json({ error: 'Message not found' }, 404);
   if (as !== 'gorn' && as !== msg.sender && as !== msg.participant1 && as !== msg.participant2) {
@@ -5245,8 +5310,16 @@ app.post('/api/library/shelves', async (c) => {
   try {
     const data = await c.req.json();
     if (!data.name?.trim()) return c.json({ error: 'name required' }, 400);
-    const author = (c.req.query('as') || data.created_by || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
-    if (!author) return c.json({ error: 'Identity required' }, 400);
+    // T#718 — derive author from auth, reject client-asserted mismatch
+    const caller = requireBeastIdentity(c);
+    if (!caller) {
+      return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+    }
+    const claimed = (c.req.query('as') || data.created_by || '').toLowerCase();
+    if (claimed && claimed !== caller) {
+      return c.json({ error: 'Identity spoof blocked. ?as=/body.created_by must match authenticated caller or be omitted.' }, 403);
+    }
+    const author = caller;
 
     // Check duplicate
     const existing = sqlite.prepare('SELECT id FROM library_shelves WHERE name = ?').get(data.name.trim());
@@ -5453,9 +5526,18 @@ app.get('/api/library/:id', (c) => {
 app.post('/api/library', async (c) => {
   try {
     const data = await c.req.json();
-    if (!data.title || !data.content || !data.author) {
-      return c.json({ error: 'title, content, and author required' }, 400);
+    if (!data.title || !data.content) {
+      return c.json({ error: 'title and content required' }, 400);
     }
+    // T#718 — derive author from auth, reject client-asserted mismatch
+    const caller = requireBeastIdentity(c);
+    if (!caller) {
+      return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+    }
+    if (data.author && data.author.toLowerCase() !== caller) {
+      return c.json({ error: 'Author impersonation blocked. body.author must match authenticated caller or be omitted.' }, 403);
+    }
+    const author = caller;
 
     const allowed = ['research', 'architecture', 'learning', 'decision'];
     const type = allowed.includes(data.type) ? data.type : 'learning';
@@ -5466,11 +5548,11 @@ app.post('/api/library', async (c) => {
     if (!shelfId) return c.json({ error: 'shelf_id required — every entry must belong to a shelf' }, 400);
     const result = sqlite.prepare(
       'INSERT INTO library (title, content, type, author, tags, shelf_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(data.title, data.content, type, data.author, tags, shelfId, now, now);
+    ).run(data.title, data.content, type, author, tags, shelfId, now, now);
 
     const newId = (result as any).lastInsertRowid;
-    searchIndexUpsert('library', newId, data.title, data.content, data.author, new Date(now).toISOString());
-    return c.json({ id: newId, title: data.title, type, author: data.author }, 201);
+    searchIndexUpsert('library', newId, data.title, data.content, author, new Date(now).toISOString());
+    return c.json({ id: newId, title: data.title, type, author }, 201);
   } catch (e) {
     return c.json({ error: 'Invalid JSON' }, 400);
   }
@@ -5507,7 +5589,16 @@ app.patch('/api/library/:id', async (c) => {
 
 // DELETE /api/library/:id — delete entry (Gorn or Pip)
 app.delete('/api/library/:id', (c) => {
-  const requester = (c.req.query('as') || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
+  // T#718 — derive requester from auth, reject client-asserted mismatch
+  const caller = requireBeastIdentity(c);
+  if (!caller) {
+    return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+  }
+  const claimedAs = c.req.query('as')?.toLowerCase();
+  if (claimedAs && claimedAs !== caller) {
+    return c.json({ error: 'Identity spoof blocked. ?as= must match authenticated caller or be omitted.' }, 403);
+  }
+  const requester = caller;
   if (requester !== 'gorn' && requester !== 'pip') {
     return c.json({ error: 'Only Gorn or Pip can delete library entries' }, 403);
   }
@@ -6724,10 +6815,16 @@ app.patch('/api/schedules/:id/run', async (c) => {
   const existing = sqlite.prepare('SELECT * FROM beast_schedules WHERE id = ?').get(id) as any;
   if (!existing) return c.json({ error: 'Schedule not found' }, 404);
   const data = await c.req.json().catch(() => ({}));
-  const requester = (c.req.query('as') || data.as || data.beast || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
-  if (!requester) {
-    return c.json({ error: 'Identity required: pass ?as=beast or beast in body' }, 400);
+  // T#718 — derive requester from auth, reject client-asserted mismatch
+  const caller = requireBeastIdentity(c);
+  if (!caller) {
+    return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
   }
+  const claimedAs = (c.req.query('as') || data.as || data.beast || '').toLowerCase();
+  if (claimedAs && claimedAs !== caller) {
+    return c.json({ error: 'Identity spoof blocked. ?as=/body.as/body.beast must match authenticated caller or be omitted.' }, 403);
+  }
+  const requester = caller;
   if (requester !== existing.beast && requester !== 'gorn') {
     return c.json({ error: `Only ${existing.beast} or Gorn can run this schedule` }, 403);
   }
@@ -7924,9 +8021,9 @@ app.get('/api/specs/:id/diff', (c) => {
 app.post('/api/specs', async (c) => {
   try {
     const data = await c.req.json();
-    const { repo, file_path, task_id, thread_id, title, author } = data;
-    if (!repo || !file_path || !title || !author) {
-      return c.json({ error: 'repo, file_path, title, author required' }, 400);
+    const { repo, file_path, task_id, thread_id, title } = data;
+    if (!repo || !file_path || !title) {
+      return c.json({ error: 'repo, file_path, title required' }, 400);
     }
     if (!task_id && !thread_id) {
       return c.json({ error: 'At least one of task_id or thread_id is required. Link your spec to a task or forum thread.' }, 400);
@@ -7934,10 +8031,15 @@ app.post('/api/specs', async (c) => {
     if (!ALLOWED_SPEC_REPOS.includes(repo)) {
       return c.json({ error: `Invalid repo. Allowed: ${ALLOWED_SPEC_REPOS.join(', ')}` }, 400);
     }
-    const requester = (c.req.query('as') || data.as || (hasSessionAuth(c) ? 'gorn' : '')).toLowerCase();
-    if (requester && requester !== 'gorn' && requester !== author.toLowerCase()) {
-      return c.json({ error: 'Author must match requesting identity' }, 403);
+    // T#718 — derive author from auth, reject client-asserted mismatch
+    const caller = requireBeastIdentity(c);
+    if (!caller) {
+      return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
     }
+    if (data.author && data.author.toLowerCase() !== caller) {
+      return c.json({ error: 'Author impersonation blocked. body.author must match authenticated caller or be omitted.' }, 403);
+    }
+    const author = caller;
     const now = new Date().toISOString();
     const result = sqlite.prepare(
       'INSERT INTO spec_reviews (repo, file_path, task_id, thread_id, title, author, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -11102,9 +11204,17 @@ app.post('/api/rules', async (c) => {
   try {
     const data = await c.req.json();
     const { type, title, content, scope, source_thread_id } = data;
-    const author = (data.author || '').toLowerCase();
-    if (!type || !title || !content || !author) return c.json({ error: 'type, title, content, author required' }, 400);
+    if (!type || !title || !content) return c.json({ error: 'type, title, content required' }, 400);
     if (!['decree', 'norm'].includes(type)) return c.json({ error: 'type must be decree or norm' }, 400);
+    // T#718 — derive author from auth, reject client-asserted mismatch
+    const caller = requireBeastIdentity(c);
+    if (!caller) {
+      return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+    }
+    if (data.author && data.author.toLowerCase() !== caller) {
+      return c.json({ error: 'Author impersonation blocked. body.author must match authenticated caller or be omitted.' }, 403);
+    }
+    const author = caller;
     if (type === 'decree' && !['leonard', 'gorn'].includes(author)) {
       return c.json({ error: 'Only Leonard and Gorn can create decrees' }, 403);
     }
@@ -11129,8 +11239,16 @@ app.patch('/api/rules/:id', async (c) => {
   if (!rule) return c.json({ error: 'Rule not found' }, 404);
   try {
     const data = await c.req.json();
-    const requester = (data.author || data.beast || c.req.query('as') || '').toLowerCase();
-    if (!requester) return c.json({ error: 'Identity required' }, 400);
+    // T#718 — derive requester from auth, reject client-asserted mismatch
+    const caller = requireBeastIdentity(c);
+    if (!caller) {
+      return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+    }
+    const claimed = (data.author || data.beast || c.req.query('as') || '').toLowerCase();
+    if (claimed && claimed !== caller) {
+      return c.json({ error: 'Identity spoof blocked. body.author/beast or ?as= must match authenticated caller or be omitted.' }, 403);
+    }
+    const requester = caller;
     if (rule.type === 'decree' && !['leonard', 'gorn'].includes(requester)) {
       return c.json({ error: 'Only Leonard and Gorn can edit decrees' }, 403);
     }
@@ -11158,8 +11276,16 @@ app.patch('/api/rules/:id/archive', async (c) => {
   if (rule.status === 'archived') return c.json({ error: 'Already archived' }, 400);
   try {
     const data = await c.req.json();
-    const requester = (data.author || data.beast || c.req.query('as') || '').toLowerCase();
-    if (!requester) return c.json({ error: 'Identity required' }, 400);
+    // T#718 — derive requester from auth, reject client-asserted mismatch
+    const caller = requireBeastIdentity(c);
+    if (!caller) {
+      return c.json({ error: 'Beast identity required — bearer-token or owner session', requiresAuth: true }, 401);
+    }
+    const claimed = (data.author || data.beast || c.req.query('as') || '').toLowerCase();
+    if (claimed && claimed !== caller) {
+      return c.json({ error: 'Identity spoof blocked. body.author/beast or ?as= must match authenticated caller or be omitted.' }, 403);
+    }
+    const requester = caller;
     if (rule.type === 'decree' && !['leonard', 'gorn'].includes(requester)) {
       return c.json({ error: 'Only Leonard and Gorn can archive decrees' }, 403);
     }

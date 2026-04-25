@@ -9944,14 +9944,14 @@ app.get('/api/routine/exercise-summary', (c) => {
   if (!isForgeAuthorized(c, { mode: 'read' })) return c.json({ error: 'Forge is private to Gorn and Sable' }, 403);
   const exercise = c.req.query('exercise');
   if (!exercise) return c.json({ error: 'exercise query param required' }, 400);
+  const needle = exercise.toLowerCase().trim();
+  if (!needle) return c.json({ error: 'exercise query param must be non-empty after trim' }, 400);
 
   const rows = sqlite.prepare(
     `SELECT id, logged_at, data FROM routine_logs
      WHERE type = 'workout' AND deleted_at IS NULL
      ORDER BY logged_at DESC`
   ).all() as any[];
-
-  const needle = exercise.toLowerCase().trim();
 
   interface MatchedSession {
     date: string;

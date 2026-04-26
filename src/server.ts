@@ -1755,6 +1755,7 @@ const HELP_ENDPOINTS = [
     // Withings (additional)
     { method: 'POST', path: '/api/oauth/withings/sync', desc: 'Sync Withings data', params: null },
     { method: 'POST', path: '/api/webhooks/withings', desc: 'Withings webhook callback', params: null },
+    { method: 'POST', path: '/api/webhooks/hevy', desc: 'Hevy webhook callback (T#724) — workout creation push', params: 'body: { workoutId } | header: Authorization: Bearer <HEVY_WEBHOOK_TOKEN>' },
     // Telegram
     { method: 'GET', path: '/api/telegram/status', desc: 'Telegram polling status (owner only)', params: null },
     { method: 'GET', path: '/api/telegram/message/:id', desc: 'T#712 — cached inbound TG message by id (Gorn + Sable only)', params: null },
@@ -11222,6 +11223,159 @@ app.post('/api/routine/hevy/sync', async (c) => {
     return c.json({ error: error instanceof Error ? error.message : 'Hevy sync failed' }, 500);
   }
 });
+
+// POST /api/webhooks/hevy — receive Hevy push notifications on workout creation (T#724)
+// Hevy spec: POST { workoutId } body, expects 200 OK within 5 seconds.
+// Auth: HEVY_WEBHOOK_TOKEN env var, Hevy puts in Authorization: Bearer header.
+// Pattern parity with /api/webhooks/withings — respond fast + async sync.
+// Bear T3 stamp: Discord 21:28 BKK 2026-04-26 (Sable Prowl #89 audit).
+app.post('/api/webhooks/hevy', async (c) => {
+  // Validate webhook secret (constant-time compare to prevent timing attacks)
+  const webhookToken = process.env.HEVY_WEBHOOK_TOKEN;
+  if (!webhookToken) {
+    console.error('[Hevy webhook] HEVY_WEBHOOK_TOKEN not configured — rejecting');
+    return c.text('OK', 200); // Still 200 to avoid Hevy retries
+  }
+  const authHeader = c.req.header('Authorization') || '';
+  const expectedHeader = `Bearer ${webhookToken}`;
+  // Use crypto.timingSafeEqual for canonical constant-time compare
+  // (per Pip + Bertus PR #24 review — manual loop leaks length info via loop duration)
+  const authBuf = Buffer.from(authHeader);
+  const expectedBuf = Buffer.from(expectedHeader);
+  const valid = authBuf.length === expectedBuf.length && timingSafeEqual(authBuf, expectedBuf);
+  if (!valid) {
+    console.warn('[Hevy webhook] auth failed — bad bearer');
+    return c.json({ error: 'forbidden' }, 401);
+  }
+
+  // Parse body
+  let workoutId: string;
+  try {
+    const body = await c.req.json() as any;
+    workoutId = String(body.workoutId || '');
+    if (!workoutId) {
+      console.warn('[Hevy webhook] missing workoutId in body');
+      return c.text('OK', 200); // Still 200 — bad payload from Hevy is their concern, not ours
+    }
+  } catch {
+    return c.text('OK', 200);
+  }
+
+  // UUID-shape allowlist on workoutId before URL interpolation (per Pip + Bertus
+  // PR #24 review — defense-in-depth against forged-bearer with path-traversal
+  // attempt; Hevy workoutIds are UUIDs per their spec)
+  if (!/^[a-fA-F0-9-]{36}$/.test(workoutId)) {
+    console.warn(`[Hevy webhook] invalid workoutId format: ${workoutId}`);
+    return c.text('OK', 200);
+  }
+
+  console.log(`[Hevy webhook] received workoutId=${workoutId}`);
+
+  // Async sync — respond 200 immediately, fetch + insert in background
+  syncSingleHevyWorkout(workoutId).catch(err => {
+    console.error(`[Hevy webhook] async sync failed for ${workoutId}:`, err);
+  });
+
+  return c.text('OK', 200);
+});
+
+// Helper: fetch a single Hevy workout by ID and insert into Forge.
+// Reuses the same mapping shape as /api/routine/hevy/sync (T#710 RPE, T#711 set.type/template_id/superset_id).
+// Idempotent — dedupe via existing hevy_id check.
+//
+// Async failures are non-fatal: if sync fails (Hevy API down, malformed response,
+// DB error), the workout silently doesn't sync — Hevy gets 200, no retry.
+// Recovery path: reconcile via POST /api/routine/hevy/sync full-pull endpoint,
+// which is dedupe-safe and will catch any webhook-missed workouts on replay.
+async function syncSingleHevyWorkout(workoutId: string): Promise<void> {
+  const apiToken = process.env.HEVY_API_TOKEN;
+  if (!apiToken) {
+    console.error(`[Hevy webhook sync] HEVY_API_TOKEN not configured — cannot fetch ${workoutId}`);
+    return;
+  }
+
+  // Check dedupe first — same workoutId webhook re-fires are no-op
+  const existing = sqlite.prepare(
+    "SELECT id FROM routine_logs WHERE type = 'workout' AND source = 'hevy' AND deleted_at IS NULL AND json_extract(data, '$.hevy_id') = ? LIMIT 1"
+  ).get(workoutId) as any;
+  if (existing) {
+    console.log(`[Hevy webhook sync] workoutId=${workoutId} already exists as routine_log id=${existing.id}, skipping`);
+    return;
+  }
+
+  // Fetch the workout from Hevy
+  const url = `https://api.hevyapp.com/v1/workouts/${workoutId}`;
+  const resp = await fetch(url, { headers: { 'api-key': apiToken, 'accept': 'application/json' } });
+  if (!resp.ok) {
+    console.error(`[Hevy webhook sync] Hevy API ${resp.status} for ${workoutId}: ${await resp.text()}`);
+    return;
+  }
+  const w = await resp.json() as any;
+  // Hevy single-workout endpoint may wrap in { workout: ... } — handle both shapes
+  const workout = w.workout || w;
+  if (!workout || !workout.id) {
+    console.error(`[Hevy webhook sync] malformed Hevy response for ${workoutId}`);
+    return;
+  }
+
+  // Map Hevy → Forge workout shape (mirrors /api/routine/hevy/sync logic).
+  const startMs = new Date(workout.start_time).getTime();
+  const endMs = new Date(workout.end_time).getTime();
+  const durSec = Math.max(0, Math.round((endMs - startMs) / 1000));
+  const h = Math.floor(durSec / 3600);
+  const m = Math.floor((durSec % 3600) / 60);
+  const duration = h > 0 ? `${h}:${String(m).padStart(2, '0')} hr` : `${m} min`;
+
+  const exercises = (workout.exercises || []).map((ex: any, idx: number) => {
+    const mapped: any = {
+      name: `${idx + 1}. ${ex.title || 'Unknown'}`,
+      sets: (ex.sets || []).map((s: any, sIdx: number) => {
+        const set: any = {
+          set: sIdx + 1,
+          weight: s.weight_kg ?? null,
+          reps: s.reps ?? null,
+          unit: 'KG',
+        };
+        if (s.rpe != null) {
+          const rpeNum = Number(s.rpe);
+          if (!isNaN(rpeNum) && rpeNum >= 1 && rpeNum <= 10) set.rpe = rpeNum;
+        }
+        if (typeof s.type === 'string') {
+          const t = s.type.toLowerCase();
+          if (t === 'normal' || t === 'warmup' || t === 'dropset' || t === 'failure') {
+            set.type = t;
+          } else {
+            console.warn(`[hevy-webhook T#711] dropping unknown set.type="${s.type}" on workout ${workout.id} exercise ${idx + 1} set ${sIdx + 1}`);
+          }
+        }
+        return set;
+      }),
+      unit: 'KG',
+    };
+    if (typeof ex.notes === 'string' && ex.notes.trim()) mapped.notes = ex.notes;
+    if (typeof ex.exercise_template_id === 'string' && ex.exercise_template_id.trim()) {
+      mapped.hevy_template_id = ex.exercise_template_id;
+    }
+    if (typeof ex.supersets_id === 'number' && Number.isFinite(ex.supersets_id)) {
+      mapped.superset_id = ex.supersets_id;
+    }
+    return mapped;
+  });
+
+  const data = {
+    title: workout.title || 'Untitled workout',
+    duration,
+    exercises,
+    hevy_id: workout.id,
+    notes: typeof workout.description === 'string' && workout.description.trim() ? workout.description : undefined,
+  };
+
+  sqlite.prepare(
+    'INSERT INTO routine_logs (type, logged_at, data, source, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).run('workout', new Date(workout.start_time).toISOString(), JSON.stringify(data), 'hevy', new Date().toISOString());
+
+  console.log(`[Hevy webhook sync] inserted workoutId=${workoutId} title="${data.title}" exercises=${exercises.length}`);
+}
 
 // ============================================================================
 // Rules — Decree and Norm governance (T#360)

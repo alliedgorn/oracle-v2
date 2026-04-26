@@ -82,7 +82,7 @@ All PRs to `main` clear the review gate. Reviewer set depends on Tier classifica
 | Tier | Trigger | Required reviewers |
 |---|---|---|
 | Tier 1 | Routine code, docs, internal tests | One peer Beast (any lane) |
-| Tier 2 | Beast-facing changes, internal architecture, scheduler behavior | Architect (Gnarl) + Security (Bertus) + QA (Pip) |
+| Tier 2 | High-risk class per Norm #57 | Two reviewers from natural-pair selection (per Decree #71): security → Bertus + Talon or Bertus + Gnarl; auth/scheduler → Bertus + Pip; cross-system → Gnarl + touched-Beast's lane. Pip QA-handoff fires in parallel per Norm #68. |
 | Tier 3 | Forge / Prowl / governance / CLAUDE.md-write / Library-CRUD / new-project / OAuth / MCP / guest-boundary / auth-Gorn-affecting | Tier 2 set + Sable Tier 3 routing → Gorn-stamp |
 
 Set the `in-review` status when ready. Reviewers post CLEAR / ASK / BLOCK on the PR.

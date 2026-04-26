@@ -423,8 +423,12 @@ app.use('/api/*', async (c, next) => {
     '/api/auth/status',
     '/api/auth/login',
     '/api/health',
-    // Webhook endpoints — third-party callers cannot present Beast bearer tokens.
-    // Each handler validates its own provider-shared-secret via constant-time compare.
+    // Webhook endpoints — third-party callers cannot present Beast bearer tokens
+    // (Beast tokens are `den_`-prefixed; provider-issued shared-secrets are not).
+    // Each handler validates its own provider-shared-secret via crypto.timingSafeEqual
+    // constant-time compare against an env-var token. Middleware bypass is correct
+    // shape here — auth still happens, just at the handler layer where the
+    // shared-secret lives. Path-level allowlist (not pattern) keeps the surface narrow.
     '/api/webhooks/hevy',
   ];
   if (publicPaths.some(p => path === p)) {

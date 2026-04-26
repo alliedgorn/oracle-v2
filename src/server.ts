@@ -11244,7 +11244,14 @@ app.post('/api/webhooks/hevy', async (c) => {
   const expectedBuf = Buffer.from(expectedHeader);
   const valid = authBuf.length === expectedBuf.length && timingSafeEqual(authBuf, expectedBuf);
   if (!valid) {
-    console.warn('[Hevy webhook] auth failed — bad bearer');
+    // DEBUG (TEMP — revert post-diagnosis): log received-header shape WITHOUT leaking expected.
+    // Per Bertus #10507 debug-asymmetry — log what you got, not what you expected. Logs length +
+    // first/last 4 chars to triage paste-mismatch vs format-mismatch vs missing-header.
+    const headerPreview = authHeader.length > 8
+      ? `${authHeader.slice(0, 4)}...${authHeader.slice(-4)}`
+      : authHeader || '(empty)';
+    const allHeaderNames = Array.from(c.req.raw.headers.keys()).join(',');
+    console.warn(`[Hevy webhook] auth failed — bad bearer. authHeader length=${authHeader.length} preview=${headerPreview} | expected length=${expectedHeader.length} | all headers=[${allHeaderNames}]`);
     return c.json({ error: 'forbidden' }, 401);
   }
 

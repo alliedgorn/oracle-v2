@@ -11220,11 +11220,11 @@ app.post('/api/webhooks/hevy', async (c) => {
   }
   const authHeader = c.req.header('Authorization') || '';
   const expectedHeader = `Bearer ${webhookToken}`;
-  // Constant-time compare via length-equal then byte-equal walk
-  let valid = authHeader.length === expectedHeader.length;
-  for (let i = 0; i < expectedHeader.length && i < authHeader.length; i++) {
-    if (authHeader.charCodeAt(i) !== expectedHeader.charCodeAt(i)) valid = false;
-  }
+  // Use crypto.timingSafeEqual for canonical constant-time compare
+  // (per Pip + Bertus PR #24 review — manual loop leaks length info via loop duration)
+  const authBuf = Buffer.from(authHeader);
+  const expectedBuf = Buffer.from(expectedHeader);
+  const valid = authBuf.length === expectedBuf.length && timingSafeEqual(authBuf, expectedBuf);
   if (!valid) {
     console.warn('[Hevy webhook] auth failed — bad bearer');
     return c.json({ error: 'forbidden' }, 401);
@@ -11243,6 +11243,14 @@ app.post('/api/webhooks/hevy', async (c) => {
     return c.text('OK', 200);
   }
 
+  // UUID-shape allowlist on workoutId before URL interpolation (per Pip + Bertus
+  // PR #24 review — defense-in-depth against forged-bearer with path-traversal
+  // attempt; Hevy workoutIds are UUIDs per their spec)
+  if (!/^[a-fA-F0-9-]{36}$/.test(workoutId)) {
+    console.warn(`[Hevy webhook] invalid workoutId format: ${workoutId}`);
+    return c.text('OK', 200);
+  }
+
   console.log(`[Hevy webhook] received workoutId=${workoutId}`);
 
   // Async sync — respond 200 immediately, fetch + insert in background
@@ -11256,6 +11264,11 @@ app.post('/api/webhooks/hevy', async (c) => {
 // Helper: fetch a single Hevy workout by ID and insert into Forge.
 // Reuses the same mapping shape as /api/routine/hevy/sync (T#710 RPE, T#711 set.type/template_id/superset_id).
 // Idempotent — dedupe via existing hevy_id check.
+//
+// Async failures are non-fatal: if sync fails (Hevy API down, malformed response,
+// DB error), the workout silently doesn't sync — Hevy gets 200, no retry.
+// Recovery path: reconcile via POST /api/routine/hevy/sync full-pull endpoint,
+// which is dedupe-safe and will catch any webhook-missed workouts on replay.
 async function syncSingleHevyWorkout(workoutId: string): Promise<void> {
   const apiToken = process.env.HEVY_API_TOKEN;
   if (!apiToken) {

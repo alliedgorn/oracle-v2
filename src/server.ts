@@ -423,6 +423,13 @@ app.use('/api/*', async (c, next) => {
     '/api/auth/status',
     '/api/auth/login',
     '/api/health',
+    // Webhook endpoints — third-party callers cannot present Beast bearer tokens
+    // (Beast tokens are `den_`-prefixed; provider-issued shared-secrets are not).
+    // Each handler validates its own provider-shared-secret via crypto.timingSafeEqual
+    // constant-time compare against an env-var token. Middleware bypass is correct
+    // shape here — auth still happens, just at the handler layer where the
+    // shared-secret lives. Path-level allowlist (not pattern) keeps the surface narrow.
+    '/api/webhooks/hevy',
   ];
   if (publicPaths.some(p => path === p)) {
     return next();
@@ -11244,14 +11251,7 @@ app.post('/api/webhooks/hevy', async (c) => {
   const expectedBuf = Buffer.from(expectedHeader);
   const valid = authBuf.length === expectedBuf.length && timingSafeEqual(authBuf, expectedBuf);
   if (!valid) {
-    // DEBUG (TEMP — revert post-diagnosis): log received-header shape WITHOUT leaking expected.
-    // Per Bertus #10507 debug-asymmetry — log what you got, not what you expected. Logs length +
-    // first/last 4 chars to triage paste-mismatch vs format-mismatch vs missing-header.
-    const headerPreview = authHeader.length > 8
-      ? `${authHeader.slice(0, 4)}...${authHeader.slice(-4)}`
-      : authHeader || '(empty)';
-    const allHeaderNames = Array.from(c.req.raw.headers.keys()).join(',');
-    console.warn(`[Hevy webhook] auth failed — bad bearer. authHeader length=${authHeader.length} preview=${headerPreview} | expected length=${expectedHeader.length} | all headers=[${allHeaderNames}]`);
+    console.warn('[Hevy webhook] auth failed — bad bearer');
     return c.json({ error: 'forbidden' }, 401);
   }
 

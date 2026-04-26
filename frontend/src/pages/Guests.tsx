@@ -383,10 +383,13 @@ export function Guests() {
                         title="Save expiry"
                       >Save</button>
                       <button
-                        onClick={() => saveExpiry(selected, null)}
+                        onClick={() => {
+                          if (selected.expires_at && !confirm(`Clear expiry for ${selected.username}? Guest will never expire.`)) return;
+                          saveExpiry(selected, null);
+                        }}
                         disabled={savingExpiry}
-                        style={{ fontSize: 'inherit', padding: '2px 6px', cursor: 'pointer' }}
-                        title="Clear expiry (no expiration)"
+                        style={{ fontSize: 'inherit', padding: '2px 6px', cursor: 'pointer', color: '#ef4444', borderColor: '#ef4444' }}
+                        title="Clear expiry (no expiration — guest stays live indefinitely)"
                       >Clear</button>
                       <button
                         onClick={cancelEditExpiry}

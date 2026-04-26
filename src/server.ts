@@ -9761,14 +9761,32 @@ const FORGE_BEAST_MODES: Record<string, 'read' | 'write'> = {
 
 // Auth helper: Gorn (session) + allowlisted beasts per FORGE_BEAST_MODES.
 // mode='read' permits any allowlisted beast; mode='write' requires write-mode beast.
+//
+// T#718-aligned: prefers bearer-token-derived actor (set by auth middleware) over
+// the legacy ?as= query param shape. Bearer-token-actor path is checked first;
+// ?as= path retained for backwards-compat with existing callers (Sable TG flows,
+// legacy scripts) until follow-up T# removes it post-migration audit.
 function isForgeAuthorized(c: any, options: { mode: 'read' | 'write' } = { mode: 'write' }): boolean {
   if (hasSessionAuth(c)) return true; // Gorn browser session — owner, full write
+
+  // T#718 path: read requester from authenticated bearer-token actor (no ?as= needed)
+  const actor = ((c.get as any)('actor') as string | undefined)?.toLowerCase();
+  if (actor) {
+    const beastMode = FORGE_BEAST_MODES[actor];
+    if (!beastMode) return false;
+    if (options.mode === 'read') return true; // either mode satisfies read
+    return beastMode === 'write';              // write requires write
+  }
+
+  // Backwards-compat: ?as= query param + isTrustedRequest local-network bypass.
+  // Retained so existing callers (Sable scripts, legacy curl flows) don't break
+  // pre-migration. Follow-up T# removes after callers migrate to bearer-only.
   if (isTrustedRequest(c)) {
     const as = (c.req.query('as') || '').toLowerCase();
     const beastMode = FORGE_BEAST_MODES[as];
     if (!beastMode) return false;
-    if (options.mode === 'read') return true; // either mode satisfies read
-    return beastMode === 'write';              // write requires write
+    if (options.mode === 'read') return true;
+    return beastMode === 'write';
   }
   return false;
 }

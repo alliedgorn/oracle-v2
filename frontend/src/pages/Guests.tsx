@@ -35,6 +35,9 @@ export function Guests() {
   const [form, setForm] = useState({ username: '', password: '', display_name: '', expires_at: '' });
   const [formError, setFormError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editingExpiry, setEditingExpiry] = useState(false);
+  const [expiryDraft, setExpiryDraft] = useState('');
+  const [savingExpiry, setSavingExpiry] = useState(false);
 
   const loadGuests = useCallback(async () => {
     try {
@@ -177,6 +180,34 @@ export function Guests() {
       if (selected?.id === guest.id) setSelected(null);
       loadGuests();
     } catch {}
+  }
+
+  function startEditExpiry(guest: Guest) {
+    // YYYY-MM-DD format for <input type="date">
+    setExpiryDraft(guest.expires_at ? guest.expires_at.split('T')[0] : '');
+    setEditingExpiry(true);
+  }
+
+  function cancelEditExpiry() {
+    setEditingExpiry(false);
+    setExpiryDraft('');
+  }
+
+  async function saveExpiry(guest: Guest, value: string | null) {
+    setSavingExpiry(true);
+    try {
+      // Convert YYYY-MM-DD to ISO at end-of-day UTC, or null to clear
+      const expires_at = value ? new Date(`${value}T23:59:59Z`).toISOString() : null;
+      await fetch(`/api/guests/${guest.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expires_at }),
+      });
+      await loadGuests();
+      setEditingExpiry(false);
+      setExpiryDraft('');
+    } catch {}
+    setSavingExpiry(false);
   }
 
   return (
@@ -334,12 +365,50 @@ export function Guests() {
                   <span className={styles.metaLabel}>Created</span>
                   <span className={styles.metaValue}>{formatTime(selected.created_at)}</span>
                 </div>
-                {selected.expires_at && (
-                  <div className={styles.detailMetaItem}>
-                    <span className={styles.metaLabel}>Expires</span>
-                    <span className={styles.metaValue}>{new Date(selected.expires_at).toLocaleDateString()}</span>
-                  </div>
-                )}
+                <div className={styles.detailMetaItem}>
+                  <span className={styles.metaLabel}>Expires</span>
+                  {editingExpiry ? (
+                    <span className={styles.metaValue} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <input
+                        type="date"
+                        value={expiryDraft}
+                        onChange={e => setExpiryDraft(e.target.value)}
+                        disabled={savingExpiry}
+                        style={{ fontSize: 'inherit', padding: '2px 4px' }}
+                      />
+                      <button
+                        onClick={() => saveExpiry(selected, expiryDraft || null)}
+                        disabled={savingExpiry}
+                        style={{ fontSize: 'inherit', padding: '2px 6px', cursor: 'pointer' }}
+                        title="Save expiry"
+                      >Save</button>
+                      <button
+                        onClick={() => {
+                          if (selected.expires_at && !confirm(`Clear expiry for ${selected.username}? Guest will never expire.`)) return;
+                          saveExpiry(selected, null);
+                        }}
+                        disabled={savingExpiry}
+                        style={{ fontSize: 'inherit', padding: '2px 6px', cursor: 'pointer', color: '#ef4444', borderColor: '#ef4444' }}
+                        title="Clear expiry (no expiration — guest stays live indefinitely)"
+                      >Clear</button>
+                      <button
+                        onClick={cancelEditExpiry}
+                        disabled={savingExpiry}
+                        style={{ fontSize: 'inherit', padding: '2px 6px', cursor: 'pointer' }}
+                        title="Cancel"
+                      >×</button>
+                    </span>
+                  ) : (
+                    <span className={styles.metaValue} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {selected.expires_at ? new Date(selected.expires_at).toLocaleDateString() : <em style={{ opacity: 0.6 }}>none</em>}
+                      <button
+                        onClick={() => startEditExpiry(selected)}
+                        style={{ fontSize: 'inherit', padding: '2px 6px', cursor: 'pointer', opacity: 0.7 }}
+                        title="Edit expiry"
+                      >Edit</button>
+                    </span>
+                  )}
+                </div>
                 {selected.disabled_at && (
                   <div className={styles.detailMetaItem}>
                     <span className={styles.metaLabel}>Disabled</span>

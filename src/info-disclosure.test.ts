@@ -95,6 +95,18 @@ const TOKEN_TERM_EXEMPT_PATHS = [
   '/api/auth/tokens',
 ];
 
+/**
+ * Spoof-detection 403 responses ("Identity spoof blocked. ?as=/body.beast must
+ * match authenticated caller...") legitimately mention "as=" because the
+ * attempted spoof IS the diagnostic — owner-debug-affordance preserves the
+ * specific message so legit code with auth-shape mismatch can be debugged.
+ *
+ * These are in-flow owner messages, not external attack surface. Whether to
+ * also flatten them (security-by-obscurity over owner-debug-affordance) is a
+ * separate scope decision — file follow-up if desired.
+ */
+const SPOOF_DETECTION_PATTERN = /Identity spoof blocked/i;
+
 interface ErrorMatch {
   line: number;
   errorText: string;
@@ -201,23 +213,28 @@ test('T#673: no info-disclosure in 403 responses on /api/beast/:name/* endpoints
   expect(beastMatches.length).toBe(0);
 });
 
-test('T#673: info-disclosure audit on non-beast 403 responses (advisory)', () => {
+test('T#679: no info-disclosure in 403 responses on non-beast endpoints (post-T#679 hardening)', () => {
   const { otherMatches } = scanForInfoDisclosure();
 
-  // This test is advisory — it logs findings but does not fail.
-  // Non-beast endpoints are outside T#673 scope but the scan catches them
-  // for future hardening tasks.
-  if (otherMatches.length > 0) {
-    const summary = otherMatches
+  // Filter out spoof-detection messages — owner-debug-affordance, not external
+  // attack surface. See SPOOF_DETECTION_PATTERN definition for rationale.
+  const enforceableMatches = otherMatches.filter(
+    (m) => !SPOOF_DETECTION_PATTERN.test(m.errorText)
+  );
+
+  if (enforceableMatches.length > 0) {
+    const summary = enforceableMatches
       .map((m) => `  server.ts:${m.line} [${m.routePath}] "${m.errorText}" (term: ${m.term})`)
       .join('\n');
 
-    console.log(
-      `\n[T#673 advisory] Found ${otherMatches.length} potential info-disclosure in non-beast 403 responses:\n${summary}\n` +
-        `These are outside T#673 scope. Consider a follow-up task for full-server hardening.\n`
+    throw new Error(
+      `[T#679] Found ${enforceableMatches.length} info-disclosure leak(s) in non-beast 403 responses ` +
+        `(spoof-detection messages excluded — see SPOOF_DETECTION_PATTERN):\n${summary}\n` +
+        `Replace verbose 403 message with { error: 'forbidden' } per T#679.\n`
     );
   }
 
-  // Always passes — this is informational
-  expect(true).toBe(true);
+  // Hard-fail (post-T#679) — was advisory soft-pass under T#673, flipped per
+  // T#679 acceptance criterion 2.
+  expect(enforceableMatches.length).toBe(0);
 });

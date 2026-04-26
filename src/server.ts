@@ -883,7 +883,7 @@ app.post('/api/auth/logout', (c) => {
 // Create guest account
 app.post('/api/guests', async (c) => {
   if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
-    return c.json({ error: 'Guest account management requires owner session' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
 
   const body = await c.req.json();
@@ -908,7 +908,7 @@ app.post('/api/guests', async (c) => {
 // List guest accounts
 app.get('/api/guests', (c) => {
   if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
-    return c.json({ error: 'Guest account management requires owner session' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
 
   const guests = listGuests(sqlite).map(g => {
@@ -936,7 +936,7 @@ app.get('/api/guests', (c) => {
 // Get single guest account
 app.get('/api/guests/:id', (c) => {
   if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
-    return c.json({ error: 'Guest account management requires owner session' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
 
   const id = parseInt(c.req.param('id'), 10);
@@ -966,7 +966,7 @@ app.get('/api/guests/:id', (c) => {
 // Update guest account (expiry, disable, display name)
 app.patch('/api/guests/:id', (c) => {
   if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
-    return c.json({ error: 'Guest account management requires owner session' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
 
   const id = parseInt(c.req.param('id'), 10);
@@ -986,7 +986,7 @@ app.patch('/api/guests/:id', (c) => {
 // Owner reset guest password (T#566)
 app.patch('/api/guests/:id/password', async (c) => {
   if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
-    return c.json({ error: 'Guest account management requires owner session' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
 
   const id = parseInt(c.req.param('id'), 10);
@@ -1007,7 +1007,7 @@ app.patch('/api/guests/:id/password', async (c) => {
 // Delete guest account (T#570 — with cascade notification)
 app.delete('/api/guests/:id', (c) => {
   if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
-    return c.json({ error: 'Guest account management requires owner session' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
 
   const id = parseInt(c.req.param('id'), 10);
@@ -1031,7 +1031,7 @@ app.post('/api/guests/:id/ban', async (c) => {
   const isOwner = hasSessionAuth(c) && (c.get as any)('role') !== 'guest';
   const isBeast = (c.get as any)('authMethod') === 'token' && (c.get as any)('role') === 'beast';
   if (!isOwner && !isBeast) {
-    return c.json({ error: 'Ban requires owner session or Beast token' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
 
   const id = parseInt(c.req.param('id'), 10);
@@ -1065,7 +1065,7 @@ app.post('/api/guests/:id/ban', async (c) => {
 app.post('/api/guests/:id/unban', async (c) => {
   // Owner session only — unbanning is a sensitive operation
   if (!hasSessionAuth(c) || (c.get as any)('role') === 'guest') {
-    return c.json({ error: 'Unban requires owner session' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
 
   const id = parseInt(c.req.param('id'), 10);
@@ -1100,11 +1100,11 @@ app.post('/api/guests/:id/unban', async (c) => {
 // Create token — Gorn session auth only
 app.post('/api/auth/tokens', async (c) => {
   if (!hasSessionAuth(c)) {
-    return c.json({ error: 'Token creation requires Gorn session auth' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
   // Block ?as= on this endpoint
   if (c.req.query('as')) {
-    return c.json({ error: 'Token creation does not accept ?as= parameter' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
 
   const body = await c.req.json();
@@ -1129,7 +1129,7 @@ app.post('/api/auth/tokens', async (c) => {
 // List tokens — Gorn session auth only (no hashes exposed)
 app.get('/api/auth/tokens', (c) => {
   if (!hasSessionAuth(c)) {
-    return c.json({ error: 'Token listing requires Gorn session auth' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
   return c.json({ tokens: listTokens() });
 });
@@ -1137,7 +1137,7 @@ app.get('/api/auth/tokens', (c) => {
 // Revoke token — Gorn session auth only
 app.delete('/api/auth/tokens/:id', (c) => {
   if (!hasSessionAuth(c)) {
-    return c.json({ error: 'Token revocation requires Gorn session auth' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
   const tokenId = parseInt(c.req.param('id'), 10);
   if (isNaN(tokenId)) {
@@ -1158,7 +1158,7 @@ app.post('/api/auth/tokens/rotate', (c) => {
   const tokenId = (c.get as any)('tokenId') as number;
 
   if (authMethod !== 'token' || !beast || !tokenId) {
-    return c.json({ error: 'Token rotation requires Bearer token auth' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
 
   const result = rotateToken(tokenId, beast);
@@ -3245,7 +3245,7 @@ app.get('/api/remote/status', (c) => {
 app.post('/api/remote/attach', async (c) => {
   // Remote attach requires local tmux access — reject non-local requests cleanly
   if (!isLocalNetwork(c) && !hasSessionAuth(c)) {
-    return c.json({ error: 'Remote attach requires local access' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
   try {
     const data = await c.req.json();
@@ -7225,7 +7225,7 @@ function runDbMaintenance() {
 app.post('/api/db/maintenance', (c) => {
   const requester = c.req.query('as');
   if (requester) {
-    return c.json({ error: 'DB maintenance is restricted to Gorn (session auth required)' }, 403);
+    return c.json({ error: 'forbidden' }, 403);
   }
   runDbMaintenance();
   return c.json({ status: 'ok', retention_days: DB_RETENTION_DAYS });

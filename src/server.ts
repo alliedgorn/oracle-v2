@@ -11251,7 +11251,19 @@ app.post('/api/webhooks/hevy', async (c) => {
   const expectedBuf = Buffer.from(expectedHeader);
   const valid = authBuf.length === expectedBuf.length && timingSafeEqual(authBuf, expectedBuf);
   if (!valid) {
-    console.warn('[Hevy webhook] auth failed — bad bearer');
+    // DEBUG (TEMP — revert post-diagnosis): re-armed for round 2 of Hevy webhook
+    // auth-fail diagnosis. PR #26 fixed middleware-blocks-before-handler so requests
+    // now reach this block and the diagnostic will actually fire (PR #25's diagnostic
+    // never produced data because the request never got here). Per Bertus #10507
+    // debug-asymmetry: log what you got, not what you expected — only authHeader-side
+    // preview, no expected-side leak. authHeader length + first 4 + last 4 chars +
+    // all-header-names enumerated to triage paste-mismatch vs invisible-char vs
+    // format-mismatch vs missing-header.
+    const headerPreview = authHeader.length > 8
+      ? `${authHeader.slice(0, 4)}...${authHeader.slice(-4)}`
+      : authHeader || '(empty)';
+    const allHeaderNames = Array.from(c.req.raw.headers.keys()).join(',');
+    console.warn(`[Hevy webhook] auth failed — bad bearer. authHeader length=${authHeader.length} preview=${headerPreview} | all headers=[${allHeaderNames}]`);
     return c.json({ error: 'forbidden' }, 401);
   }
 

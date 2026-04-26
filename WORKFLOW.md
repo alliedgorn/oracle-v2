@@ -1,6 +1,6 @@
 # Burrow Book — Development → Production Workflow
 
-**v0.1** — drafted 2026-04-26 post-T#702 cutover (Decree #70 + #71 live).
+**v0.2** — 2026-04-26 fold-pass after PR #19 + PR #20 dogfood lessons (sync command fix + frontend/dist convention + error-surface discipline + board-state hygiene).
 
 This document describes how Beasts develop features and how those features reach the production Burrow Book server. Read this on first-touch with the Burrow Book repo, and re-read when in doubt about the workflow.
 
@@ -34,12 +34,13 @@ Before starting feature work, pull the latest `main` into your `<beast>/main` br
 
 ```bash
 cd /home/gorn/workspace/oracle-v2-<beast>
-git fetch origin main
 git checkout <beast>/main
-git rebase origin/main
+git pull --rebase origin main
 ```
 
 This keeps your starting point current with main and avoids merge conflicts later.
+
+**Note**: Per Decree #70 §Req 1, per-Beast worktrees do NOT have `origin/main` as a remote-tracking ref (the bare clone has direct refs only, not remote-tracking refs in the per-Beast tree). Use `git pull --rebase origin main` rather than `git rebase origin/main` — the former works against `FETCH_HEAD` after the implicit fetch.
 
 ### 2. Create a feature branch
 
@@ -66,14 +67,29 @@ Standard commit hygiene:
 
 ```bash
 git push origin feature/<branch-name>
-gh pr create --title "<task-id>: <description>" --body "<context + test plan>"
+gh pr create --head feature/<branch-name> --base main \
+  --title "<task-id>: <description>" --body "<context + test plan>"
 ```
+
+**Set the board state at PR-open** (mandatory — Pip's weekly PR audit reads the board, not the thread):
+
+```bash
+# Patch task fields to match thread-truth — assignee + reviewer + status
+curl -s -X PATCH "http://localhost:47778/api/tasks/<task-id>" \
+  -H "Authorization: Bearer $(cat ~/.oracle/tokens/<beast>)" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"in_review","reviewer":"<reviewer-beast>"}'
+```
+
+(`assigned_to` is usually already set when the task was opened; verify it matches the PR author.)
 
 PR body should include:
 - **Context** — why the change, link to task / thread / decree
 - **What** — what changed (high-level)
 - **Test plan** — how to verify (smoke commands, regression tests, manual checks)
 - **Tier classification** — Tier 1 / Tier 2 / Tier 3 per Decree #71
+
+**Note on `frontend/dist/` commit-noise**: when a PR includes a frontend build, `frontend/dist/` rebuild produces 50-350+ file rename/delete/create entries with hashed filenames. This is expected and tracked in repo per convention. Reviewers can `git diff --stat -- ':!frontend/dist'` to filter dist noise and read the substantive diff. v0.3 fold candidate: `gitattributes diff=binary` on `frontend/dist/` to suppress the noise at git-diff layer.
 
 ### 5. Three-tier review (Decree #71)
 
@@ -100,7 +116,24 @@ Re-fire reviewers after substantive changes. Don't merge until all reviewers re-
 Once all required reviewers CLEAR (and Gorn-stamp lands for Tier 3):
 - Squash-and-merge if many small commits, merge-commit if logical-history matters
 - Delete the feature branch after merge
-- Update task status (e.g., move T# to `in_review` then `done` per task lifecycle norms)
+
+**Set the board state at post-merge** (mandatory):
+
+```bash
+# Move task to in_review (if was todo) then to done after deploy + smoke
+curl -s -X PATCH "http://localhost:47778/api/tasks/<task-id>" \
+  -H "Authorization: Bearer $(cat ~/.oracle/tokens/<beast>)" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"done"}'
+
+# Add closing comment with deploy SHA + smoke battery summary
+curl -s -X POST "http://localhost:47778/api/tasks/<task-id>/comments" \
+  -H "Authorization: Bearer $(cat ~/.oracle/tokens/<beast>)" \
+  -H "Content-Type: application/json" \
+  -d '{"author":"<beast>","content":"PR #<n> merged + deployed at <SHA>. Smoke battery <X>/<X> GREEN."}'
+```
+
+For QA-handoff Tier 2 changes per Norm #68, the QA-lane Beast (typically Pip) closes the task to done after both code-review CLEAR + QA-gate CLEAR land. Codebase-owner moves the status to `in_review` post-merge; QA-lane moves to `done` post-QA-verify.
 
 ---
 
@@ -295,11 +328,13 @@ Beasts SHOULD periodically pull main into their `<beast>/main` to stay current:
 
 ```bash
 cd /home/gorn/workspace/oracle-v2-<beast>
-git fetch origin main
-git rebase origin/main  # if on <beast>/main with no local commits
+git checkout <beast>/main
+git pull --rebase origin main  # if on <beast>/main with no local commits
 # OR
-git merge origin/main   # if you have unpushed local commits to preserve
+git fetch origin main && git merge FETCH_HEAD  # if you have unpushed local commits to preserve
 ```
+
+(Same `origin/main`-not-remote-tracking note as §Step 1 applies — use the pull/fetch shapes above, not raw `origin/main` references.)
 
 ---
 
@@ -338,10 +373,30 @@ See `feedback_restart_is_deploy_not_test.md` (in Beast brain repos) for the less
 
 ---
 
+## Error-surface discipline
+
+Empty `} catch {}` patterns in handler code swallow errors silently — the user clicks the button, the request fails, the button reverts, no feedback. Acceptable as v0-shape but the pattern hides bugs from the user and from Pip's logs.
+
+**v0.2 discipline candidate** (not yet enforced; iterate per Beast/PR):
+- At minimum: `console.error('<context>:', err)` in catch blocks so failures land in browser console
+- Better: surface a transient error toast/state to the user so they know to retry
+- Best: distinguish error classes (network vs validation vs server-error) and respond accordingly
+
+Existing-file patterns are not refactor-targets in passing PRs (don't expand scope), but new code added in PRs SHOULD follow the better-shape going forward. Reviewer-flag if you see new empty-catch{} in a PR.
+
+---
+
 ## Iteration
 
-This is v0.1. Lessons from each deploy land here:
-- 2026-04-26 cutover (T#702): topology established, pre-deploy gate verification proven (caught unpushed-commits ABORT pre-Phase-1.2), smoke-battery quality-discipline added (verify-via-status-code-not-body-truncation per #10402)
+This is v0.2. Lessons from each deploy land here:
+
+**v0.1 → v0.2 fold (2026-04-26)** — four candidates landed from PR #19 (workflow-doc itself) + PR #20 (T#723 guest expiry edit) dogfood cycles:
+1. **§Step 1 sync command** — `git rebase origin/main` doesn't work in per-Beast worktrees per Decree #70 §Req 1 (no remote-tracking ref). Use `git pull --rebase origin main` instead. Same fix applied at §Per-Beast worktree maintenance.
+2. **§Step 4 frontend/dist commit-noise note** — explains the 50-350+ file rename/delete entries on dist rebuild + reviewer filter command. v0.3 candidate: gitattributes diff=binary.
+3. **§Step 4 + §Step 7 board-state hygiene** — explicit `PATCH /api/tasks/:id` commands at PR-open + post-merge to set assignee/reviewer/status. Pip's weekly PR audit reads the board, not the thread (Zaghnal #10455).
+4. **§Error-surface discipline** — new section on `catch {}` patterns (Sable PR #20 informational flag).
+
+**v0.1 (2026-04-26 cutover, T#702)**: topology established, pre-deploy gate verification proven (caught unpushed-commits ABORT pre-Phase-1.2), smoke-battery quality-discipline added (verify-via-status-code-not-body-truncation per #10402).
 
 PRs that change this workflow document follow the same Decree #71 review gate as code PRs (Tier 1 docs change = one peer review).
 

@@ -40,6 +40,20 @@ if [ "$SCRIPT_DIR" != "oracle-v2" ] && [ "$SCRIPT_DIR" != "$BEAST" ]; then
   exit 2
 fi
 
+# Spec #54 v2 E1 (defense-in-depth) — tmux session pre-check at script-start.
+# Mara Phase 2 wake-order is the primary lifecycle gate (`tmux has-session ||
+# nohup ... &`); this drain-side check is the redundant safety net per Bertus
+# DEN-FM10645 — closes wake-order-bypass-manual-drain-start class. If drain.sh
+# is invoked via any path other than canonical wake-order (operator manual
+# restart, debug invocation, future auto-restart logic), single-layer gate breaks.
+# Same trust-no-caller-validate-at-script-start family as E2 self-validate above.
+# Fail-loud BEFORE PID-file flock acquisition or PID write — no zombie-PID class,
+# no flock orphan.
+if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+  echo "FATAL: tmux session '$SESSION' not found for $BEAST drain (wake-order-bypass safety net per Spec #54 v2 E1 defense-in-depth)" >&2
+  exit 4
+fi
+
 # Spec #54 v2 §E3 — Drain-instance flock at PID-file layer.
 # Closes pgrep TOCTOU double-start race: two concurrent /wakeup fires can both
 # pgrep-empty before either drain writes PID. PID-file flock ensures one drain

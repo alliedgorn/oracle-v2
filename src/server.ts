@@ -7969,7 +7969,7 @@ try {
   }
 } catch { /* migration already done or no data */ }
 
-const ALLOWED_SPEC_REPOS = ['denbook', 'oracle-v2', 'supply-chain-tool', 'karo', 'zaghnal', 'gnarl', 'bertus', 'flint', 'pip', 'dex', 'talon', 'quill', 'sable', 'nyx', 'vigil', 'rax', 'leonard', 'mara', 'snap', 'beast-blueprint'];
+const ALLOWED_SPEC_REPOS = ['denbook', 'supply-chain-tool', 'karo', 'zaghnal', 'gnarl', 'bertus', 'flint', 'pip', 'dex', 'talon', 'quill', 'sable', 'nyx', 'vigil', 'rax', 'leonard', 'mara', 'snap', 'beast-blueprint'];
 
 function resolveSpecPath(repo: string, filePath: string): string | null {
   if (!ALLOWED_SPEC_REPOS.includes(repo)) return null;

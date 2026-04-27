@@ -3,7 +3,7 @@
 # Usage: notify-drain.sh <beast> <tmux-session>
 # Started by /wakeup wake-order in Beast brain CLAUDE.md, stopped by /rest or machine reboot.
 # Canonical install path: /home/gorn/workspace/<beast>/scripts/notify-drain.sh
-# Legacy path: /home/gorn/workspace/oracle-v2/scripts/notify-drain.sh (superseded; runtime self-validate skips this path)
+# Legacy path: /home/gorn/workspace/denbook/scripts/notify-drain.sh (superseded; runtime self-validate skips this path)
 
 BEAST=$(echo "$1" | tr '[:upper:]' '[:lower:]')
 SESSION="$2"
@@ -41,16 +41,20 @@ chmod 0700 "$QUEUE_DIR" 2>/dev/null || true
 # to read Bertus's queue would tmux-paste Bertus's notifications including DM
 # bodies). Fail-fast at script-start, no test-cycle observation needed.
 #
-# Skip self-validate when running from oracle-v2/scripts/ legacy path (script
+# Skip self-validate when running from denbook/scripts/ legacy path (script
 # is superseded there per pre-Spec-#54 architecture; runtime executor moved to
 # Beast brain via Mara Phase 1+2 fold).
 # Spec #54 v3 (Pip DEN-FM10651 §T14 SOFT case-sensitivity fold): lowercase
 # SCRIPT_DIR for the comparison. $BEAST is already lowercased (line 7) but
 # SCRIPT_DIR was not. Doesn't fire in current prod (12/12 Beast brain-dirs all
 # lowercase) but real fragility worth closing pre-merge.
+# Spec #54 v4 (Phase 3 oracle-v2 → denbook rename fold per DEN-FT549): legacy-path
+# carve-out updated from "oracle-v2" to "denbook" since prod worktree was renamed
+# in Phase 2 at 15:07 BKK (2026-04-27). Without this update, drain.sh self-validate
+# fires FATAL on any execution from the renamed prod path.
 SCRIPT_DIR="$(basename "$(dirname "$(dirname "$(readlink -f "$0")")")")"
 SCRIPT_DIR=$(echo "$SCRIPT_DIR" | tr '[:upper:]' '[:lower:]')
-if [ "$SCRIPT_DIR" != "oracle-v2" ] && [ "$SCRIPT_DIR" != "$BEAST" ]; then
+if [ "$SCRIPT_DIR" != "denbook" ] && [ "$SCRIPT_DIR" != "$BEAST" ]; then
   echo "FATAL: drain beast-arg '$BEAST' does not match brain-worktree '$SCRIPT_DIR' (cross-Beast queue-read prevention per Spec #54 v2 §B/E2)" >&2
   exit 2
 fi

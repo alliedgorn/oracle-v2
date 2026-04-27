@@ -298,7 +298,7 @@ const server = http.createServer(async (req, res) => {
         return;
 
       case '/api/health':
-        result = { status: 'ok', server: 'oracle-v2', port: PORT, oracleV2: 'connected' };
+        result = { status: 'ok', server: 'denbook', port: PORT, denbook: 'connected' };
         break;
 
       case '/api/search':

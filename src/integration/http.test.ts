@@ -1,6 +1,6 @@
 /**
  * HTTP API Integration Tests
- * Tests oracle-v2 server endpoints
+ * Tests denbook server endpoints
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import type { Subprocess } from "bun";

@@ -57,18 +57,18 @@ describe("Specs API Integration", () => {
     });
 
     test("GET /api/specs with repo filter", async () => {
-      const res = await fetch(`${BASE_URL}/api/specs?repo=oracle-v2`);
+      const res = await fetch(`${BASE_URL}/api/specs?repo=denbook`);
       expect(res.ok).toBe(true);
       const data = await res.json();
       expect(data.specs).toBeInstanceOf(Array);
       for (const spec of data.specs) {
-        expect(spec.repo).toBe("oracle-v2");
+        expect(spec.repo).toBe("denbook");
       }
     });
 
     test("GET /api/specs with both filters", async () => {
       const res = await fetch(
-        `${BASE_URL}/api/specs?status=pending&repo=oracle-v2`
+        `${BASE_URL}/api/specs?status=pending&repo=denbook`
       );
       expect(res.ok).toBe(true);
       const data = await res.json();
@@ -132,7 +132,7 @@ describe("Specs API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          repo: "oracle-v2",
+          repo: "denbook",
           file_path: `docs/specs/${TEST_PREFIX}${TEST_RUN_ID}.md`,
           task_id: "T999",
           title: `${TEST_PREFIX}Test Spec`,
@@ -152,7 +152,7 @@ describe("Specs API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          repo: "oracle-v2",
+          repo: "denbook",
           // missing file_path, title, author
         }),
       });
@@ -179,7 +179,7 @@ describe("Specs API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          repo: "oracle-v2",
+          repo: "denbook",
           file_path: `docs/specs/${TEST_PREFIX}${TEST_RUN_ID}.md`,
           title: `${TEST_PREFIX}Duplicate`,
           author: "pip",
@@ -193,7 +193,7 @@ describe("Specs API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          repo: "oracle-v2",
+          repo: "denbook",
           file_path: `docs/specs/${TEST_PREFIX}mismatch_${TEST_RUN_ID}.md`,
           title: "Mismatch Test",
           author: "pip",

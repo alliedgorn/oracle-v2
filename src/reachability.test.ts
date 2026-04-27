@@ -1,10 +1,10 @@
 /**
  * T#664 Part 2 — Reachability regression test (CI gate)
  *
- * DRAFT — target location in oracle-v2: `src/reachability.test.ts`
+ * DRAFT — target location in denbook: `src/reachability.test.ts`
  *
  * Asserts that the vulnerable API surface identified in the T#663 reachability
- * sweep (thread #20, msg #8113 / #8115 / #8116) stays unused in oracle-v2.
+ * sweep (thread #20, msg #8113 / #8115 / #8116) stays unused in denbook.
  * If any of these patterns appears in `src/` (via a future PR adding dynamic
  * queries, HTTP transport, or auth handlers), this test fails and the
  * reachability claim from the T#663 downgrade must be re-evaluated before
@@ -30,7 +30,7 @@
  * express-rate-limit, and path-to-regexp are dead code because their
  * importers (`server/streamableHttp.js`, `server/webStandardStreamableHttp.js`,
  * `server/sse.js`, `server/express.js`, `server/auth/router.js`) are never
- * loaded by oracle-v2's static import chain (verified in thread #20 msg #8116
+ * loaded by denbook's static import chain (verified in thread #20 msg #8116
  * and Bertus's msg #8122 review extension). This gate locks that in.
  *
  * Doctrine: **stdio-only MCP transport**. All HTTP-ish transports in the SDK
@@ -74,14 +74,14 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Target root is `src/` relative to the oracle-v2 repo root when this lives at
+// Target root is `src/` relative to the denbook repo root when this lives at
 // `src/reachability.test.ts`. Adjust if the file moves.
 //
 // Use fileURLToPath rather than new URL('.', import.meta.url).pathname — the
 // raw .pathname URL-encodes non-ASCII characters in the path (e.g. `ψ` becomes
 // `%CF%88`), which fs can't resolve. fileURLToPath decodes them correctly.
 // Caught when smoke-testing the test from pip's lab directory (which has `ψ`
-// in its path) before handoff to oracle-v2. Oracle-v2's path is plain ASCII
+// in its path) before handoff to denbook. Denbook's path is plain ASCII
 // so the raw .pathname would work there, but the correct form handles both.
 const SRC_ROOT = dirname(fileURLToPath(import.meta.url));
 

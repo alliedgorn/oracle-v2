@@ -2,6 +2,7 @@
 
 **Author**: Karo
 **Status**: Draft → Review
+**Version**: v4 (2026-04-27 ~11:02 BKK — Phase 3 .env-canonical update per Gnarl post-overnight architect-frame add + three-axis recursion lens sub-section + Caller-side discipline .env-source pattern + Bertus §A temp-file mode-600/cross-FS atomicity + §B missing-file/missing-line failure-mode discipline. v3 was 2026-04-25 14:59 BKK Gnarl-fold of items 1-5.)
 **Authored**: 2026-04-25 21:39 BKK
 **Origin**: Gorn-direction 2026-04-25 21:36 BKK — *"Beasts should be able to generate their own tokens too"*. Sibling to `beast-token-auto-refresh.md` (foundation layer).
 
@@ -121,7 +122,7 @@ Beast callers MUST read token from filesystem on each authenticated call — no 
 
 If a Beast process caches token in memory, then a parallel process rotates, the cached-token becomes a rotated-away token. Next use trips chain-compromise = false-positive lockout.
 
-**Recruit-blueprint update**: docstring + warning in any Beast caller boilerplate. Standard pattern: `cat ~/.oracle/tokens/<beast>` per call.
+**Recruit-blueprint update**: docstring + warning in any Beast caller boilerplate. Standard pattern (v4, post-2026-04-27 .env-migration arc): `set -a && . .env && set +a` then use `$BEAST_TOKEN`. Source `.env` per-call shape — do not in-process cache. Transitional fallback for non-bash callers: `cat ~/.oracle/tokens/<beast>` (drop in v5).
 
 ### Chain-compromise event escalation (Bertus review)
 
@@ -162,6 +163,18 @@ Transitions:
 - `active → revoked` on Owner revoke
 - `rotated_away → chain_compromised → all_revoked` on detected reuse
 
+#### Three-axis temporal recursion lens (added v4 per Gnarl post-overnight architect-frame add — thread #20 #10599)
+
+Spec #52 design uses **enumerate-the-class-not-the-named-instance** at write-time across the leak/replay/rotation-race classes:
+
+- **Item #1 (grace window)** closes the class of *stale-in-flight false-positive lockouts* — not just the single concurrent-call race, but the class of all clock-window edge cases where the same Beast holds two valid-at-issue-time tokens for ROTATION_GRACE_SECONDS.
+- **Item #2 (SELF_ROTATE_WINDOW vs auto-refresh)** closes the class of *active-Beast renewal flows* — not just one renewal mechanism, but the joint design of Phase 1 proactive Beast-monitoring + Phase 4 server-side rotation_recommended header.
+- **Item #3 (Owner-revoke chain-walk)** closes the class of *incomplete revocation* — not just current-row revoke, but forward-chain-walk so any rotated-after-revoke-issued links are also caught.
+- **Item #4 (chain pruning)** closes the class of *unbounded chain growth* — not just one decision, but the framework (Options A/B/C + Phase 2 amendment) for the long-tail row-storage decision.
+- **Item #5 (Phase 3 CLI .env-canonical)** closes the class of *token-bytes-leak surfaces* — not just stdout, but the joint design across stdout + clipboard + history + write-target + line-replace-atomicity (preserves other `.env` keys against accidental clobber).
+
+Sister to the **three-axis recursion** at the doctrine layer (Gnarl thread #20 #10599): write-time class-enumeration here pairs with review-time enumerate-all-shapes (Bertus + Karo audit lanes) and execute-time control-negative roster (Pip QA lane). Spec #52 is a worked example of write-time class-enumeration; T#727 + T#728 audit-doc will be the worked example of review-time + execute-time class-enumeration.
+
 ## Test cases (Pip QA scope)
 
 - Beast rotates with valid token → new token returned, old marked rotated_away
@@ -176,7 +189,12 @@ Transitions:
 
 - **Phase 1**: Add `rotated_at`, `next_token_id` columns to `beast_tokens` table + migration
 - **Phase 2**: `POST /api/auth/rotate` endpoint + rotation-detection logic in `validateToken()`
-- **Phase 3**: CLI helper `scripts/rotate-token.sh` for Beasts to self-rotate manually. Security shape (Gnarl review): writes new token directly to `~/.oracle/tokens/<beast>` mode 600. Stdout shows ONLY metadata (`Rotated. New token expires at <ts>. Old token revoked.`). Does NOT echo bytes to stdout/stderr/clipboard. Sister to LLM-context-exposure concern from #20 evening review.
+- **Phase 3**: CLI helper `scripts/rotate-token.sh` for Beasts to self-rotate manually. Security shape (Gnarl review v4 — post-2026-04-27 .env-migration arc):
+  - **Canonical write target**: `BEAST_TOKEN=<new>` line at `/home/gorn/workspace/<beast>/.env` (mode 600 already enforced by .env discipline).
+  - **Write mechanism**: in-place line-replace ONLY — locate `^BEAST_TOKEN=` and replace its value. Preserve all other `.env` keys (e.g. `TELEGRAM_BOT_TOKEN`, `HEVY_API_KEY`, `OPENAI_API_KEY`, etc.). Do NOT whole-file overwrite. Implementation: `umask 0077` before `mktemp` (or explicit `chmod 600` on the temp-file before rename), atomic-rename into place. Temp-file MUST be on same filesystem as `.env` to preserve atomic-rename semantics — use `mktemp -p "$(dirname "$ENV_FILE")"` or equivalent (Bertus v4 review §A: temp-file mode + cross-FS atomicity).
+  - **Failure-mode discipline (Bertus v4 review §B)**: CLI MUST exit non-zero with explicit error if `.env` does NOT exist OR `^BEAST_TOKEN=` line is absent. Do NOT silently create a new `.env` (would miss expected keys like `TELEGRAM_BOT_TOKEN`); do NOT silently append (would accept corrupted-state as if rotation succeeded). Operator must intervene; rotation does not auto-create or auto-append.
+  - **Transitional fallback write**: also update `~/.oracle/tokens/<beast>` mode 600 during the cutover window. Drop the fallback in v5 once all Beast callers source `.env BEAST_TOKEN` exclusively.
+  - **Stdout shape (unchanged from v3)**: ONLY metadata (`Rotated. New token expires at <ts>. Old token revoked.`). Does NOT echo token bytes to stdout/stderr/clipboard. Sister to LLM-context-exposure concern from #20 evening review.
 - **Phase 4**: Auto-rotate trigger when `now + ROTATE_THRESHOLD > created_at + SELF_ROTATE_WINDOW` (hands-off renewal in Beast hot path). Server emits `rotation_recommended` response header on conditional triggers; Beast caller wrapper handles transparent rotation.
 
 ## Out of scope

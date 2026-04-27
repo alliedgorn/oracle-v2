@@ -2,7 +2,7 @@
 
 **Author**: Karo
 **Status**: Draft → Review
-**Version**: v4 (2026-04-27 ~10:55 BKK — Phase 3 .env-canonical update per Gnarl post-overnight architect-frame add + three-axis recursion lens sub-section + Caller-side discipline .env-source pattern. v3 was 2026-04-25 14:59 BKK Gnarl-fold of items 1-5.)
+**Version**: v4 (2026-04-27 ~11:02 BKK — Phase 3 .env-canonical update per Gnarl post-overnight architect-frame add + three-axis recursion lens sub-section + Caller-side discipline .env-source pattern + Bertus §A temp-file mode-600/cross-FS atomicity + §B missing-file/missing-line failure-mode discipline. v3 was 2026-04-25 14:59 BKK Gnarl-fold of items 1-5.)
 **Authored**: 2026-04-25 21:39 BKK
 **Origin**: Gorn-direction 2026-04-25 21:36 BKK — *"Beasts should be able to generate their own tokens too"*. Sibling to `beast-token-auto-refresh.md` (foundation layer).
 
@@ -191,7 +191,8 @@ Sister to the **three-axis recursion** at the doctrine layer (Gnarl thread #20 #
 - **Phase 2**: `POST /api/auth/rotate` endpoint + rotation-detection logic in `validateToken()`
 - **Phase 3**: CLI helper `scripts/rotate-token.sh` for Beasts to self-rotate manually. Security shape (Gnarl review v4 — post-2026-04-27 .env-migration arc):
   - **Canonical write target**: `BEAST_TOKEN=<new>` line at `/home/gorn/workspace/<beast>/.env` (mode 600 already enforced by .env discipline).
-  - **Write mechanism**: in-place line-replace ONLY — locate `^BEAST_TOKEN=` and replace its value. Preserve all other `.env` keys (e.g. `TELEGRAM_BOT_TOKEN`, `HEVY_API_KEY`, `OPENAI_API_KEY`, etc.). Do NOT whole-file overwrite. Suggested: read lines, replace matching, atomic-write via temp file + rename.
+  - **Write mechanism**: in-place line-replace ONLY — locate `^BEAST_TOKEN=` and replace its value. Preserve all other `.env` keys (e.g. `TELEGRAM_BOT_TOKEN`, `HEVY_API_KEY`, `OPENAI_API_KEY`, etc.). Do NOT whole-file overwrite. Implementation: `umask 0077` before `mktemp` (or explicit `chmod 600` on the temp-file before rename), atomic-rename into place. Temp-file MUST be on same filesystem as `.env` to preserve atomic-rename semantics — use `mktemp -p "$(dirname "$ENV_FILE")"` or equivalent (Bertus v4 review §A: temp-file mode + cross-FS atomicity).
+  - **Failure-mode discipline (Bertus v4 review §B)**: CLI MUST exit non-zero with explicit error if `.env` does NOT exist OR `^BEAST_TOKEN=` line is absent. Do NOT silently create a new `.env` (would miss expected keys like `TELEGRAM_BOT_TOKEN`); do NOT silently append (would accept corrupted-state as if rotation succeeded). Operator must intervene; rotation does not auto-create or auto-append.
   - **Transitional fallback write**: also update `~/.oracle/tokens/<beast>` mode 600 during the cutover window. Drop the fallback in v5 once all Beast callers source `.env BEAST_TOKEN` exclusively.
   - **Stdout shape (unchanged from v3)**: ONLY metadata (`Rotated. New token expires at <ts>. Old token revoked.`). Does NOT echo token bytes to stdout/stderr/clipboard. Sister to LLM-context-exposure concern from #20 evening review.
 - **Phase 4**: Auto-rotate trigger when `now + ROTATE_THRESHOLD > created_at + SELF_ROTATE_WINDOW` (hands-off renewal in Beast hot path). Server emits `rotation_recommended` response header on conditional triggers; Beast caller wrapper handles transparent rotation.

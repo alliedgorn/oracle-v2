@@ -25,6 +25,16 @@ umask 0077
 mkdir -p "$QUEUE_DIR"
 chmod 0700 "$QUEUE_DIR" 2>/dev/null || true
 
+# Spec #54 v3 (Pip DEN-FM10651 §T15 PARTIAL FAIL fold): chmod LOG_FILE explicitly.
+# /tmp/notify-drain-<beast>.log is created by the wake-order parent-shell redirect
+# (`> /tmp/notify-drain-<beast>.log 2>&1`) BEFORE this script's umask 0077 fires.
+# Parent-shell default umask (typically 022) yields mode 644 = world-readable on /tmp.
+# Mara Phase 2 wake-order ALSO prefixes `umask 0077;` before the redirect (template
+# layer); this drain.sh chmod is the redundant safety net at the script-execution
+# layer (same belt+suspenders pattern as E1 tmux pre-check). Closes log-readable
+# class regardless of which layer enforces.
+[ -e "$LOG_FILE" ] && chmod 0600 "$LOG_FILE" 2>/dev/null || true
+
 # Spec #54 v2 §B / E2 — Cross-Beast queue read self-validation.
 # Drain.sh fails fast if $BEAST arg does NOT match brain-worktree directory name.
 # Closes misconfig-as-cross-Beast-disclosure class (e.g. Karo's drain misconfig'd
@@ -34,7 +44,12 @@ chmod 0700 "$QUEUE_DIR" 2>/dev/null || true
 # Skip self-validate when running from oracle-v2/scripts/ legacy path (script
 # is superseded there per pre-Spec-#54 architecture; runtime executor moved to
 # Beast brain via Mara Phase 1+2 fold).
+# Spec #54 v3 (Pip DEN-FM10651 §T14 SOFT case-sensitivity fold): lowercase
+# SCRIPT_DIR for the comparison. $BEAST is already lowercased (line 7) but
+# SCRIPT_DIR was not. Doesn't fire in current prod (12/12 Beast brain-dirs all
+# lowercase) but real fragility worth closing pre-merge.
 SCRIPT_DIR="$(basename "$(dirname "$(dirname "$(readlink -f "$0")")")")"
+SCRIPT_DIR=$(echo "$SCRIPT_DIR" | tr '[:upper:]' '[:lower:]')
 if [ "$SCRIPT_DIR" != "oracle-v2" ] && [ "$SCRIPT_DIR" != "$BEAST" ]; then
   echo "FATAL: drain beast-arg '$BEAST' does not match brain-worktree '$SCRIPT_DIR' (cross-Beast queue-read prevention per Spec #54 v2 §B/E2)" >&2
   exit 2

@@ -7121,6 +7121,39 @@ const DRAIN_SPACING = 1000; // 1s between sends to same Beast (was 3s — Tier 1
 const DRAIN_DIR = '/tmp/den-notify';
 const drainLastSent: Map<string, number> = new Map(); // beast → last send timestamp
 
+/**
+ * Spec #54 v2 §1 — Per-Beast drain coexistence check.
+ * Returns true if the per-Beast drain process owns this queue (server should
+ * skip). Returns false if no per-Beast drain or stale/unrelated PID (server
+ * should fallback-drain).
+ *
+ * Two-layer check:
+ * 1. signal-0 kill: process exists at all
+ * 2. /proc/<pid>/cmdline: process is actually notify-drain.sh (defends against
+ *    Linux PID-reuse — kernel.pid_max default 32768, cycle hours-to-days under
+ *    load. Without this, OOM/SIGKILL stale-PID + reused-PID = server false-skips
+ *    queue indefinitely until next /wakeup. That's the EXACT Decree #66
+ *    incident-response continuity gap this spec closes.)
+ *
+ * Phase 2+ defense-in-depth: write start-time to PID file alongside PID, validate
+ * against /proc/<pid>/stat field 22 (process start time). systemd-PIDFile pattern.
+ */
+function perBeastDrainAlive(pidPath: string): boolean {
+  try {
+    if (!fs.existsSync(pidPath)) return false;
+    const pid = parseInt(fs.readFileSync(pidPath, 'utf-8').trim(), 10);
+    if (!pid || isNaN(pid)) return false;
+    // Layer 1: process exists?
+    try { process.kill(pid, 0); }
+    catch { return false; } // ESRCH = process gone
+    // Layer 2: process is actually notify-drain.sh? (PID-reuse defense)
+    try {
+      const cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf-8');
+      return cmdline.includes('notify-drain.sh');
+    } catch { return false; } // /proc gone or unreadable = treat as dead
+  } catch { return false; }
+}
+
 function runDrainCycle() {
   try {
     if (!fs.existsSync(DRAIN_DIR)) return;
@@ -7130,6 +7163,14 @@ function runDrainCycle() {
       const beast = file.replace('.queue', '');
       const queuePath = path.join(DRAIN_DIR, file);
       const lockPath = path.join(DRAIN_DIR, `${beast}.lock`);
+      const pidPath = path.join(DRAIN_DIR, `${beast}.pid`);
+
+      // Spec #54 v2 §1 — skip if per-Beast drain owns this queue.
+      // perBeastDrainAlive uses signal-0 kill + /proc/<pid>/cmdline check to
+      // defend against Linux PID-reuse (Bertus near-blocker §1, promoted from
+      // Phase 2 to Phase 1 baseline). Closes the implicit-fallback-drift class
+      // that defeats the offline-resilience guarantee.
+      if (perBeastDrainAlive(pidPath)) continue;
 
       // Check spacing — don't send to same Beast within DRAIN_SPACING
       const lastSent = drainLastSent.get(beast) || 0;

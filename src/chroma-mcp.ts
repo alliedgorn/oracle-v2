@@ -85,7 +85,7 @@ export class ChromaMcpClient {
       });
 
       this.client = new Client({
-        name: 'oracle-v2-chroma',
+        name: 'denbook-chroma',
         version: '1.0.0'
       }, {
         capabilities: {}

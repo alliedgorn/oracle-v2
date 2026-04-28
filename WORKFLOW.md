@@ -63,6 +63,24 @@ Standard commit hygiene:
 - Reference task IDs (T#XXX) in commit messages
 - Pre-commit: run any local tests / type checks the project provides
 
+#### Skill update discipline — denbook API ↔ /denbook SKILL.md atomicity
+
+**Hard rule (added 2026-04-28 with /denbook skill consolidation):**
+
+PRs touching Denbook API code (`src/server/**`, `/api/*` handlers, schemas, auth, security-events) MUST update `~/.claude/skills/denbook/SKILL.md` in the same commit if the change affects the operation surface a Beast invokes. Specifically:
+
+- New endpoint added → add to the relevant `## /denbook <subcmd>` section in SKILL.md
+- Endpoint signature change (path, params, body shape) → update the curl example + body shape
+- New auth requirement or auth shape change → update §"Identity + Auth pattern"
+- New failure-class banked → update relevant section's failure-modes paragraph
+- New cross-cutting discipline → update relevant section AND consider escalating to a Decree/Norm via Leonard if pack-bedrock-class
+
+**Reviewer responsibility**: Any PR touching `src/server/**` that does NOT include a `/denbook/SKILL.md` change must carry an explicit `// no skill change required because <reason>` annotation in the PR description. Reviewer ASK: "Skill update missing per Decree #74 + this WORKFLOW §Skill update discipline."
+
+**Why**: per Decree #74, the skill is the source-of-truth for Denbook operation protocols. Without same-PR atomicity, the API drifts ahead of the skill, Beasts follow stale protocol → silent failures (Spec #53 orphan-class is the reference incident).
+
+`/denbook` skill is **shared-owner**, not single-Beast-pen. Any Beast-developer edits in the same PR as their API change.
+
 #### Test discipline — NEVER run destructive tests against production state
 
 **Hard rule (added 2026-04-28 after Karo-incident DEN-FM-tokens-wipe):**

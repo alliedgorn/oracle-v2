@@ -63,6 +63,26 @@ Standard commit hygiene:
 - Reference task IDs (T#XXX) in commit messages
 - Pre-commit: run any local tests / type checks the project provides
 
+#### Test discipline — NEVER run destructive tests against production state
+
+**Hard rule (added 2026-04-28 after Karo-incident DEN-FM-tokens-wipe):**
+
+The `bun test` command — and any test runner that imports `sqlite` from `src/db/index.ts` — connects to the **production** SQLite at `~/.oracle/oracle.db`. Test fixtures that `DELETE FROM <table>` in `beforeEach` will wipe production data.
+
+This is a known sharp edge of the test infra (no isolated test-DB yet). Until that gets fixed:
+
+1. **Never run `bun test` against tables that hold live state** (`beast_tokens`, `dm_messages`, `forum_messages`, `tasks`, `prowl_tasks`, `routine_logs`, etc.).
+2. **Read the test file before running.** If you see `DELETE FROM <table>` or `sqlite.exec('DELETE …')` in a `beforeEach` / `afterEach` / setup hook, **the test is destructive against production state**.
+3. **If you must run a destructive test**, first make a backup: `cp ~/.oracle/oracle.db ~/.oracle/oracle.db.pretest-$(date +%s)` and verify restore works before proceeding. Surface the backup-+-restore step in your PR.
+4. **Type-check (`bunx tsc --noEmit`) is always safe.** It does not touch the DB.
+5. **Server smoke (start + curl /api/health) is safe.** It reads, does not destructively mutate beast-state tables.
+
+**Architectural fix (2026-04-28, PR #36):** the `bun run test:*` scripts in `package.json` are prefixed with `ORACLE_DB_PATH=:memory: ORACLE_DATA_DIR=/tmp/oracle-test-data`, so anything routed through a script wrapper (`bun run test:unit`, `bun run test:integration`, `bun run test:coverage`, etc.) hits an isolated in-memory SQLite and a `/tmp` data dir. Production `~/.oracle/oracle.db` is never touched.
+
+**The discipline rule still matters for ad-hoc invocations that bypass the script wrapper**, e.g. `bun test src/server/__tests__/beast-tokens.test.ts` (direct path, no `run`-script). Those calls inherit your current shell environment — if `ORACLE_DB_PATH` is unset, `src/db/index.ts` falls back to `~/.oracle/oracle.db` and destructive `beforeEach` patterns wipe production. Always either use a script wrapper (`bun run test:unit`) or set the env var explicitly: `ORACLE_DB_PATH=:memory: bun test <path>`.
+
+If you need a sandbox file (e.g. to inspect post-test state): `ORACLE_DB_PATH=/tmp/test-$(date +%s).db bun test <file>`.
+
 ### 4. Push to origin + open PR
 
 ```bash

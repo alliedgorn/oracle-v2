@@ -11,7 +11,9 @@ import {
   createToken,
   validateToken,
   rotateToken,
+  selfRotateToken,
   revokeToken,
+  revokeBeastChain,
   listTokens,
   pruneBeastTokens,
 } from '../beast-tokens.ts';
@@ -184,7 +186,8 @@ describe('validateToken', () => {
       const result = validateToken(created.token);
       expect(result.valid).toBe(false);
       if (!result.valid) {
-        expect(result.reason).toBe('no_matching_token');
+        // Spec #51 — validateToken now distinguishes expired from no_matching_token.
+        expect(result.reason).toBe('expired');
       }
     }
   });
@@ -426,5 +429,173 @@ describe('token format edge cases', () => {
       expect(suffix.length).toBe(32);
       expect(/^[0-9a-f]{32}$/.test(suffix)).toBe(true);
     }
+  });
+});
+
+// ============================================================================
+// Spec #51 — auto-refresh
+// ============================================================================
+
+describe('auto-refresh (Spec #51)', () => {
+  it('extends expires_at when token is within REFRESH_WINDOW', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    // Move expiry to 1h from now (well inside the 6h refresh window) and clear
+    // last_used_at so the throttle does not block.
+    sqlite.prepare(
+      `UPDATE beast_tokens SET expires_at = datetime('now', '+1 hour'), last_used_at = NULL WHERE id = ?`
+    ).run(created.id);
+    const before = sqlite.prepare(`SELECT expires_at FROM beast_tokens WHERE id = ?`).get(created.id) as { expires_at: string };
+    const result = validateToken(created.token);
+    expect(result.valid).toBe(true);
+    const after = sqlite.prepare(`SELECT expires_at FROM beast_tokens WHERE id = ?`).get(created.id) as { expires_at: string };
+    expect(after.expires_at > before.expires_at).toBe(true);
+  });
+
+  it('does NOT refresh when outside REFRESH_WINDOW (still has >6h)', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    // Default TTL is 24h; that is well outside the 6h refresh window.
+    // Force last_used_at older than throttle so the throttle is not the gate.
+    sqlite.prepare(
+      `UPDATE beast_tokens SET last_used_at = datetime('now', '-10 minutes') WHERE id = ?`
+    ).run(created.id);
+    const before = sqlite.prepare(`SELECT expires_at FROM beast_tokens WHERE id = ?`).get(created.id) as { expires_at: string };
+    validateToken(created.token);
+    const after = sqlite.prepare(`SELECT expires_at FROM beast_tokens WHERE id = ?`).get(created.id) as { expires_at: string };
+    expect(after.expires_at).toBe(before.expires_at);
+  });
+
+  it('clamps refresh at max_lifetime_at boundary', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    // Set max_lifetime_at to 2 hours from now and expires_at to 1 hour.
+    // Refresh should clamp the new expires_at at +2h, not +24h.
+    sqlite.prepare(
+      `UPDATE beast_tokens
+         SET expires_at = datetime('now', '+1 hour'),
+             max_lifetime_at = datetime('now', '+2 hours'),
+             last_used_at = NULL
+         WHERE id = ?`
+    ).run(created.id);
+    validateToken(created.token);
+    const after = sqlite.prepare(
+      `SELECT expires_at, max_lifetime_at FROM beast_tokens WHERE id = ?`
+    ).get(created.id) as { expires_at: string; max_lifetime_at: string };
+    expect(after.expires_at <= after.max_lifetime_at).toBe(true);
+  });
+
+  it('rejects with max_lifetime_reached when token is past MAX_LIFETIME', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    // Force expires_at and max_lifetime_at both in the past.
+    // expires_at hits first (validateToken returns 'expired'); to verify the
+    // max_lifetime branch we need expires_at in the future but max_lifetime in
+    // the past. That's a state the system shouldn't reach naturally, but we
+    // simulate it to verify the branch.
+    sqlite.prepare(
+      `UPDATE beast_tokens
+         SET expires_at = datetime('now', '+1 hour'),
+             max_lifetime_at = datetime('now', '-1 hour')
+         WHERE id = ?`
+    ).run(created.id);
+    const result = validateToken(created.token);
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.reason).toBe('max_lifetime_reached');
+  });
+});
+
+// ============================================================================
+// Spec #52 — Beast-self rotation + chain-compromise
+// ============================================================================
+
+describe('selfRotateToken (Spec #52)', () => {
+  it('issues new token, links old → new in rotation chain', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    const rotated = selfRotateToken(created.id, 'karo');
+    expect('token' in rotated).toBe(true);
+    if (!('token' in rotated)) return;
+    expect(rotated.token).not.toBe(created.token);
+    // Old row should have rotated_at + next_token_id set, NOT revoked.
+    const oldRow = sqlite.prepare(
+      `SELECT rotated_at, next_token_id, revoked_at FROM beast_tokens WHERE id = ?`
+    ).get(created.id) as { rotated_at: string | null; next_token_id: number | null; revoked_at: string | null };
+    expect(oldRow.rotated_at).toBeTruthy();
+    expect(oldRow.next_token_id).toBe(rotated.id);
+    expect(oldRow.revoked_at).toBeNull();
+  });
+
+  it('rejects rotate-window-expired (token older than 24h)', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    // Force created_at to 25h ago.
+    sqlite.prepare(
+      `UPDATE beast_tokens SET created_at = datetime('now', '-25 hours') WHERE id = ?`
+    ).run(created.id);
+    const result = selfRotateToken(created.id, 'karo');
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.code).toBe('rotate_window_expired');
+  });
+
+  it('rejects rotation_locked when called twice on same token', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    const first = selfRotateToken(created.id, 'karo');
+    expect('token' in first).toBe(true);
+    const second = selfRotateToken(created.id, 'karo');
+    expect('error' in second).toBe(true);
+    if ('error' in second) expect(second.code).toBe('rotation_locked');
+  });
+
+  it('chain-compromise: replay of rotated-away token outside grace trips chain revoke', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    const rotated = selfRotateToken(created.id, 'karo');
+    if (!('token' in rotated)) throw new Error('selfRotateToken failed');
+    // Force rotated_at on old token to 30s ago (outside 10s grace).
+    sqlite.prepare(
+      `UPDATE beast_tokens SET rotated_at = datetime('now', '-30 seconds') WHERE id = ?`
+    ).run(created.id);
+    // Replay the OLD (rotated-away) token.
+    const result = validateToken(created.token);
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.reason).toBe('chain_compromised');
+    // The new token should also be revoked as part of the chain walk.
+    const newRow = sqlite.prepare(
+      `SELECT revoked_at FROM beast_tokens WHERE id = ?`
+    ).get(rotated.id) as { revoked_at: string | null };
+    expect(newRow.revoked_at).toBeTruthy();
+  });
+
+  it('chain-compromise: replay within ROTATION_GRACE_SECONDS is accepted', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    const rotated = selfRotateToken(created.id, 'karo');
+    if (!('token' in rotated)) throw new Error('selfRotateToken failed');
+    // rotated_at was just set; should be inside the 10s grace window.
+    const result = validateToken(created.token);
+    expect(result.valid).toBe(true);
+    if (result.valid) expect(result.rotationGrace).toBe(true);
+    // No chain revoke in grace path.
+    const newRow = sqlite.prepare(
+      `SELECT revoked_at FROM beast_tokens WHERE id = ?`
+    ).get(rotated.id) as { revoked_at: string | null };
+    expect(newRow.revoked_at).toBeNull();
+  });
+});
+
+describe('revokeBeastChain (Spec #52)', () => {
+  it('revokes every active + rotated_away token for a beast', () => {
+    const t1 = createToken('karo', 'gorn');
+    if (!('token' in t1)) throw new Error('createToken failed');
+    const t2 = selfRotateToken(t1.id, 'karo'); // chain link 1 → 2 (t1 rotated_away, t2 active)
+    if (!('token' in t2)) throw new Error('selfRotateToken failed');
+    const result = revokeBeastChain('karo', 'gorn');
+    expect(result.revoked.length).toBe(2);
+    const rows = sqlite.prepare(
+      `SELECT id, revoked_at FROM beast_tokens WHERE beast = ?`
+    ).all('karo') as Array<{ id: number; revoked_at: string | null }>;
+    expect(rows.every(r => r.revoked_at !== null)).toBe(true);
   });
 });

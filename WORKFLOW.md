@@ -63,6 +63,24 @@ Standard commit hygiene:
 - Reference task IDs (T#XXX) in commit messages
 - Pre-commit: run any local tests / type checks the project provides
 
+#### Test discipline — NEVER run destructive tests against production state
+
+**Hard rule (added 2026-04-28 after Karo-incident DEN-FM-tokens-wipe):**
+
+The `bun test` command — and any test runner that imports `sqlite` from `src/db/index.ts` — connects to the **production** SQLite at `~/.oracle/oracle.db`. Test fixtures that `DELETE FROM <table>` in `beforeEach` will wipe production data.
+
+This is a known sharp edge of the test infra (no isolated test-DB yet). Until that gets fixed:
+
+1. **Never run `bun test` against tables that hold live state** (`beast_tokens`, `dm_messages`, `forum_messages`, `tasks`, `prowl_tasks`, `routine_logs`, etc.).
+2. **Read the test file before running.** If you see `DELETE FROM <table>` or `sqlite.exec('DELETE …')` in a `beforeEach` / `afterEach` / setup hook, **the test is destructive against production state**.
+3. **If you must run a destructive test**, first make a backup: `cp ~/.oracle/oracle.db ~/.oracle/oracle.db.pretest-$(date +%s)` and verify restore works before proceeding. Surface the backup-+-restore step in your PR.
+4. **Type-check (`bunx tsc --noEmit`) is always safe.** It does not touch the DB.
+5. **Server smoke (start + curl /api/health) is safe.** It reads, does not destructively mutate beast-state tables.
+
+If you need confidence in test coverage for a destructive test path, run it in a one-off DB sandbox: `ORACLE_DB_PATH=/tmp/test-$(date +%s).db bun test <file>` — but only if the codebase honors that env var (verify first; it currently does not on all paths). When in doubt, **do not run the test**, ask in #20 instead.
+
+A separate fix (test-isolation: spin up an in-memory SQLite per test suite) is on the backlog. Until that lands, this discipline is load-bearing.
+
 ### 4. Push to origin + open PR
 
 ```bash

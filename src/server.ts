@@ -126,7 +126,9 @@ import {
   createToken,
   validateToken,
   rotateToken,
+  selfRotateToken,
   revokeToken,
+  revokeBeastChain,
   listTokens,
   pruneBeastTokens,
 } from './server/beast-tokens.ts';
@@ -1158,7 +1160,8 @@ app.delete('/api/auth/tokens/:id', (c) => {
   return c.json({ revoked: true });
 });
 
-// Rotate token — Beast self-service (requires valid Bearer token)
+// Rotate token — owner-driven (existing endpoint, kept for owner UI workflow).
+// Beast-self chain-aware rotation lives at POST /api/auth/rotate (Spec #52).
 app.post('/api/auth/tokens/rotate', (c) => {
   const authMethod = (c.get as any)('authMethod');
   const beast = (c.get as any)('actor') as string;
@@ -1171,6 +1174,42 @@ app.post('/api/auth/tokens/rotate', (c) => {
   const result = rotateToken(tokenId, beast);
   if ('error' in result) {
     return c.json({ error: result.error }, 500);
+  }
+
+  return c.json({
+    token: result.token,
+    id: result.id,
+    expires_at: result.expiresAt,
+    beast,
+  });
+});
+
+// Spec #52 — Beast-self chain-aware rotation.
+// Beast presents CURRENT VALID token via Bearer auth; server issues fresh token,
+// chain-links old → new (rotated_at + next_token_id). Replay on the old token
+// trips chain-compromise detection in validateToken().
+//
+// Failure semantics:
+//   401 — invalid/expired/revoked bearer
+//   403 — bearer is not a Beast (e.g. owner session, no tokenId)
+//   403 + code=rotate_window_expired — token outside SELF_ROTATE_WINDOW (24h)
+//   409 + code=rotation_locked — token already rotated_away (concurrent double-rotate)
+app.post('/api/auth/rotate', (c) => {
+  const authMethod = (c.get as any)('authMethod');
+  const beast = (c.get as any)('actor') as string;
+  const tokenId = (c.get as any)('tokenId') as number;
+
+  if (authMethod !== 'token' || !beast || !tokenId) {
+    return c.json({ error: 'Bearer-token Beast identity required' }, 403);
+  }
+
+  const result = selfRotateToken(tokenId, beast);
+  if ('error' in result) {
+    const status = result.code === 'rotate_window_expired' ? 403
+      : result.code === 'rotation_locked' ? 409
+      : result.code === 'token_not_found' ? 401
+      : 500;
+    return c.json({ error: result.error, code: result.code }, status);
   }
 
   return c.json({
@@ -1666,7 +1705,8 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/auth/tokens', desc: 'List API tokens', params: null },
     { method: 'POST', path: '/api/auth/tokens', desc: 'Create API token', params: 'body: { name }' },
     { method: 'DELETE', path: '/api/auth/tokens/:id', desc: 'Delete API token', params: null },
-    { method: 'POST', path: '/api/auth/tokens/rotate', desc: 'Rotate API token', params: null },
+    { method: 'POST', path: '/api/auth/tokens/rotate', desc: 'Rotate API token (owner-driven)', params: null },
+    { method: 'POST', path: '/api/auth/rotate', desc: 'Beast-self chain-aware rotation (Spec #52)', params: 'header: Authorization: Bearer <current_token>' },
     // Guests
     { method: 'GET', path: '/api/guests', desc: 'List guests', params: null },
     { method: 'GET', path: '/api/guests/:id', desc: 'Get guest by ID', params: null },
@@ -7969,7 +8009,7 @@ try {
   }
 } catch { /* migration already done or no data */ }
 
-const ALLOWED_SPEC_REPOS = ['denbook', 'oracle-v2', 'supply-chain-tool', 'karo', 'zaghnal', 'gnarl', 'bertus', 'flint', 'pip', 'dex', 'talon', 'quill', 'sable', 'nyx', 'vigil', 'rax', 'leonard', 'mara', 'snap', 'beast-blueprint'];
+const ALLOWED_SPEC_REPOS = ['denbook', 'supply-chain-tool', 'karo', 'zaghnal', 'gnarl', 'bertus', 'flint', 'pip', 'dex', 'talon', 'quill', 'sable', 'nyx', 'vigil', 'rax', 'leonard', 'mara', 'snap', 'beast-blueprint'];
 
 function resolveSpecPath(repo: string, filePath: string): string | null {
   if (!ALLOWED_SPEC_REPOS.includes(repo)) return null;

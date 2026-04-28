@@ -29,7 +29,14 @@ export type SecurityEventType =
   | 'alert_triggered'        // Threshold alert fired by checkAlertThresholds
   | 'token_validated'        // Beast token validated (sampled, T#546)
   | 'guest_banned'           // Guest account banned (T#616)
-  | 'guest_unbanned';        // Guest account unbanned (T#616)
+  | 'guest_unbanned'         // Guest account unbanned (T#616)
+  | 'token_max_lifetime_reached'      // Spec #51 — refresh chain hit MAX_LIFETIME
+  | 'token_rotated_admin'             // Spec #51/#52 — owner-driven rotation (POST /api/auth/tokens/rotate)
+  | 'token_self_rotated'              // Spec #52 — Beast-self rotation (POST /api/auth/rotate)
+  | 'token_rotation_grace_used'       // Spec #52 — stale-in-flight grace window absorbed
+  | 'token_chain_compromised'         // Spec #52 — rotation-detection trip; chain revoked
+  | 'token_chain_revoked'             // Spec #52 — owner-revoke walked the chain
+  | 'token_rotation_attempted_invalid'; // Spec #52 — rotate attempted with invalid/expired/locked token
 
 export type SecuritySeverity = 'info' | 'warning' | 'critical';
 

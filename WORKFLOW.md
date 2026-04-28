@@ -77,9 +77,11 @@ This is a known sharp edge of the test infra (no isolated test-DB yet). Until th
 4. **Type-check (`bunx tsc --noEmit`) is always safe.** It does not touch the DB.
 5. **Server smoke (start + curl /api/health) is safe.** It reads, does not destructively mutate beast-state tables.
 
-If you need confidence in test coverage for a destructive test path, run it in a one-off DB sandbox: `ORACLE_DB_PATH=/tmp/test-$(date +%s).db bun test <file>` — but only if the codebase honors that env var (verify first; it currently does not on all paths). When in doubt, **do not run the test**, ask in #20 instead.
+**Architectural fix (2026-04-28, PR #36):** the `bun run test:*` scripts in `package.json` are prefixed with `ORACLE_DB_PATH=:memory: ORACLE_DATA_DIR=/tmp/oracle-test-data`, so anything routed through a script wrapper (`bun run test:unit`, `bun run test:integration`, `bun run test:coverage`, etc.) hits an isolated in-memory SQLite and a `/tmp` data dir. Production `~/.oracle/oracle.db` is never touched.
 
-A separate fix (test-isolation: spin up an in-memory SQLite per test suite) is on the backlog. Until that lands, this discipline is load-bearing.
+**The discipline rule still matters for ad-hoc invocations that bypass the script wrapper**, e.g. `bun test src/server/__tests__/beast-tokens.test.ts` (direct path, no `run`-script). Those calls inherit your current shell environment — if `ORACLE_DB_PATH` is unset, `src/db/index.ts` falls back to `~/.oracle/oracle.db` and destructive `beforeEach` patterns wipe production. Always either use a script wrapper (`bun run test:unit`) or set the env var explicitly: `ORACLE_DB_PATH=:memory: bun test <path>`.
+
+If you need a sandbox file (e.g. to inspect post-test state): `ORACLE_DB_PATH=/tmp/test-$(date +%s).db bun test <file>`.
 
 ### 4. Push to origin + open PR
 

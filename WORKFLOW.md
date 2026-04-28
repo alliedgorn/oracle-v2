@@ -157,6 +157,45 @@ For QA-handoff Tier 2 changes per Norm #68, the QA-lane Beast (typically Pip) cl
 
 ---
 
+## Submitting specs (SDD workflow)
+
+Specs are markdown files at `<project-repo>/docs/specs/<short-name>.md` indexed by the spec system at `/api/specs`. The spec record stores metadata (id, repo, file_path, title, status, reviewer history); the markdown content lives on disk in the project repo. **Both must exist for the spec to be reviewable.**
+
+**Order of operations (mandatory)** — author git-commits-then-API:
+
+```bash
+# 1. Author the markdown content in the target repo at the spec's file_path
+cd /home/gorn/workspace/<project-repo>            # e.g., denbook-<beast> or beast-blueprint
+$EDITOR docs/specs/<short-name>.md
+
+# 2. git add + commit + push (the file MUST exist on origin/main before the API call,
+#    so the server's /content endpoint can read it)
+git add docs/specs/<short-name>.md
+git commit -m "specs: <short-name> v1 (draft)"
+git push origin main                              # or via PR if the repo gates main
+
+# 3. POST /api/specs (initial submit) OR /api/specs/<id>/resubmit (update)
+curl -s -X POST "http://localhost:47778/api/specs" \
+  -H "Authorization: Bearer $BEAST_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"<title>","author":"<beast>","repo":"<project-repo>","file_path":"docs/specs/<short-name>.md"}'
+# capture the returned spec id
+
+# 4. VERIFY within 60 seconds: GET /api/specs/<id>/content returns 200 with content
+curl -s "http://localhost:47778/api/specs/<id>/content" -H "Authorization: Bearer $BEAST_TOKEN" | head -c 500
+# If 404 "Spec file not found on disk" → step 2 was missed (file not committed/pushed)
+# If empty content → step 1 was incomplete (file is empty)
+# If 200 with full markdown → spec is reviewable
+```
+
+**Failure-class banked (Spec #53, 2026-04-25 → caught 2026-04-28)**: spec metadata was POST'd before the markdown file was written + committed. Spec record had `content: null` for 3 days; `/content` returned 404; the spec was effectively unreviewable. Discipline rule: **never POST `/api/specs` until step 4 verification passes against the file_path on disk.** The orphan-state is silent — the API does not block the metadata-only POST.
+
+**Updates / resubmits**: same shape. Edit the markdown locally → commit + push → POST `/api/specs/<id>/resubmit` with `{ author, change_summary? }` (no content body needed; server reads from updated file). Verify within 60s.
+
+**Server-side architecture note**: the spec server reads from the `<project-repo>` you registered at submit-time. As of 2026-04-28, this requires the repo to be locally accessible to the server (denbook + beast-blueprint clones; specs in other repos may need server-side multi-repo read support — track separately).
+
+---
+
 ## Production deploy (codebase-owner lane)
 
 The production server does NOT auto-deploy on PR-merge. A merge to `main` is a green-light to deploy, but the deploy itself is a deliberate step. This is intentional — see [Restart-is-Deploy lesson](#restart-is-deploy) below.

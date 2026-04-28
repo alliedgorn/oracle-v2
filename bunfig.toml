@@ -2,3 +2,7 @@
 # Only run unit and integration tests with bun test
 # E2E tests use Playwright (run with: bun run test:e2e)
 root = "src"
+# Force ORACLE_DB_PATH=:memory: + ORACLE_DATA_DIR=/tmp before any test module
+# imports — code-level baseline so production DB cannot be wiped by test runs
+# regardless of shell env or which command is used. See scripts/test-preload.ts.
+preload = ["./scripts/test-preload.ts"]

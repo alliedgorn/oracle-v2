@@ -16,6 +16,7 @@ import {
   revokeBeastChain,
   listTokens,
   pruneBeastTokens,
+  getTokenInfo,
 } from '../beast-tokens.ts';
 
 // ============================================================================
@@ -582,6 +583,65 @@ describe('selfRotateToken (Spec #52)', () => {
       `SELECT revoked_at FROM beast_tokens WHERE id = ?`
     ).get(rotated.id) as { revoked_at: string | null };
     expect(newRow.revoked_at).toBeNull();
+  });
+});
+
+describe('getTokenInfo (Spec #51 Phase 3)', () => {
+  it('returns id + beast + timing fields, NEVER token_hash', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    const info = getTokenInfo(created.id);
+    expect(info).not.toBeNull();
+    if (!info) return;
+    expect(info.id).toBe(created.id);
+    expect(info.beast).toBe('karo');
+    expect(info.expires_at).toBe(created.expiresAt);
+    expect(info.max_lifetime_at).toBeTruthy();
+    expect(info.refresh_window_starts_at).toBeTruthy();
+    expect(info.self_rotate_door_closes_at).toBeTruthy();
+    expect(info.rotation_recommended_at).toBeTruthy();
+    // No reversible material exposed.
+    expect((info as Record<string, unknown>).token_hash).toBeUndefined();
+  });
+
+  it('returns null for revoked tokens', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    revokeToken(created.id, 'gorn');
+    expect(getTokenInfo(created.id)).toBeNull();
+  });
+
+  it('rotation_recommended_at lands inside the empirical 17h cliff envelope', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    const info = getTokenInfo(created.id)!;
+    const createdMs = new Date(info.created_at.replace(' ', 'T') + 'Z').getTime();
+    const recMs = new Date(info.rotation_recommended_at!.replace(' ', 'T') + 'Z').getTime();
+    const ageHours = (recMs - createdMs) / (60 * 60 * 1000);
+    // Spec calibration: 12h trigger inside the 17h band-aid cliff envelope per Gnarl #10850.
+    expect(ageHours).toBe(12);
+  });
+});
+
+describe('rotation_recommended flag (Spec #52 Phase 4)', () => {
+  it('does NOT recommend rotation for fresh token', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    const result = validateToken(created.token);
+    expect(result.valid).toBe(true);
+    if (result.valid) expect(result.rotationRecommended).toBe(false);
+  });
+
+  it('DOES recommend rotation for token aged past ROTATION_RECOMMENDED_HOURS but inside SELF_ROTATE_WINDOW', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    // Age token to 13h (past 12h trigger, before 24h door-close).
+    sqlite.prepare(
+      `UPDATE beast_tokens SET created_at = datetime('now', '-13 hours'), expires_at = datetime('now', '+11 hours') WHERE id = ?`
+    ).run(created.id);
+    const result = validateToken(created.token);
+    expect(result.valid).toBe(true);
+    if (result.valid) expect(result.rotationRecommended).toBe(true);
   });
 });
 

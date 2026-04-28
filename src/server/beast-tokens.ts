@@ -37,6 +37,10 @@ const REFRESH_THROTTLE_MINUTES = 5;      // Min gap between refresh-fires per to
 // Spec #52 — self-rotate constants
 const SELF_ROTATE_WINDOW_HOURS = 24;     // Token must be within this window of created_at/rotated_at to self-rotate
 const ROTATION_GRACE_SECONDS = 10;       // Stale-in-flight window after rotated_at
+// Phase 4 (Gnarl architect-frame #10850 17h-cliff data): rotation_recommended fires
+// at this many hours of token life so Beast self-rotates inside the empirical
+// 17h band-aid cliff envelope. 12h leaves ~5h margin even on the worst observed cliff.
+const ROTATION_RECOMMENDED_HOURS = 12;
 
 // HMAC secret — reuse session secret from env, or generate per-run
 const TOKEN_HMAC_SECRET = process.env.ORACLE_SESSION_SECRET || process.env.ORACLE_TOKEN_SECRET || crypto.randomUUID();
@@ -223,6 +227,11 @@ type TokenValidationResult = {
   // Spec #52 — set when validation accepted under the rotation-grace window;
   // server can emit a `rotation_grace` warning header for caller telemetry.
   rotationGrace?: boolean;
+  // Spec #52 Phase 4 — set when token is older than ROTATION_RECOMMENDED_HOURS
+  // and still inside SELF_ROTATE_WINDOW_HOURS. Server emits an
+  // `X-Rotation-Recommended: true` response header so the Beast caller
+  // can call /api/auth/rotate transparently before the door closes.
+  rotationRecommended?: boolean;
 } | {
   valid: false;
   reason: 'invalid_format' | 'no_matching_token' | 'expired' | 'revoked' | 'chain_compromised' | 'max_lifetime_reached';
@@ -402,7 +411,70 @@ export function validateToken(token: string): TokenValidationResult {
     });
   }
 
-  return { valid: true, beast, tokenId: matched.id };
+  // Spec #52 Phase 4 — rotation_recommended signal.
+  // Triggers when token has aged past ROTATION_RECOMMENDED_HOURS but is still
+  // within SELF_ROTATE_WINDOW_HOURS. Active-Beast wrappers see the response
+  // header and call /api/auth/rotate transparently before the window closes.
+  const createdMsForFlag = new Date(matched.created_at.replace(' ', 'T') + 'Z').getTime();
+  const ageHours = (nowMs - createdMsForFlag) / (60 * 60 * 1000);
+  const rotationRecommended = ageHours >= ROTATION_RECOMMENDED_HOURS && ageHours < SELF_ROTATE_WINDOW_HOURS;
+
+  return { valid: true, beast, tokenId: matched.id, rotationRecommended };
+}
+
+// ============================================================================
+// Spec #51 Phase 3 — token info exposure (`/api/auth/me`)
+// ============================================================================
+
+/**
+ * Self-info read for a Beast: returns timing fields the Beast needs to
+ * monitor its own token state (expires_at, max_lifetime_at, refresh_until,
+ * created_at, rotated_at). NEVER returns token_hash or any reversible
+ * material — opaque token identity stays write-only.
+ */
+export function getTokenInfo(tokenId: number): {
+  id: number;
+  beast: string;
+  created_at: string;
+  expires_at: string;
+  max_lifetime_at: string | null;
+  rotated_at: string | null;
+  next_token_id: number | null;
+  // Computed: now + REFRESH_WINDOW from expires_at — the cutoff at which auto-refresh
+  // would extend on next successful auth. Caller-side display field, not authoritative.
+  refresh_window_starts_at: string | null;
+  // Computed: created_at + SELF_ROTATE_WINDOW_HOURS — the wall after which
+  // /api/auth/rotate returns 403 rotate_window_expired and owner reprovision is required.
+  self_rotate_door_closes_at: string | null;
+  // Computed: created_at + ROTATION_RECOMMENDED_HOURS — when the rotation_recommended
+  // header starts firing on validateToken responses.
+  rotation_recommended_at: string | null;
+} | null {
+  const row = getTokenByIdStmt.get(tokenId) as
+    | {
+        id: number; beast: string; created_at: string; expires_at: string;
+        revoked_at: string | null; last_used_at: string | null; created_by: string;
+        rotated_at: string | null; next_token_id: number | null; max_lifetime_at: string | null;
+      }
+    | undefined;
+  if (!row || row.revoked_at) return null;
+
+  const createdMs = new Date(row.created_at.replace(' ', 'T') + 'Z').getTime();
+  const expiresMs = new Date(row.expires_at.replace(' ', 'T') + 'Z').getTime();
+  const fmt = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+
+  return {
+    id: row.id,
+    beast: row.beast,
+    created_at: row.created_at,
+    expires_at: row.expires_at,
+    max_lifetime_at: row.max_lifetime_at,
+    rotated_at: row.rotated_at,
+    next_token_id: row.next_token_id,
+    refresh_window_starts_at: fmt(expiresMs - REFRESH_WINDOW_HOURS * 60 * 60 * 1000),
+    self_rotate_door_closes_at: fmt(createdMs + SELF_ROTATE_WINDOW_HOURS * 60 * 60 * 1000),
+    rotation_recommended_at: fmt(createdMs + ROTATION_RECOMMENDED_HOURS * 60 * 60 * 1000),
+  };
 }
 
 // ============================================================================

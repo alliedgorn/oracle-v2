@@ -131,6 +131,7 @@ import {
   revokeBeastChain,
   listTokens,
   pruneBeastTokens,
+  getTokenInfo,
 } from './server/beast-tokens.ts';
 
 import {
@@ -450,6 +451,18 @@ app.use('/api/*', async (c, next) => {
       c.set('authMethod' as any, 'token');
       c.set('tokenId' as any, result.tokenId);
       c.set('role' as any, 'beast' as Role);
+      // Spec #52 Phase 4 — surface rotation_recommended as response header
+      // so Beast caller wrappers can call /api/auth/rotate transparently
+      // before SELF_ROTATE_WINDOW closes (12h-of-life trigger inside the
+      // empirical 17h band-aid cliff envelope).
+      if (result.rotationRecommended) {
+        c.header('X-Rotation-Recommended', 'true');
+      }
+      // Spec #52 — surface rotation-grace acceptance for caller telemetry
+      // (lets a caller log that it just hit the in-flight grace window).
+      if (result.rotationGrace) {
+        c.header('X-Rotation-Grace', 'true');
+      }
       return next();
     } else {
       // Invalid/expired token — log and reject
@@ -1184,6 +1197,30 @@ app.post('/api/auth/tokens/rotate', (c) => {
   });
 });
 
+// Spec #51 Phase 3 — Beast-self token info read.
+// Returns timing fields the Beast needs to monitor its own token lifecycle:
+// expires_at, max_lifetime_at, refresh_window_starts_at, self_rotate_door_closes_at,
+// rotation_recommended_at, rotated_at, next_token_id. NEVER returns token_hash.
+//
+// Auth: Beast bearer token only — token_id is derived from the bearer, so a Beast
+// can only read ITS OWN token info. Owner session falls through to 403 here (the
+// listTokens / GET /api/auth/tokens endpoint serves the owner-side view).
+app.get('/api/auth/me', (c) => {
+  const authMethod = (c.get as any)('authMethod');
+  const beast = (c.get as any)('actor') as string;
+  const tokenId = (c.get as any)('tokenId') as number;
+
+  if (authMethod !== 'token' || !beast || !tokenId) {
+    return c.json({ error: 'Bearer-token Beast identity required' }, 403);
+  }
+
+  const info = getTokenInfo(tokenId);
+  if (!info) {
+    return c.json({ error: 'Token not found or revoked' }, 404);
+  }
+  return c.json(info);
+});
+
 // Spec #52 — Beast-self chain-aware rotation.
 // Beast presents CURRENT VALID token via Bearer auth; server issues fresh token,
 // chain-links old → new (rotated_at + next_token_id). Replay on the old token
@@ -1707,6 +1744,7 @@ const HELP_ENDPOINTS = [
     { method: 'DELETE', path: '/api/auth/tokens/:id', desc: 'Delete API token', params: null },
     { method: 'POST', path: '/api/auth/tokens/rotate', desc: 'Rotate API token (owner-driven)', params: null },
     { method: 'POST', path: '/api/auth/rotate', desc: 'Beast-self chain-aware rotation (Spec #52)', params: 'header: Authorization: Bearer <current_token>' },
+    { method: 'GET', path: '/api/auth/me', desc: 'Beast-self token info — expires_at, refresh_window, self_rotate_door, rotated_at (Spec #51 Phase 3)', params: 'header: Authorization: Bearer <current_token>' },
     // Guests
     { method: 'GET', path: '/api/guests', desc: 'List guests', params: null },
     { method: 'GET', path: '/api/guests/:id', desc: 'Get guest by ID', params: null },

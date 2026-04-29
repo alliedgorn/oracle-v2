@@ -33,7 +33,7 @@ Workflow shapes vary per project — this is the Burrow Book one. Other projects
 Before starting feature work, pull the latest `main` into your `<beast>/main` branch:
 
 ```bash
-cd /home/gorn/workspace/oracle-v2-<beast>
+cd /home/gorn/workspace/denbook-<beast>
 git checkout <beast>/main
 git pull --rebase origin main
 ```
@@ -186,7 +186,7 @@ The codebase-owner (currently @karo) fires deploys on a manual cadence — usual
 **Pre-deploy gate verification** (mandatory, every deploy):
 
 ```bash
-cd /home/gorn/workspace/oracle-v2
+cd /home/gorn/workspace/denbook
 
 # Verify local main matches origin
 git fetch origin main
@@ -272,7 +272,7 @@ Hot-fix mode does NOT bypass Decree #71 review. The fix still needs PR + reviewe
 If a deploy breaks production:
 
 ```bash
-cd /home/gorn/workspace/oracle-v2
+cd /home/gorn/workspace/denbook
 
 # Find the previous-good SHA (last green deploy)
 git log --oneline -10
@@ -341,7 +341,7 @@ chmod 600 ~/.oracle-<beast>-dev/.env
 #   PORT=47779  (or whatever port you chose)
 
 # 5. Run the DEV server from your DEV worktree
-cd /home/gorn/workspace/oracle-v2-<beast>
+cd /home/gorn/workspace/denbook-<beast>
 bun --env-file=/home/gorn/.oracle-<beast>-dev/.env run src/server.ts &
 
 # 6. Test against http://localhost:47779/ instead of 47778
@@ -372,7 +372,7 @@ Periodically (weekly per Decree #70 §Verification, owned by Pip), each Beast wo
 Beasts SHOULD periodically pull main into their `<beast>/main` to stay current:
 
 ```bash
-cd /home/gorn/workspace/oracle-v2-<beast>
+cd /home/gorn/workspace/denbook-<beast>
 git checkout <beast>/main
 git pull --rebase origin main  # if on <beast>/main with no local commits
 # OR

@@ -1,6 +1,6 @@
 # Burrow Book — Development → Production Workflow
 
-**v0.2** — 2026-04-26 fold-pass after PR #19 + PR #20 dogfood lessons (sync command fix + frontend/dist convention + error-surface discipline + board-state hygiene).
+**v0.3** — 2026-04-29 fold: frontend build step in deploy execution (backlog-column-vanish incident), oracle-v2→denbook path rename alignment.
 
 This document describes how Beasts develop features and how those features reach the production Burrow Book server. Read this on first-touch with the Burrow Book repo, and re-read when in doubt about the workflow.
 
@@ -12,14 +12,14 @@ Workflow shapes vary per project — this is the Burrow Book one. Other projects
 
 | Path | Role |
 |---|---|
-| `/home/gorn/workspace/shared/oracle-v2.git/` | Bare clone — canonical git source, never run from |
-| `/home/gorn/workspace/oracle-v2/` | Production worktree on `main` — server runs from here |
-| `/home/gorn/workspace/oracle-v2-<beast>/` | Per-Beast DEV worktree on `<beast>/main` — feature work, no server |
+| `/home/gorn/workspace/shared/denbook.git/` | Bare clone — canonical git source, never run from |
+| `/home/gorn/workspace/denbook/` | Production worktree on `main` — server + frontend build runs from here |
+| `/home/gorn/workspace/denbook-<beast>/` | Per-Beast DEV worktree on `<beast>/main` — feature work, no server |
 | `~/.oracle/` | Runtime state (`.env`, `oracle.db*`, `lancedb/`, `uploads/`, `meili/`) — outside any worktree |
 
 **Rules:**
-- Server runs ONLY from the production worktree at `/home/gorn/workspace/oracle-v2/`.
-- Beasts work ONLY in their per-Beast DEV worktree at `/home/gorn/workspace/oracle-v2-<beast>/`.
+- Server runs ONLY from the production worktree at `/home/gorn/workspace/denbook/`.
+- Beasts work ONLY in their per-Beast DEV worktree at `/home/gorn/workspace/denbook-<beast>/`.
 - Never check out branches in the bare clone.
 - Never enter another Beast's worktree.
 - Never copy `.env` or any `~/.oracle/` content into your worktree (Library #96 lever-1).
@@ -209,7 +209,7 @@ If any commit in the payload lacks its gate-clear, ABORT the deploy. Either:
 **Deploy execution:**
 
 ```bash
-cd /home/gorn/workspace/oracle-v2
+cd /home/gorn/workspace/denbook
 
 # Pull merged commits
 git pull origin main
@@ -217,19 +217,26 @@ git pull origin main
 # Install any new dependencies
 bun install
 
+# Rebuild frontend (MANDATORY if any frontend/ files changed in the deploy payload)
+# Skipping this serves a stale JS bundle — the server reads frontend/dist/ at request time,
+# so a restart alone does NOT pick up frontend source changes.
+cd frontend && npm run build && cd ..
+
 # Stop current server
 pkill -TERM -f 'bun.*server.ts'
 sleep 3
 curl -sf http://localhost:47778/api/health 2>&1 && echo "STILL UP — investigate" || echo "down ✓"
 
 # Start fresh
-nohup bun --env-file=/home/gorn/.oracle/.env run src/server.ts > /tmp/oracle-v2-server.log 2>&1 &
+nohup bun --env-file=/home/gorn/.oracle/.env run src/server.ts > /tmp/denbook-server.log 2>&1 &
 disown
 
 # Wait + verify
 sleep 6
 curl -sf http://localhost:47778/api/health
 ```
+
+**Frontend build is the silent-drop surface.** Backend-only changes don't need it, but any PR touching `frontend/src/` requires the rebuild before restart. The server serves `frontend/dist/` as static assets — if `dist/` is stale, users get old JS with correct API underneath. This is how the Backlog column vanished on 2026-04-29 (PR #45 merged, server restarted, frontend never rebuilt).
 
 **Post-deploy smoke battery** (verify the deploy didn't break anything):
 
@@ -275,7 +282,7 @@ git reset --hard <previous-good-sha>
 
 # Restart
 pkill -TERM -f 'bun.*server.ts' && sleep 3
-nohup bun --env-file=/home/gorn/.oracle/.env run src/server.ts > /tmp/oracle-v2-server.log 2>&1 &
+nohup bun --env-file=/home/gorn/.oracle/.env run src/server.ts > /tmp/denbook-server.log 2>&1 &
 disown
 sleep 6
 curl -sf http://localhost:47778/api/health
@@ -289,7 +296,7 @@ Rollback IS a deploy event — no carry-forward state assumptions. Same smoke-ba
 
 ## DEV state — when and how
 
-Per-Beast DEV worktrees do NOT have standing runtime state. The server runs ONLY from the production worktree at `/home/gorn/workspace/oracle-v2/` against `~/.oracle/` runtime state. This is intentional.
+Per-Beast DEV worktrees do NOT have standing runtime state. The server runs ONLY from the production worktree at `/home/gorn/workspace/denbook/` against `~/.oracle/` runtime state. This is intentional.
 
 ### Why no standing per-Beast runtime state
 
@@ -401,6 +408,7 @@ See `feedback_restart_is_deploy_not_test.md` (in Beast brain repos) for the less
 | PR creation | Manual (`gh pr create`) | Beast |
 | Three-tier review fires | Manual (reviewers see PR, post CLEAR/ASK) | Reviewer Beasts |
 | Merge to main | Manual (after CLEARs) | Beast (PR author) or Karo |
+| Frontend rebuild | Manual (codebase-owner, when frontend/ changed) | Karo |
 | Production deploy | Manual (codebase-owner cadence) | Karo |
 | Pre-deploy gate verify | Manual (mandatory before every restart) | Karo |
 | Smoke battery post-deploy | Manual (codebase-owner) + independent verify (Pip) | Karo + Pip |
@@ -426,7 +434,11 @@ Existing-file patterns are not refactor-targets in passing PRs (don't expand sco
 
 ## Iteration
 
-This is v0.2. Lessons from each deploy land here:
+This is v0.3. Lessons from each deploy land here:
+
+**v0.2 → v0.3 fold (2026-04-29)** — two candidates:
+1. **§Deploy execution — frontend build step** — `cd frontend && npm run build` added between `bun install` and `pkill`. Missing this step was the root cause of the Backlog-column-vanish on 2026-04-29: PR #45 added `backlog` to frontend STATUSES, server restarted without rebuilding, stale JS bundle served. The server reads `frontend/dist/` at request-time — restart alone does NOT pick up frontend source changes.
+2. **§Paths — oracle-v2 → denbook rename alignment** — all path references updated from the 04-27 rename migration (T#702 phase 4).
 
 **v0.1 → v0.2 fold (2026-04-26)** — four candidates landed from PR #19 (workflow-doc itself) + PR #20 (T#723 guest expiry edit) dogfood cycles:
 1. **§Step 1 sync command** — `git rebase origin/main` doesn't work in per-Beast worktrees per Decree #70 §Req 1 (no remote-tracking ref). Use `git pull --rebase origin main` instead. Same fix applied at §Per-Beast worktree maintenance.

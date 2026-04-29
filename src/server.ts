@@ -5,7 +5,10 @@
  * Same handlers, same DB, just cleaner HTTP layer.
  */
 
-import { Hono, type Context, type Next } from 'hono';
+import { type Context, type Next } from 'hono';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { swaggerUI } from '@hono/swagger-ui';
+import { healthRoute, authStatusRoute, authLoginRoute, authLogoutRoute, OPENAPI_INFO } from './server/openapi.ts';
 import { cors } from 'hono/cors';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -190,7 +193,8 @@ registerSignalHandlers(async () => {
 });
 
 // Create Hono app
-const app = new Hono();
+type AppEnv = { Variables: Record<string, any> };
+const app = new OpenAPIHono<AppEnv>();
 
 // Custom 404 with did-you-mean hints for API routes
 // Uses HELP_ENDPOINTS (defined below with /api/help) for path matching
@@ -1524,8 +1528,8 @@ app.get('/api/docs', (c) => {
   });
 });
 
-// Health check
-app.get('/api/health', (c) => {
+// Health check (OpenAPI — Spec #55 Phase 1 proof-of-pattern)
+app.openapi(healthRoute, (c) => {
   return c.json({ status: 'ok', server: 'oracle-nightly', port: PORT, oracleV2: 'connected' });
 });
 
@@ -12933,6 +12937,24 @@ app.get('/api/telegram/message/:id', (c) => {
 
 // Start polling on server boot
 startTelegramPolling();
+
+// ============================================================================
+// OpenAPI Schema + Swagger UI (Spec #55 Phase 1)
+// ============================================================================
+
+app.doc('/openapi.json', (c) => {
+  if (!isAuthenticated(c)) {
+    return c.json({ error: 'Authentication required' }, 401) as any;
+  }
+  return OPENAPI_INFO;
+});
+
+app.get('/docs', (c) => {
+  if (!isAuthenticated(c)) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+  return swaggerUI({ url: '/openapi.json' })(c, async () => {});
+});
 
 // ============================================================================
 // Static Frontend (production build)

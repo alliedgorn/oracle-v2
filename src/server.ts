@@ -6155,7 +6155,7 @@ app.get('/api/board', (c) => {
   const tasks = sqlite.prepare(query).all(...params) as any[];
 
   const columns: Record<string, any[]> = {
-    todo: [], in_progress: [], in_review: [], done: [], blocked: [], cancelled: [],
+    backlog: [], todo: [], in_progress: [], in_review: [], done: [], blocked: [], cancelled: [],
   };
   for (const task of tasks) {
     if (columns[task.status]) columns[task.status].push(task);

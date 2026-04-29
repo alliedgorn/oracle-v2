@@ -5916,7 +5916,7 @@ app.post('/api/tasks', async (c) => {
   if (!assigned_to) return c.json({ error: 'assigned_to required — every task must have an assignee' }, 400);
   if (!reviewer) return c.json({ error: 'reviewer required — every task must have a reviewer for the in_review workflow' }, 400);
 
-  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
+  const validStatuses = ['todo', 'backlog', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   const validPriorities = ['critical', 'high', 'medium', 'low'];
   const taskStatus = validStatuses.includes(status) ? status : 'todo';
   const taskPriority = validPriorities.includes(priority) ? priority : 'medium';
@@ -5985,7 +5985,7 @@ app.patch('/api/tasks/:id', async (c) => {
 
   const data = await c.req.json();
 
-  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
+  const validStatuses = ['todo', 'backlog', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   const validPriorities = ['critical', 'high', 'medium', 'low'];
   if (data.status && !validStatuses.includes(data.status)) return c.json({ error: `Invalid status. Valid: ${validStatuses.join(', ')}` }, 400);
   if (data.priority && !validPriorities.includes(data.priority)) return c.json({ error: `Invalid priority. Valid: ${validPriorities.join(', ')}` }, 400);
@@ -6053,7 +6053,7 @@ app.post('/api/tasks/bulk-status', async (c) => {
   const { task_ids, status } = data;
   if (!Array.isArray(task_ids) || !status) return c.json({ error: 'task_ids and status required' }, 400);
 
-  const validStatuses = ['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
+  const validStatuses = ['todo', 'backlog', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   if (!validStatuses.includes(status)) return c.json({ error: 'Invalid status' }, 400);
 
   // SDD enforcement for bulk status

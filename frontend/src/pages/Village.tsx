@@ -9,6 +9,25 @@ interface MapVersion {
 
 const MAP_VERSIONS: MapVersion[] = [
   {
+    version: 'v4',
+    date: '2026-04-14 04:10 GMT+7',
+    changes: [
+      'Added Karo\u2019s cabin (south of the warm rock, facing the canal)',
+      'Added subtle distance grid at 100px spacing',
+    ],
+  },
+  {
+    version: 'v3',
+    date: '2026-04-12 GMT+7',
+    changes: [
+      'Added the tailor (south side of the square)',
+      'Added the print shop (near fig courtyard)',
+      'Added Sable\u2019s alley shortcut (tailor to print shop)',
+      'Added the cut stones (mill foundation)',
+      'Added the old sluice (irrigation slab past the south bend)',
+    ],
+  },
+  {
     version: 'v2',
     date: '2026-04-07 05:11 GMT+7',
     changes: [

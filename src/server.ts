@@ -1840,7 +1840,7 @@ const HELP_ENDPOINTS = [
     // Withings (additional)
     { method: 'POST', path: '/api/oauth/withings/sync', desc: 'Sync Withings data', params: null },
     { method: 'POST', path: '/api/webhooks/withings', desc: 'Withings webhook callback', params: null },
-    { method: 'POST', path: '/api/webhooks/hevy', desc: 'Hevy webhook callback (T#724) — workout creation push', params: 'body: { workoutId } | header: Authorization: Bearer <HEVY_WEBHOOK_TOKEN>' },
+    { method: 'POST', path: '/api/webhooks/hevy', desc: 'Hevy webhook callback (T#724) — workout creation push', params: 'body: { workoutId } | header: Authorization: <HEVY_WEBHOOK_TOKEN> (raw, no Bearer prefix)' },
     // Telegram
     { method: 'GET', path: '/api/telegram/status', desc: 'Telegram polling status (owner only)', params: null },
     { method: 'GET', path: '/api/telegram/message/:id', desc: 'T#712 — cached inbound TG message by id (Gorn + Sable only)', params: null },
@@ -11352,7 +11352,8 @@ app.post('/api/routine/hevy/sync', async (c) => {
 
 // POST /api/webhooks/hevy — receive Hevy push notifications on workout creation (T#724)
 // Hevy spec: POST { workoutId } body, expects 200 OK within 5 seconds.
-// Auth: HEVY_WEBHOOK_TOKEN env var, Hevy puts in Authorization: Bearer header.
+// Auth: HEVY_WEBHOOK_TOKEN env var, Hevy puts in Authorization header as raw token
+// (NO 'Bearer ' prefix — confirmed empirically via webhook.site capture 2026-04-29).
 // Pattern parity with /api/webhooks/withings — respond fast + async sync.
 // Bear T3 stamp: Discord 21:28 BKK 2026-04-26 (Sable Prowl #89 audit).
 app.post('/api/webhooks/hevy', async (c) => {
@@ -11363,26 +11364,13 @@ app.post('/api/webhooks/hevy', async (c) => {
     return c.text('OK', 200); // Still 200 to avoid Hevy retries
   }
   const authHeader = c.req.header('Authorization') || '';
-  const expectedHeader = `Bearer ${webhookToken}`;
+  // Hevy sends the raw token as the Authorization header value (no 'Bearer ' prefix).
   // Use crypto.timingSafeEqual for canonical constant-time compare
   // (per Pip + Bertus PR #24 review — manual loop leaks length info via loop duration)
   const authBuf = Buffer.from(authHeader);
-  const expectedBuf = Buffer.from(expectedHeader);
+  const expectedBuf = Buffer.from(webhookToken);
   const valid = authBuf.length === expectedBuf.length && timingSafeEqual(authBuf, expectedBuf);
   if (!valid) {
-    // DEBUG (TEMP — revert post-diagnosis): re-armed for round 2 of Hevy webhook
-    // auth-fail diagnosis. PR #26 fixed middleware-blocks-before-handler so requests
-    // now reach this block and the diagnostic will actually fire (PR #25's diagnostic
-    // never produced data because the request never got here). Per Bertus #10507
-    // debug-asymmetry: log what you got, not what you expected — only authHeader-side
-    // preview, no expected-side leak. authHeader length + first 4 + last 4 chars +
-    // all-header-names enumerated to triage paste-mismatch vs invisible-char vs
-    // format-mismatch vs missing-header.
-    const headerPreview = authHeader.length > 8
-      ? `${authHeader.slice(0, 4)}...${authHeader.slice(-4)}`
-      : authHeader || '(empty)';
-    const allHeaderNames = Array.from(c.req.raw.headers.keys()).join(',');
-    console.warn(`[Hevy webhook] auth failed — bad bearer. authHeader length=${authHeader.length} preview=${headerPreview} | all headers=[${allHeaderNames}]`);
     return c.json({ error: 'forbidden' }, 401);
   }
 

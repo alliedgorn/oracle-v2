@@ -41,7 +41,18 @@ export function MermaidDiagram({ code }: { code: string }) {
       try {
         const { svg } = await mermaid.render(id, code.trim());
         if (containerRef.current) {
-          containerRef.current.innerHTML = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } });
+          // Mermaid v11 still uses <foreignObject> + inline HTML (span/div) for
+          // some node labels even with flowchart.htmlLabels:false. Pure svg
+          // profile strips the HTML inside foreignObject → invisible labels.
+          // Allow svg + the small set of HTML tags mermaid emits, plus the
+          // attrs needed for class-based styling. mermaid securityLevel:strict
+          // already escapes user input before it reaches the SVG, so the inner
+          // HTML is mermaid-controlled.
+          containerRef.current.innerHTML = DOMPurify.sanitize(svg, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+            ADD_TAGS: ['foreignObject', 'span', 'div', 'p', 'br'],
+            ADD_ATTR: ['class', 'style', 'xmlns', 'requiredExtensions'],
+          });
           setError(null);
         }
       } catch (e) {

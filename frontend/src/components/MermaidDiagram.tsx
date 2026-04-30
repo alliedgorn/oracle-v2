@@ -6,6 +6,10 @@ mermaid.initialize({
   startOnLoad: false,
   securityLevel: 'strict',
   theme: 'dark',
+  // Force SVG <text> elements instead of <foreignObject> HTML. DOMPurify's
+  // svg profile preserves <text> but strips <foreignObject> contents — without
+  // this, node labels render invisible (boxes + arrows show, text gone).
+  flowchart: { htmlLabels: false },
   themeVariables: {
     primaryColor: '#d97706',
     primaryTextColor: '#c9d1d9',

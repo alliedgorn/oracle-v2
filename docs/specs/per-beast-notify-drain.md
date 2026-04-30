@@ -39,6 +39,97 @@ Combined with the Decree #59 boundary + bearer-derive auth (Spec #51, Spec #52),
 
 ## Design
 
+### Architecture diagram
+
+```mermaid
+graph TB
+    subgraph BRAIN[" Brain Worktree zone — Beast-owned (/home/gorn/workspace/&lt;beast&gt;/) "]
+        direction TB
+        NOTIFY_KARO["karo/scripts/notify.sh"]
+        DRAIN_KARO["karo/scripts/notify-drain.sh"]
+        NOTIFY_BERTUS["bertus/scripts/notify.sh"]
+        DRAIN_BERTUS["bertus/scripts/notify-drain.sh"]
+        NOTIFY_OTHER["...other beasts/scripts/notify.sh + notify-drain.sh"]
+    end
+
+    subgraph TMP[" /tmp shared zone — transient process state "]
+        direction TB
+        QUEUE_KARO["/tmp/den-notify/karo.queue"]
+        QUEUE_BERTUS["/tmp/den-notify/bertus.queue"]
+        QUEUE_OTHER["/tmp/den-notify/&lt;beast&gt;.queue"]
+    end
+
+    subgraph SERVER[" Server runtime zone (~/.oracle/) "]
+        direction TB
+        EVENT["Server event<br/>(DM, forum, scheduler, TG, Prowl)"]
+        ADAPTOR["src/notify.ts<br/>enqueueNotification(beast, msg, --from server)"]
+        EVENT --> ADAPTOR
+    end
+
+    subgraph TMUX[" tmux sessions (Beast-owned, Pascal-case) "]
+        TMUX_KARO["Karo tmux session"]
+        TMUX_BERTUS["Bertus tmux session"]
+        TMUX_OTHER["&lt;Beast&gt; tmux session"]
+    end
+
+    %% PRODUCER PATHS — three diverse paths converging at queue
+    %% 1. Server-originated
+    ADAPTOR -- "spawnSync<br/>--from server" --> NOTIFY_KARO
+    ADAPTOR -.-> NOTIFY_BERTUS
+    ADAPTOR -.-> NOTIFY_OTHER
+
+    %% 2. Beast-to-beast direct (no server in path)
+    DRAIN_BERTUS -. "Bertus calls<br/>karo/scripts/notify.sh<br/>--from bertus" .-> NOTIFY_KARO
+
+    %% 3. Self-ping (beast invokes own notify.sh)
+    DRAIN_KARO -. "self-ping<br/>--from self" .-> NOTIFY_KARO
+
+    %% notify.sh writes to queue (file derived from script path via readlink -f)
+    NOTIFY_KARO -- "flock + base64<br/>append" --> QUEUE_KARO
+    NOTIFY_BERTUS --> QUEUE_BERTUS
+    NOTIFY_OTHER --> QUEUE_OTHER
+
+    %% CONSUMER PATH — beast-owned drain reads own queue
+    QUEUE_KARO --> DRAIN_KARO
+    QUEUE_BERTUS --> DRAIN_BERTUS
+    QUEUE_OTHER --> DRAIN_OTHER["...drain.sh"]
+
+    %% drain → tmux send-keys
+    DRAIN_KARO -- "tmux send-keys -l<br/>+ T#714 200ms<br/>+ Enter" --> TMUX_KARO
+    DRAIN_BERTUS --> TMUX_BERTUS
+    DRAIN_OTHER --> TMUX_OTHER
+
+    %% Wake-order SHA verify (T26)
+    BLUEPRINT[("Beast Blueprint<br/>checksums/notify.sha256<br/>checksums/notify-drain.sha256")] -. "wake-order<br/>SHA verify<br/>FATAL on mismatch" .-> NOTIFY_KARO
+    BLUEPRINT -.-> DRAIN_KARO
+
+    classDef brain fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef tmp fill:#fff3e0,stroke:#f57c00,color:#000
+    classDef server fill:#e3f2fd,stroke:#1565c0,color:#000
+    classDef tmux fill:#f3e5f5,stroke:#7b1fa2,color:#000
+    classDef blueprint fill:#fce4ec,stroke:#c2185b,color:#000
+
+    class NOTIFY_KARO,DRAIN_KARO,NOTIFY_BERTUS,DRAIN_BERTUS,NOTIFY_OTHER,DRAIN_OTHER brain
+    class QUEUE_KARO,QUEUE_BERTUS,QUEUE_OTHER tmp
+    class EVENT,ADAPTOR server
+    class TMUX_KARO,TMUX_BERTUS,TMUX_OTHER tmux
+    class BLUEPRINT blueprint
+```
+
+**Diagram reading**:
+- **Brain Worktree zone (green)**: each beast owns BOTH `notify.sh` (producer) and `notify-drain.sh` (consumer) in their own brain. Sovereignty quartet completion.
+- **/tmp shared zone (orange)**: queue files at well-known paths. Mode 0700 dir, mode 0600 files. Transient state per the three-zone separation.
+- **Server runtime zone (blue)**: server event sources flow into thin adaptor (`enqueueNotification`) that spawns the target beast's notify.sh.
+- **tmux sessions (purple)**: drain delivers via `tmux send-keys -l` + T#714 200ms race-fix + Enter.
+- **Beast Blueprint (pink, hexagonal)**: wake-order SHA-verify gate on both scripts. FATAL on mismatch.
+
+**Three producer paths converging at the queue** (key sovereignty insight):
+1. **Server-originated** (solid arrow): server event → adaptor → `<beast>/scripts/notify.sh`
+2. **Beast-to-beast direct** (dotted): one beast invokes another's notify.sh directly. No server on the call path. This is the offline-resilience unlock — pack-internal coordination continues even if denbook server is down.
+3. **Self-ping** (dotted): beast invokes own notify.sh from in-process scripts. Useful for self-reminders, scheduled self-pokes.
+
+All three paths produce the same queue-line format (timestamp + sender + message). Drain reads the queue uniformly — producer diversity, consumer unity. Right topology.
+
 ### Producer: `notify.sh` in Beast Blueprint (v4 — correct shape)
 
 **Location**: `/home/gorn/workspace/<beast>/scripts/notify.sh` (Beast Blueprint propagation).

@@ -95,6 +95,10 @@ export function enqueueNotification(beast: string, message: string, opts?: Enque
     if (result.exitCode === 0) return true;
     // Quiet during migration window — exit 127 (file not found) is expected
     // for un-migrated Beasts. Only log non-127 unexpected failures.
+    // TODO(Phase 4b cleanup, Bertus DEN-PR55-bertus C-PR55-1): remove the
+    // `if (result.exitCode !== 127)` silence after all Beasts migrate to
+    // Blueprint v0.6.3+. Post-migration, exit 127 indicates a real failure
+    // (deleted script, broken symlink) and should always log.
     if (result.exitCode !== 127) {
       console.error(`[notify] Per-Beast notify failed for ${beastLower} (exit ${result.exitCode})`);
     }

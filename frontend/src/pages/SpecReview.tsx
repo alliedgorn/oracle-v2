@@ -7,6 +7,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { FileUpload } from '../components/FileUpload';
 import { EmojiButton } from '../components/EmojiButton';
+import { MermaidDiagram } from '../components/MermaidDiagram';
 import styles from './SpecReview.module.css';
 
 interface SpecVersion {
@@ -279,11 +280,15 @@ export function SpecReview() {
             components={{
               code({ className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className || '');
+                const lang = match?.[1];
                 const inline = !match && !String(children).includes('\n');
+                if (lang === 'mermaid') {
+                  return <MermaidDiagram code={String(children).replace(/\n$/, '')} />;
+                }
                 return inline ? (
                   <code className={className} {...props}>{children}</code>
                 ) : (
-                  <SyntaxHighlighter style={oneDark} language={match?.[1] || 'text'} PreTag="div">
+                  <SyntaxHighlighter style={oneDark} language={lang || 'text'} PreTag="div">
                     {String(children).replace(/\n$/, '')}
                   </SyntaxHighlighter>
                 );

@@ -293,6 +293,9 @@ export function Board() {
         ...(newParentTaskId ? { parent_task_id: newParentTaskId } : {}),
       }),
     });
+    if (newParentTaskId) {
+      setSubtasksByParent(prev => { const next = { ...prev }; delete next[newParentTaskId]; return next; });
+    }
     setNewTitle(''); setNewDesc(''); setNewPriority('medium');
     setNewAssignee(''); setNewReviewer(''); setNewRiskLevel('medium'); setNewProjectId(''); setNewStatus('todo');
     setNewParentTaskId(null);

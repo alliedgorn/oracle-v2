@@ -206,37 +206,17 @@ If any commit in the payload lacks its gate-clear, ABORT the deploy. Either:
 - Wait for the missing gate to clear, OR
 - Cherry-pick deploy only the gate-cleared commits (advanced, requires careful branch management)
 
-**Deploy execution:**
+**Deploy execution — use `scripts/deploy.sh`:**
 
 ```bash
-cd /home/gorn/workspace/denbook
-
-# Pull merged commits
-git pull origin main
-
-# Install any new dependencies
-bun install
-
-# Rebuild frontend (MANDATORY if any frontend/ files changed in the deploy payload)
-# Skipping this serves a stale JS bundle — the server reads frontend/dist/ at request time,
-# so a restart alone does NOT pick up frontend source changes.
-cd frontend && npm run build && cd ..
-
-# Stop current server
-pkill -TERM -f 'bun.*server.ts'
-sleep 3
-curl -sf http://localhost:47778/api/health 2>&1 && echo "STILL UP — investigate" || echo "down ✓"
-
-# Start fresh
-nohup bun --env-file=/home/gorn/.oracle/.env run src/server.ts > /tmp/denbook-server.log 2>&1 &
-disown
-
-# Wait + verify
-sleep 6
-curl -sf http://localhost:47778/api/health
+bash scripts/deploy.sh
 ```
 
-**Frontend build is the silent-drop surface.** Backend-only changes don't need it, but any PR touching `frontend/src/` requires the rebuild before restart. The server serves `frontend/dist/` as static assets — if `dist/` is stale, users get old JS with correct API underneath. This is how the Backlog column vanished on 2026-04-29 (PR #45 merged, server restarted, frontend never rebuilt).
+The script handles the full sequence: pull → detect dependency changes → detect frontend changes and rebuild if needed → stop server → start fresh → smoke check. **Always use this script instead of manual steps** — it auto-detects frontend changes via `git diff` and only rebuilds when `frontend/src/` files changed in the deploy payload.
+
+**Why automated**: manual deploy skipped the frontend rebuild twice (PR #45 backlog-column-vanish 2026-04-29, PR #59 subtask-UI-invisible 2026-05-01). Same failure class twice = automated. The script eliminates the silent-drop surface.
+
+**Frontend build is the silent-drop surface.** Backend-only changes don't need it, but any PR touching `frontend/src/` requires the rebuild before restart. The server serves `frontend/dist/` as static assets — if `dist/` is stale, users get old JS with correct API underneath.
 
 **Post-deploy smoke battery** (verify the deploy didn't break anything):
 

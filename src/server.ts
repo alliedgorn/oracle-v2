@@ -6401,8 +6401,8 @@ try {
 const AUDIT_READ_ALLOWLIST = ['bertus', 'talon'];
 
 app.get('/api/audit', (c) => {
-  // Gorn (session auth) or security team (bertus, talon) via ?as=
-  const requester = (c.req.query('as') || '').toLowerCase();
+  // T#727: bearer-derive + legacy ?as= for security team check
+  const requester = ((c.get as any)('actor') || c.req.query('as') || '').toLowerCase();
   if (!hasSessionAuth(c) && !AUDIT_READ_ALLOWLIST.includes(requester)) {
     return c.json({ error: 'Audit logs are restricted to Gorn and security team' }, 403);
   }
@@ -6437,8 +6437,8 @@ app.get('/api/audit', (c) => {
 
 // GET /api/audit/stats — summary counts
 app.get('/api/audit/stats', (c) => {
-  // Gorn (session auth) or security team (bertus, talon) via ?as=
-  const requester = (c.req.query('as') || '').toLowerCase();
+  // T#727: bearer-derive + legacy ?as= for security team check
+  const requester = ((c.get as any)('actor') || c.req.query('as') || '').toLowerCase();
   if (!hasSessionAuth(c) && !AUDIT_READ_ALLOWLIST.includes(requester)) {
     return c.json({ error: 'Audit stats are restricted to Gorn and security team' }, 403);
   }
@@ -6462,8 +6462,9 @@ const SECURITY_READ_ALLOWLIST = ['bertus', 'talon'];
 
 // GET /api/security/events — query security events
 app.get('/api/security/events', (c) => {
-  const requester = (c.req.query('as') || '').toLowerCase();
-  const isSecurityTeam = isTrustedRequest(c) && SECURITY_READ_ALLOWLIST.includes(requester);
+  // T#727: bearer-derive + legacy ?as= for security team check
+  const requester = ((c.get as any)('actor') || c.req.query('as') || '').toLowerCase();
+  const isSecurityTeam = (isTrustedRequest(c) || (c.get as any)('authMethod') === 'token') && SECURITY_READ_ALLOWLIST.includes(requester);
   if (!hasSessionAuth(c) && !isSecurityTeam) {
     return c.json({ error: 'Security events are restricted to Gorn and security team' }, 403);
   }
@@ -6506,8 +6507,9 @@ app.get('/api/security/events', (c) => {
 
 // GET /api/security/events/stats — summary counts
 app.get('/api/security/events/stats', (c) => {
-  const requester = (c.req.query('as') || '').toLowerCase();
-  const isSecurityTeam = isTrustedRequest(c) && SECURITY_READ_ALLOWLIST.includes(requester);
+  // T#727: bearer-derive + legacy ?as= for security team check
+  const requester = ((c.get as any)('actor') || c.req.query('as') || '').toLowerCase();
+  const isSecurityTeam = (isTrustedRequest(c) || (c.get as any)('authMethod') === 'token') && SECURITY_READ_ALLOWLIST.includes(requester);
   if (!hasSessionAuth(c) && !isSecurityTeam) {
     return c.json({ error: 'Security event stats are restricted to Gorn and security team' }, 403);
   }

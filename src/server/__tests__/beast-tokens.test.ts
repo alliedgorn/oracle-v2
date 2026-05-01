@@ -177,18 +177,32 @@ describe('validateToken', () => {
     }
   });
 
-  it('rejects expired tokens', () => {
+  it('rejects expired tokens past 6h grace', () => {
     const created = createToken('karo', 'gorn');
     if ('token' in created) {
-      // Manually expire the token in DB
+      // Expire token 7h ago — past the 6h grace window
       sqlite.prepare(
-        `UPDATE beast_tokens SET expires_at = datetime('now', '-1 hour') WHERE id = ?`
+        `UPDATE beast_tokens SET expires_at = datetime('now', '-7 hours') WHERE id = ?`
       ).run(created.id);
       const result = validateToken(created.token);
       expect(result.valid).toBe(false);
       if (!result.valid) {
-        // Spec #51 — validateToken now distinguishes expired from no_matching_token.
         expect(result.reason).toBe('expired');
+      }
+    }
+  });
+
+  it('allows expired tokens within 6h grace with expiredGrace flag', () => {
+    const created = createToken('karo', 'gorn');
+    if ('token' in created) {
+      // Expire token 1h ago — within the 6h grace window
+      sqlite.prepare(
+        `UPDATE beast_tokens SET expires_at = datetime('now', '-1 hour') WHERE id = ?`
+      ).run(created.id);
+      const result = validateToken(created.token);
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.expiredGrace).toBe(true);
       }
     }
   });
@@ -527,16 +541,27 @@ describe('selfRotateToken (Spec #52)', () => {
     expect(oldRow.revoked_at).toBeNull();
   });
 
-  it('rejects rotate-window-expired (token older than 24h)', () => {
+  it('rejects rotate-window-expired (token expired more than 6h ago)', () => {
     const created = createToken('karo', 'gorn');
     if (!('token' in created)) throw new Error('createToken failed');
-    // Force created_at to 25h ago.
+    // Expire 7h ago — past the 6h post-expiry grace window
     sqlite.prepare(
-      `UPDATE beast_tokens SET created_at = datetime('now', '-25 hours') WHERE id = ?`
+      `UPDATE beast_tokens SET expires_at = datetime('now', '-7 hours') WHERE id = ?`
     ).run(created.id);
     const result = selfRotateToken(created.id, 'karo');
     expect('error' in result).toBe(true);
     if ('error' in result) expect(result.code).toBe('rotate_window_expired');
+  });
+
+  it('allows self-rotation within 6h post-expiry grace', () => {
+    const created = createToken('karo', 'gorn');
+    if (!('token' in created)) throw new Error('createToken failed');
+    // Expire 2h ago — within the 6h grace window
+    sqlite.prepare(
+      `UPDATE beast_tokens SET expires_at = datetime('now', '-2 hours') WHERE id = ?`
+    ).run(created.id);
+    const result = selfRotateToken(created.id, 'karo');
+    expect('token' in result).toBe(true);
   });
 
   it('rejects rotation_locked when called twice on same token', () => {

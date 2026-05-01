@@ -449,6 +449,10 @@ app.use('/api/*', async (c, next) => {
     const result = validateToken(token);
 
     if (result.valid) {
+      // Decree #70 Req 8 — expired-grace tokens can ONLY reach /api/auth/rotate
+      if (result.expiredGrace && path !== '/api/auth/rotate') {
+        return c.json({ error: 'Token expired — self-rotate available at POST /api/auth/rotate', code: 'expired_grace_rotate_only' }, 401);
+      }
       // Token validated — set actor identity and skip further auth
       c.set('actor' as any, result.beast);
       c.set('actorType' as any, 'beast');
@@ -466,6 +470,9 @@ app.use('/api/*', async (c, next) => {
       // (lets a caller log that it just hit the in-flight grace window).
       if (result.rotationGrace) {
         c.header('X-Rotation-Grace', 'true');
+      }
+      if (result.expiredGrace) {
+        c.header('X-Expired-Grace', 'true');
       }
       return next();
     } else {
@@ -1233,7 +1240,7 @@ app.get('/api/auth/me', (c) => {
 // Failure semantics:
 //   401 — invalid/expired/revoked bearer
 //   403 — bearer is not a Beast (e.g. owner session, no tokenId)
-//   403 + code=rotate_window_expired — token outside SELF_ROTATE_WINDOW (24h)
+//   403 + code=rotate_window_expired — token past expires_at + 6h grace (Decree #70 Req 8)
 //   409 + code=rotation_locked — token already rotated_away (concurrent double-rotate)
 app.post('/api/auth/rotate', (c) => {
   const authMethod = (c.get as any)('authMethod');

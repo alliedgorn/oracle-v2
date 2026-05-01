@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import styles from './Board.module.css';
 import ReactMarkdown from 'react-markdown';
@@ -14,6 +14,17 @@ interface Project {
   status: string;
   created_by: string;
   created_at: string;
+}
+
+interface SubtasksSummary {
+  count: number;
+  done: number;
+  in_progress: number;
+  todo: number;
+  blocked: number;
+  in_review: number;
+  backlog: number;
+  cancelled: number;
 }
 
 interface Task {
@@ -33,6 +44,8 @@ interface Task {
   risk_level: string;
   created_at: string;
   updated_at: string;
+  parent_task_id: number | null;
+  subtasks?: SubtasksSummary;
 }
 
 interface TaskComment {
@@ -87,6 +100,10 @@ export function Board() {
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
   const [beasts, setBeasts] = useState<{ name: string; displayName: string }[]>([]);
 
+  // Subtask expand/collapse
+  const [expandedTasks, setExpandedTasks] = useState<Set<number>>(new Set());
+  const [subtasksByParent, setSubtasksByParent] = useState<Record<number, Task[]>>({});
+
   // New task form
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -96,6 +113,7 @@ export function Board() {
   const [newRiskLevel, setNewRiskLevel] = useState('medium');
   const [newProjectId, setNewProjectId] = useState('');
   const [newStatus, setNewStatus] = useState('todo');
+  const [newParentTaskId, setNewParentTaskId] = useState<number | null>(null);
 
   // New project form
   const [newProjectName, setNewProjectName] = useState('');
@@ -272,10 +290,12 @@ export function Board() {
         project_id: newProjectId ? parseInt(newProjectId, 10) : null,
         status: newStatus,
         created_by: 'gorn',
+        ...(newParentTaskId ? { parent_task_id: newParentTaskId } : {}),
       }),
     });
     setNewTitle(''); setNewDesc(''); setNewPriority('medium');
     setNewAssignee(''); setNewReviewer(''); setNewRiskLevel('medium'); setNewProjectId(''); setNewStatus('todo');
+    setNewParentTaskId(null);
     setShowNewTask(false);
     loadBoard();
   }
@@ -318,7 +338,24 @@ export function Board() {
     setSelectedTask(task);
     const res = await fetch(`${API_BASE}/tasks/${task.id}`);
     const data = await res.json();
+    setSelectedTask(data);
     setTaskComments(data.comments || []);
+  }
+
+  async function toggleSubtasks(taskId: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    const next = new Set(expandedTasks);
+    if (next.has(taskId)) {
+      next.delete(taskId);
+    } else {
+      next.add(taskId);
+      if (!subtasksByParent[taskId]) {
+        const res = await fetch(`${API_BASE}/tasks?parent_id=${taskId}&limit=50`);
+        const data = await res.json();
+        setSubtasksByParent(prev => ({ ...prev, [taskId]: data.tasks || [] }));
+      }
+    }
+    setExpandedTasks(next);
   }
 
   async function addComment(e: React.FormEvent) {
@@ -458,8 +495,14 @@ export function Board() {
       {/* New Task Form */}
       {showNewTask && (
         <form onSubmit={createTask} className={styles.newTaskForm}>
+          {newParentTaskId && (
+            <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+              Creating subtask of T#{newParentTaskId}
+              <button type="button" style={{ fontSize: 11, cursor: 'pointer', background: 'none', border: 'none', color: 'var(--text-muted)' }} onClick={() => setNewParentTaskId(null)}>✕ clear</button>
+            </div>
+          )}
           <input
-            placeholder="Task title..."
+            placeholder={newParentTaskId ? "Subtask title..." : "Task title..."}
             value={newTitle}
             onChange={e => setNewTitle(e.target.value)}
             className={styles.formInput}
@@ -551,8 +594,21 @@ export function Board() {
                   {isDone && tasks.length === 0 && !doneLoading && (
                     <div className={styles.emptyColumn}>No completed tasks</div>
                   )}
-                  {tasks.map(task => (
-                    <TaskCard key={task.id} task={task} onClick={() => openTaskDetail(task)} />
+                  {tasks.filter(t => !t.parent_task_id).map(task => (
+                    <React.Fragment key={task.id}>
+                      <TaskCard
+                        task={task}
+                        onClick={() => openTaskDetail(task)}
+                        hasSubtasks={!!task.subtasks?.count}
+                        expanded={expandedTasks.has(task.id)}
+                        onToggle={(e) => toggleSubtasks(task.id, e)}
+                      />
+                      {expandedTasks.has(task.id) && (subtasksByParent[task.id] || []).map(sub => (
+                        <div key={sub.id} style={{ marginLeft: 20, borderLeft: '2px solid var(--border)', paddingLeft: 8, opacity: 0.85 }}>
+                          <TaskCard task={sub} onClick={() => openTaskDetail(sub)} />
+                        </div>
+                      ))}
+                    </React.Fragment>
                   ))}
                   {isDone && hasMoreDone && (
                     <button
@@ -684,10 +740,55 @@ export function Board() {
                 </div>
               </div>
 
+              {selectedTask.parent_task_id && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+                  ↑ Subtask of <a href="#" onClick={e => { e.preventDefault(); fetch(`${API_BASE}/tasks/${selectedTask.parent_task_id}`).then(r=>r.json()).then(d => { setSelectedTask(d); setTaskComments(d.comments||[]); }); }} style={{ color: 'var(--accent)' }}>T#{selectedTask.parent_task_id}</a>
+                </div>
+              )}
+
               {selectedTask.description && (
                 <div className={styles.taskDescription}>
                   <ReactMarkdown>{autolinkIds(selectedTask.description)}</ReactMarkdown>
                 </div>
+              )}
+
+              {/* Subtasks */}
+              {selectedTask.subtasks && selectedTask.subtasks.count > 0 && (
+                <div style={{ marginTop: 12, marginBottom: 12, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 8 }}>
+                  <h3 style={{ fontSize: 14, margin: '0 0 8px 0' }}>Subtasks ({selectedTask.subtasks.done}/{selectedTask.subtasks.count})</h3>
+                  {(subtasksByParent[selectedTask.id] || []).map(sub => (
+                    <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>#{sub.id}</span>
+                      <span style={{ flex: 1, cursor: 'pointer', color: 'var(--accent)' }} onClick={() => openTaskDetail(sub)}>{sub.title}</span>
+                      <span className={`${styles.priorityBadge} ${styles[`priority${sub.status === 'done' ? 'Low' : sub.status === 'in_progress' ? 'High' : 'Medium'}`]}`} style={{ fontSize: 10 }}>
+                        {STATUS_LABELS[sub.status] || sub.status}
+                      </span>
+                    </div>
+                  ))}
+                  {!subtasksByParent[selectedTask.id] && (
+                    <button className={styles.cancelBtn} style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => {
+                      fetch(`${API_BASE}/tasks?parent_id=${selectedTask.id}&limit=50`).then(r=>r.json()).then(d => {
+                        setSubtasksByParent(prev => ({...prev, [selectedTask.id]: d.tasks || []}));
+                      });
+                    }}>Load subtasks</button>
+                  )}
+                </div>
+              )}
+
+              {!selectedTask.parent_task_id && (
+                <button
+                  className={styles.cancelBtn}
+                  style={{ fontSize: 12, padding: '4px 8px', marginBottom: 12 }}
+                  onClick={() => {
+                    setNewParentTaskId(selectedTask.id);
+                    if (selectedTask.project_id) setNewProjectId(String(selectedTask.project_id));
+                    setSelectedTask(null);
+                    setShowNewTask(true);
+                    setNewStatus('todo');
+                  }}
+                >
+                  + Add Subtask
+                </button>
               )}
 
               {/* Comments */}
@@ -730,14 +831,30 @@ export function Board() {
 }
 
 // Task card component
-function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
+function TaskCard({ task, onClick, hasSubtasks, expanded, onToggle }: { task: Task; onClick: () => void; hasSubtasks?: boolean; expanded?: boolean; onToggle?: (e: React.MouseEvent) => void }) {
   return (
     <div
       className={styles.taskCard}
       style={{ '--priority-color': getPriorityColor(task.priority) } as React.CSSProperties}
       onClick={onClick}
     >
-      <span className={styles.taskId}>#{task.id}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        {hasSubtasks && (
+          <span
+            onClick={onToggle}
+            style={{ cursor: 'pointer', fontSize: 12, userSelect: 'none', width: 16, textAlign: 'center' }}
+            title={expanded ? 'Collapse subtasks' : 'Expand subtasks'}
+          >
+            {expanded ? '▾' : '▸'}
+          </span>
+        )}
+        <span className={styles.taskId}>#{task.id}</span>
+        {task.subtasks && task.subtasks.count > 0 && (
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-secondary)', borderRadius: 8, padding: '1px 6px' }}>
+            {task.subtasks.done}/{task.subtasks.count}
+          </span>
+        )}
+      </div>
       <div className={styles.taskTitle}>{task.title}</div>
       <div className={styles.taskMeta}>
         <span className={`${styles.priorityBadge} ${styles[`priority${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}`]}`}>

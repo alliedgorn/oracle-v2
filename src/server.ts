@@ -5082,8 +5082,14 @@ try { sqlite.prepare('CREATE INDEX IF NOT EXISTS idx_dm_messages_conv_created ON
 app.get('/api/dm/dashboard', (c) => {
   const limit = parseInt(c.req.query('limit') || '50');
   const data = getDashboard(limit);
+  const actor = (c.get as any)('actor') as string | undefined;
+  const authMethod = (c.get as any)('authMethod') as string | undefined;
+  // T#728: bearer-token callers see only their own conversations
+  const filtered = (authMethod === 'token' && actor)
+    ? data.conversations.filter(conv => conv.participants.some((p: string) => p.toLowerCase() === actor.toLowerCase()))
+    : data.conversations;
   return c.json({
-    conversations: data.conversations.map(conv => ({
+    conversations: filtered.map(conv => ({
       id: conv.id,
       participants: conv.participants,
       message_count: conv.messageCount,
@@ -5093,7 +5099,7 @@ app.get('/api/dm/dashboard', (c) => {
       last_at: new Date(conv.lastAt).toISOString(),
       created_at: new Date(conv.createdAt).toISOString(),
     })),
-    total_conversations: data.totalConversations,
+    total_conversations: (authMethod === 'token' && actor) ? filtered.length : data.totalConversations,
     total_messages: data.totalMessages,
   });
 });
@@ -5219,8 +5225,12 @@ app.post('/api/dm', async (c) => {
 app.get('/api/dm/:name', (c) => {
   const name = c.req.param('name');
   const as = c.req.query('as')?.toLowerCase();
-  // IDOR protection: 'as' required. Must match name or be 'gorn'.
-  // Local network bypass: skip check for local requests (CLI/beast access)
+  const actor = (c.get as any)('actor') as string | undefined;
+  const authMethod = (c.get as any)('authMethod') as string | undefined;
+  // T#728: bearer-token callers can only list their own conversations
+  if (authMethod === 'token' && actor && actor.toLowerCase() !== name.toLowerCase()) {
+    return c.json({ error: 'Access denied. You can only view your own conversations.' }, 403);
+  }
   if (!isTrustedRequest(c)) {
     if (!as) return c.json({ error: 'as param required for DM access' }, 400);
     if (as !== 'gorn' && as !== name.toLowerCase()) {
@@ -5263,7 +5273,15 @@ app.get('/api/dm/:name/:other', (c) => {
       }
     }
   }
-  // IDOR protection: 'as' required from non-local. Must be participant or gorn.
+  const actor = (c.get as any)('actor') as string | undefined;
+  const authMethod = (c.get as any)('authMethod') as string | undefined;
+  // T#728: bearer-token callers can only read conversations they are part of
+  if (authMethod === 'token' && actor) {
+    const actorLower = actor.toLowerCase();
+    if (actorLower !== name.toLowerCase() && actorLower !== other.toLowerCase()) {
+      return c.json({ error: 'Access denied. You can only read conversations you are part of.' }, 403);
+    }
+  }
   if (!isTrustedRequest(c)) {
     if (!as) return c.json({ error: 'as param required for DM access' }, 400);
     if (as !== 'gorn' && as !== name.toLowerCase() && as !== other.toLowerCase()) {

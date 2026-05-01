@@ -1601,11 +1601,12 @@ const HELP_ENDPOINTS = [
     { method: 'GET', path: '/api/dm/dashboard', desc: 'DM dashboard stats', params: null },
     { method: 'GET', path: '/api/dm/unread-count', desc: 'Get unread DM count', params: null },
     // Tasks (PM Board)
-    { method: 'GET', path: '/api/tasks', desc: 'List tasks', params: '?assignee=&reviewer=&status=&limit=100&offset=0' },
-    { method: 'GET', path: '/api/tasks/:id', desc: 'Get task by ID', params: null },
-    { method: 'POST', path: '/api/tasks', desc: 'Create task', params: 'body: { title, assigned_to, reviewer, project_id, description?, status? }' },
-    { method: 'PATCH', path: '/api/tasks/:id', desc: 'Update task', params: 'body: { title?, description?, assignee?, reviewer?, status? }' },
-    { method: 'DELETE', path: '/api/tasks/:id', desc: 'Delete task', params: null },
+    { method: 'GET', path: '/api/tasks', desc: 'List tasks (Spec #56: parent_id filter)', params: '?assignee=&reviewer=&status=&parent_id=&limit=100&offset=0' },
+    { method: 'GET', path: '/api/tasks/:id', desc: 'Get task by ID (includes subtasks summary if parent)', params: null },
+    { method: 'GET', path: '/api/tasks/:id/subtree', desc: 'Get parent task + all direct subtasks (Spec #56)', params: null },
+    { method: 'POST', path: '/api/tasks', desc: 'Create task (Spec #56: parent_task_id for subtasks)', params: 'body: { title, assigned_to, reviewer, project_id, description?, status?, parent_task_id? }' },
+    { method: 'PATCH', path: '/api/tasks/:id', desc: 'Update task (Spec #56: parent_task_id for reparent)', params: 'body: { title?, description?, assignee?, reviewer?, status?, parent_task_id? }' },
+    { method: 'DELETE', path: '/api/tasks/:id', desc: 'Delete task (orphans subtasks via SET NULL)', params: null },
     { method: 'POST', path: '/api/tasks/:id/comments', desc: 'Add comment to task', params: 'body: { author, content }' },
     { method: 'GET', path: '/api/tasks/:id/comments', desc: 'Get task comments', params: null },
     // Pack / Beasts
@@ -5777,10 +5778,36 @@ try {
   // v5: risk_level for QA triage (T#617)
   try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN risk_level TEXT DEFAULT 'medium'`).run(); } catch { /* exists */ }
   sqlite.prepare(`UPDATE tasks SET risk_level = 'medium' WHERE risk_level IS NULL`).run();
+  // v6: parent_task_id for subtasks (Spec #56)
+  try { sqlite.prepare(`ALTER TABLE tasks ADD COLUMN parent_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL`).run(); } catch { /* exists */ }
+  try { sqlite.prepare(`CREATE INDEX idx_tasks_parent_task_id ON tasks(parent_task_id) WHERE parent_task_id IS NOT NULL`).run(); } catch { /* exists */ }
 } catch { /* already exists */ }
 
 const VALID_TASK_TYPES = ['bug', 'feature', 'improvement', 'chore', 'task'];
 const VALID_RISK_LEVELS = ['high', 'medium', 'low'];
+
+function validateParentTaskId(parentTaskId: number, selfId?: number): string | null {
+  const parent = sqlite.prepare('SELECT id, parent_task_id FROM tasks WHERE id = ? AND status != ?').get(parentTaskId, 'deleted') as any;
+  if (!parent) return 'Parent task not found';
+  if (parent.parent_task_id) return 'Cannot nest deeper than 2 levels — parent task is already a subtask';
+  if (selfId !== undefined && parentTaskId === selfId) return 'Task cannot be its own parent';
+  if (selfId !== undefined) {
+    const children = sqlite.prepare('SELECT id FROM tasks WHERE parent_task_id = ? AND status != ?').all(selfId, 'deleted') as any[];
+    if (children.length > 0) return 'Cannot make a parent task into a subtask — it already has subtasks';
+  }
+  return null;
+}
+
+function getSubtasksSummary(taskId: number): { count: number; done: number; in_progress: number; todo: number; blocked: number; in_review: number; backlog: number; cancelled: number } {
+  const rows = sqlite.prepare('SELECT status, COUNT(*) as cnt FROM tasks WHERE parent_task_id = ? AND status != ? GROUP BY status').all(taskId, 'deleted') as any[];
+  const summary = { count: 0, done: 0, in_progress: 0, todo: 0, blocked: 0, in_review: 0, backlog: 0, cancelled: 0 };
+  for (const r of rows) {
+    const s = r.status as keyof typeof summary;
+    if (s in summary && s !== 'count') (summary as any)[s] = r.cnt;
+    summary.count += r.cnt;
+  }
+  return summary;
+}
 
 // SDD enforcement: check if task can transition to in_progress or done
 function checkApprovalGate(task: any): string | null {
@@ -5910,6 +5937,9 @@ app.get('/api/tasks', (c) => {
   if (type) { query += ' AND t.type = ?'; params.push(type); }
   const riskLevel = c.req.query('risk_level');
   if (riskLevel) { query += ' AND t.risk_level = ?'; params.push(riskLevel); }
+  const parentId = c.req.query('parent_id');
+  if (parentId === 'null') { query += ' AND t.parent_task_id IS NULL'; }
+  else if (parentId) { query += ' AND t.parent_task_id = ?'; params.push(parseInt(parentId, 10)); }
 
   const countQuery = query.replace('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id', 'SELECT COUNT(*) as total FROM tasks t');
   const total = (sqlite.prepare(countQuery).get(...params) as any)?.total || 0;
@@ -5930,11 +5960,15 @@ app.get('/api/tasks', (c) => {
 // POST /api/tasks — create task
 app.post('/api/tasks', async (c) => {
   const data = await c.req.json();
-  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type, reviewer, risk_level } = data;
+  const { title, description, project_id, status, priority, assigned_to, created_by, thread_id, due_date, type, reviewer, risk_level, parent_task_id } = data;
   if (!title || !created_by) return c.json({ error: 'title and created_by required' }, 400);
   if (!project_id) return c.json({ error: 'project_id required — every task must belong to a project' }, 400);
   if (!assigned_to) return c.json({ error: 'assigned_to required — every task must have an assignee' }, 400);
   if (!reviewer) return c.json({ error: 'reviewer required — every task must have a reviewer for the in_review workflow' }, 400);
+  if (parent_task_id != null) {
+    const parentErr = validateParentTaskId(parseInt(String(parent_task_id), 10));
+    if (parentErr) return c.json({ error: parentErr }, 400);
+  }
 
   const validStatuses = ['todo', 'backlog', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   const validPriorities = ['critical', 'high', 'medium', 'low'];
@@ -5947,9 +5981,10 @@ app.post('/api/tasks', async (c) => {
 
   const now = new Date().toISOString();
   const approvalRequired = data.approval_required ? 1 : 0;
+  const parentId = parent_task_id != null ? parseInt(String(parent_task_id), 10) : null;
   const result = sqlite.prepare(
-    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, approval_required, reviewer, risk_level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, reviewer, taskRiskLevel, now, now);
+    'INSERT INTO tasks (project_id, title, description, status, priority, assigned_to, created_by, thread_id, due_date, type, approval_required, reviewer, risk_level, parent_task_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(project_id || null, title, description || '', taskStatus, taskPriority, assigned_to || null, created_by, thread_id || null, due_date || null, taskType, approvalRequired, reviewer, taskRiskLevel, parentId, now, now);
 
   const task = sqlite.prepare('SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?').get((result as any).lastInsertRowid) as any;
   searchIndexUpsert('task', task.id, task.title, task.description || '', task.assigned_to || '', now, `/board?task=${task.id}`);
@@ -5994,7 +6029,8 @@ app.get('/api/tasks/:id', (c) => {
   ).get(id) as any;
   if (!task) return c.json({ error: 'Task not found' }, 404);
   const comments = sqlite.prepare('SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at ASC').all(id) as any[];
-  return c.json({ ...task, comments });
+  const subtasks = getSubtasksSummary(id);
+  return c.json({ ...task, comments, subtasks: subtasks.count > 0 ? subtasks : undefined });
 });
 
 // PATCH /api/tasks/:id — update task
@@ -6030,9 +6066,18 @@ app.patch('/api/tasks/:id', async (c) => {
     if (!reviewer) return c.json({ error: 'Reviewer required when moving to in_review. Set reviewer field.' }, 400);
   }
 
+  if (data.parent_task_id !== undefined) {
+    if (data.parent_task_id === null) {
+      // Promote to top-level — allowed
+    } else {
+      const parentErr = validateParentTaskId(parseInt(String(data.parent_task_id), 10), id);
+      if (parentErr) return c.json({ error: parentErr }, 400);
+    }
+  }
+
   const updates: string[] = [];
   const params: any[] = [];
-  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type', 'approval_required', 'spec_id', 'reviewer', 'risk_level']) {
+  for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type', 'approval_required', 'spec_id', 'reviewer', 'risk_level', 'parent_task_id']) {
     if (data[field] !== undefined) { updates.push(`${field} = ?`); params.push(data[field]); }
   }
   if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
@@ -6058,13 +6103,30 @@ app.patch('/api/tasks/:id', async (c) => {
   return c.json(task);
 });
 
-// DELETE /api/tasks/:id — soft delete (set status to 'deleted')
+// DELETE /api/tasks/:id — soft delete (set status to 'deleted') + orphan subtasks (Bertus C4)
 app.delete('/api/tasks/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   const now = new Date().toISOString();
-  sqlite.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run('deleted', now, id);
+  sqlite.transaction(() => {
+    sqlite.prepare('UPDATE tasks SET parent_task_id = NULL, updated_at = ? WHERE parent_task_id = ?').run(now, id);
+    sqlite.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run('deleted', now, id);
+  })();
   searchIndexDelete('task', id);
   return c.json({ success: true, id });
+});
+
+// GET /api/tasks/:id/subtree — parent + all direct subtasks in one call (Spec #56)
+app.get('/api/tasks/:id/subtree', (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const parent = sqlite.prepare(
+    'SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?'
+  ).get(id) as any;
+  if (!parent) return c.json({ error: 'Task not found' }, 404);
+  const subtasks = sqlite.prepare(
+    'SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.parent_task_id = ? AND t.status != ? ORDER BY t.created_at ASC'
+  ).all(id, 'deleted') as any[];
+  const summary = getSubtasksSummary(id);
+  return c.json({ parent: { ...parent, subtasks: summary.count > 0 ? summary : undefined }, subtasks });
 });
 
 // POST /api/tasks/bulk-status — bulk status update (for PM)

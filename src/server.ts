@@ -6079,6 +6079,14 @@ app.patch('/api/tasks/:id', async (c) => {
     }
   }
 
+  // Spec #56 E2: block parent project-change while children exist
+  if (data.project_id !== undefined && data.project_id !== (existing as any).project_id) {
+    const children = sqlite.prepare('SELECT COUNT(*) as cnt FROM tasks WHERE parent_task_id = ? AND status != ?').get(id, 'deleted') as any;
+    if (children.cnt > 0) {
+      return c.json({ error: 'Cannot change project on a parent task with subtasks — reparent subtasks first' }, 400);
+    }
+  }
+
   const updates: string[] = [];
   const params: any[] = [];
   for (const field of ['title', 'description', 'status', 'priority', 'assigned_to', 'project_id', 'thread_id', 'due_date', 'type', 'approval_required', 'spec_id', 'reviewer', 'risk_level', 'parent_task_id']) {
@@ -6232,6 +6240,10 @@ app.get('/api/board', (c) => {
 
   let query = 'SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.status != \'deleted\'';
   const params: any[] = [];
+
+  // Spec #56 Phase 3: board default is top-level only (parent_id IS NULL)
+  const showSubtasks = c.req.query('show_subtasks');
+  if (showSubtasks !== 'true') { query += ' AND t.parent_task_id IS NULL'; }
 
   if (projectId) { query += ' AND t.project_id = ?'; params.push(parseInt(projectId, 10)); }
   if (assignedTo) { query += ' AND t.assigned_to = ?'; params.push(assignedTo); }

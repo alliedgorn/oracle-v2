@@ -5966,7 +5966,9 @@ app.post('/api/tasks', async (c) => {
   if (!assigned_to) return c.json({ error: 'assigned_to required — every task must have an assignee' }, 400);
   if (!reviewer) return c.json({ error: 'reviewer required — every task must have a reviewer for the in_review workflow' }, 400);
   if (parent_task_id != null) {
-    const parentErr = validateParentTaskId(parseInt(String(parent_task_id), 10));
+    const parsed = Number(parent_task_id);
+    if (!Number.isInteger(parsed) || parsed <= 0) return c.json({ error: 'parent_task_id must be a positive integer' }, 400);
+    const parentErr = validateParentTaskId(parsed);
     if (parentErr) return c.json({ error: parentErr }, 400);
   }
 
@@ -6070,7 +6072,9 @@ app.patch('/api/tasks/:id', async (c) => {
     if (data.parent_task_id === null) {
       // Promote to top-level — allowed
     } else {
-      const parentErr = validateParentTaskId(parseInt(String(data.parent_task_id), 10), id);
+      const parsed = Number(data.parent_task_id);
+      if (!Number.isInteger(parsed) || parsed <= 0) return c.json({ error: 'parent_task_id must be a positive integer' }, 400);
+      const parentErr = validateParentTaskId(parsed, id);
       if (parentErr) return c.json({ error: parentErr }, 400);
     }
   }

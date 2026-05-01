@@ -473,6 +473,15 @@ app.use('/api/*', async (c, next) => {
       }
       if (result.expiredGrace) {
         c.header('X-Expired-Grace', 'true');
+        logSecurityEvent({
+          eventType: 'expired_grace_auth',
+          severity: 'info',
+          actor: result.beast,
+          actorType: 'beast',
+          target: path,
+          details: { token_id: result.tokenId },
+          requestId: (c.get as any)('requestId'),
+        });
       }
       return next();
     } else {

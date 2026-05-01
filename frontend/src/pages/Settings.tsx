@@ -527,10 +527,9 @@ interface Token {
   active: boolean;
 }
 
-const BEASTS = ['karo', 'gnarl', 'zaghnal', 'bertus', 'leonard', 'mara', 'rax', 'pip', 'nyx', 'dex', 'flint', 'quill', 'snap', 'vigil', 'talon', 'sable', 'boro'];
-
 function TokenManagement() {
   const [tokens, setTokens] = useState<Token[]>([]);
+  const [beasts, setBeasts] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [selectedBeast, setSelectedBeast] = useState('');
@@ -548,7 +547,12 @@ function TokenManagement() {
     setLoading(false);
   }
 
-  useEffect(() => { loadTokens(); }, []);
+  useEffect(() => {
+    loadTokens();
+    fetch('/api/beasts').then(r => r.json()).then(d => {
+      setBeasts((d.beasts || []).map((b: any) => typeof b === 'string' ? b : b.name));
+    }).catch(() => {});
+  }, []);
 
   async function handleGenerate() {
     if (!selectedBeast || generating) return;
@@ -601,7 +605,7 @@ function TokenManagement() {
           style={{ padding: '8px 12px', fontSize: 13, minWidth: 140 }}
         >
           <option value="" disabled>Select Beast</option>
-          {BEASTS.map(b => (
+          {beasts.map(b => (
             <option key={b} value={b}>{b.charAt(0).toUpperCase() + b.slice(1)}</option>
           ))}
         </select>

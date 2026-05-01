@@ -6240,6 +6240,21 @@ app.get('/api/board', (c) => {
 
   const tasks = sqlite.prepare(query).all(...params) as any[];
 
+  // Enrich parent tasks with subtask summaries (Spec #56 Phase 2 — single aggregate query)
+  const subtaskRows = sqlite.prepare(
+    `SELECT parent_task_id, status, COUNT(*) as cnt FROM tasks WHERE parent_task_id IS NOT NULL AND status != 'deleted' GROUP BY parent_task_id, status`
+  ).all() as { parent_task_id: number; status: string; cnt: number }[];
+  const subtaskMap: Record<number, any> = {};
+  for (const r of subtaskRows) {
+    if (!subtaskMap[r.parent_task_id]) subtaskMap[r.parent_task_id] = { count: 0, done: 0, in_progress: 0, todo: 0, blocked: 0, in_review: 0, backlog: 0, cancelled: 0 };
+    const s = subtaskMap[r.parent_task_id];
+    if (r.status in s && r.status !== 'count') s[r.status] = r.cnt;
+    s.count += r.cnt;
+  }
+  for (const task of tasks) {
+    if (subtaskMap[task.id]) task.subtasks = subtaskMap[task.id];
+  }
+
   const columns: Record<string, any[]> = {
     backlog: [], todo: [], in_progress: [], in_review: [], done: [], blocked: [], cancelled: [],
   };

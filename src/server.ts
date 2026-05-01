@@ -5099,7 +5099,7 @@ app.get('/api/dm/dashboard', (c) => {
       last_at: new Date(conv.lastAt).toISOString(),
       created_at: new Date(conv.createdAt).toISOString(),
     })),
-    total_conversations: filtered.length,
+    total_conversations: (authMethod === 'token' && actor) ? filtered.length : data.totalConversations,
     total_messages: data.totalMessages,
   });
 });

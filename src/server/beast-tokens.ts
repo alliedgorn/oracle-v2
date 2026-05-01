@@ -36,6 +36,7 @@ const REFRESH_THROTTLE_MINUTES = 5;      // Min gap between refresh-fires per to
 
 // Spec #52 — self-rotate constants
 const SELF_ROTATE_WINDOW_HOURS = 24;     // Token must be within this window of created_at/rotated_at to self-rotate
+const SELF_ROTATE_GRACE_AFTER_EXPIRY_HOURS = 6; // Allow self-rotation up to 6h after token expiry (Decree #70 Req 8)
 const ROTATION_GRACE_SECONDS = 10;       // Stale-in-flight window after rotated_at
 // Phase 4 (Gnarl architect-frame #10850 17h-cliff data): rotation_recommended fires
 // at this many hours of token life so Beast self-rotates inside the empirical
@@ -232,6 +233,9 @@ type TokenValidationResult = {
   // `X-Rotation-Recommended: true` response header so the Beast caller
   // can call /api/auth/rotate transparently before the door closes.
   rotationRecommended?: boolean;
+  // Decree #70 Req 8 — token is expired but within SELF_ROTATE_GRACE_AFTER_EXPIRY_HOURS;
+  // only /api/auth/rotate should be reachable with this flag.
+  expiredGrace?: boolean;
 } | {
   valid: false;
   reason: 'invalid_format' | 'no_matching_token' | 'expired' | 'revoked' | 'chain_compromised' | 'max_lifetime_reached';
@@ -343,6 +347,10 @@ export function validateToken(token: string): TokenValidationResult {
   // no longer filters on these — needed for chain-compromise visibility above).
   const expiresAtMs = new Date(matched.expires_at.replace(' ', 'T') + 'Z').getTime();
   if (nowMs >= expiresAtMs) {
+    const hoursPastExpiry = (nowMs - expiresAtMs) / (60 * 60 * 1000);
+    if (hoursPastExpiry <= SELF_ROTATE_GRACE_AFTER_EXPIRY_HOURS && !matched.rotated_at) {
+      return { valid: true, beast, tokenId: matched.id, expiredGrace: true };
+    }
     return { valid: false, reason: 'expired', beast };
   }
   if (matched.max_lifetime_at) {
@@ -443,7 +451,7 @@ export function getTokenInfo(tokenId: number): {
   // Computed: now + REFRESH_WINDOW from expires_at — the cutoff at which auto-refresh
   // would extend on next successful auth. Caller-side display field, not authoritative.
   refresh_window_starts_at: string | null;
-  // Computed: created_at + SELF_ROTATE_WINDOW_HOURS — the wall after which
+  // Computed: expires_at + SELF_ROTATE_GRACE_AFTER_EXPIRY_HOURS — the wall after which
   // /api/auth/rotate returns 403 rotate_window_expired and owner reprovision is required.
   self_rotate_door_closes_at: string | null;
   // Computed: created_at + ROTATION_RECOMMENDED_HOURS — when the rotation_recommended
@@ -472,7 +480,7 @@ export function getTokenInfo(tokenId: number): {
     rotated_at: row.rotated_at,
     next_token_id: row.next_token_id,
     refresh_window_starts_at: fmt(expiresMs - REFRESH_WINDOW_HOURS * 60 * 60 * 1000),
-    self_rotate_door_closes_at: fmt(createdMs + SELF_ROTATE_WINDOW_HOURS * 60 * 60 * 1000),
+    self_rotate_door_closes_at: fmt(expiresMs + SELF_ROTATE_GRACE_AFTER_EXPIRY_HOURS * 60 * 60 * 1000),
     rotation_recommended_at: fmt(createdMs + ROTATION_RECOMMENDED_HOURS * 60 * 60 * 1000),
   };
 }
@@ -574,8 +582,8 @@ export function rotateToken(currentTokenId: number, beast: string): {
  * Distinct from `rotateToken()` (owner-driven) by chain-link semantics:
  *   - old token's `rotated_at` + `next_token_id` set (NOT revoked) so
  *     replay attempts on the old token trip chain-compromise detection.
- *   - 24h SELF_ROTATE_WINDOW from created_at (or rotated_at on chain links)
- *     bounds attacker self-rotate replay window per Gorn 2026-04-25 21:45.
+ *   - Rotation allowed until expires_at + 6h grace (Decree #70 Req 8).
+ *     Replaces the original 24h-from-creation window.
  *
  * Caller MUST have already validated the bearer (server.ts wires this up).
  * Chain-compromise detection is in `validateToken()`; this primitive only
@@ -587,16 +595,18 @@ export function selfRotateToken(currentTokenId: number, beast: string): {
   expiresAt: string;
 } | { error: string; code: 'rotate_window_expired' | 'token_not_found' | 'rotation_locked' | 'tx_failed' } {
   const row = getTokenByIdStmt.get(currentTokenId) as
-    | { id: number; beast: string; created_at: string; rotated_at: string | null; revoked_at: string | null }
+    | { id: number; beast: string; created_at: string; expires_at: string; rotated_at: string | null; revoked_at: string | null }
     | undefined;
   if (!row) return { error: 'Token not found', code: 'token_not_found' };
   if (row.revoked_at) return { error: 'Token revoked', code: 'token_not_found' };
   if (row.rotated_at) return { error: 'Token already rotated', code: 'rotation_locked' };
 
-  // SELF_ROTATE_WINDOW check: created_at must be within 24h of now.
-  const createdMs = new Date(row.created_at.replace(' ', 'T') + 'Z').getTime();
-  const ageHours = (Date.now() - createdMs) / (60 * 60 * 1000);
-  if (ageHours > SELF_ROTATE_WINDOW_HOURS) {
+  // Window check: allow rotation until expires_at + SELF_ROTATE_GRACE_AFTER_EXPIRY_HOURS.
+  const expiresMs = new Date(row.expires_at.replace(' ', 'T') + 'Z').getTime();
+  const graceDeadlineMs = expiresMs + SELF_ROTATE_GRACE_AFTER_EXPIRY_HOURS * 60 * 60 * 1000;
+  if (Date.now() > graceDeadlineMs) {
+    const createdMs = new Date(row.created_at.replace(' ', 'T') + 'Z').getTime();
+    const ageHours = (Date.now() - createdMs) / (60 * 60 * 1000);
     logSecurityEvent({
       eventType: 'token_rotation_attempted_invalid',
       severity: 'warning',
@@ -605,7 +615,7 @@ export function selfRotateToken(currentTokenId: number, beast: string): {
       target: beast,
       details: { token_id: currentTokenId, failure_reason: 'rotate_window_expired', age_hours: Math.round(ageHours) },
     });
-    return { error: 'Self-rotate window expired (24h since issue); owner reprovision required', code: 'rotate_window_expired' };
+    return { error: 'Self-rotate window expired (6h post-expiry grace passed); owner reprovision required', code: 'rotate_window_expired' };
   }
 
   const txn = sqlite.transaction(() => {

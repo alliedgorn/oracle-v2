@@ -7414,7 +7414,7 @@ function runDrainCycle() {
           // Beast offline — re-append to tail of queue so it retries next cycle
           try {
             Bun.spawnSync(['bash', '-c',
-              `flock "${lockPath}" bash -c "echo '${encoded}' >> '${queuePath}'"`
+              `umask 0077 && flock "${lockPath}" bash -c "echo '${encoded}' >> '${queuePath}'"`
             ]);
           } catch { /* best effort re-queue */ }
           drainLastSent.set(beast, Date.now()); // avoid spinning on offline Beasts

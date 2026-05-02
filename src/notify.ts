@@ -24,14 +24,6 @@ import path from 'path';
 const WORKSPACE_ROOT = '/home/gorn/workspace';
 
 /**
- * Legacy server-side notify.sh path (Spec #29 era). Used as the middle
- * fallback during Phase 4 canary migration window — when a Beast hasn't
- * pulled Blueprint v0.6.3 yet, the per-Beast notify.sh doesn't exist.
- * Removed in Spec #54 Phase 4b cleanup once all Beasts migrate.
- */
-const LEGACY_NOTIFY_SCRIPT = path.join(import.meta.dir, '..', 'scripts', 'notify.sh');
-
-/**
  * Beast-name validation: alphanumeric lowercase only. Anti-traversal at
  * the adaptor boundary (defense-in-depth — notify.sh also self-validates
  * via `readlink -f $0` derivation, but adaptor validates before path.join).
@@ -74,8 +66,7 @@ function formatUtc7Timestamp(date: Date): string {
  * each other's notify.sh directly — this adaptor is just the server-originated
  * path. Server-down does not break beast-to-beast notification.
  *
- * Falls back to direct tmux send-keys if the spawn fails (e.g., beast worktree
- * missing during canary migration).
+ * Falls back to direct tmux send-keys if the spawn fails.
  */
 export function enqueueNotification(beast: string, message: string, opts?: EnqueueOpts): boolean {
   const beastLower = beast.toLowerCase();
@@ -93,32 +84,12 @@ export function enqueueNotification(beast: string, message: string, opts?: Enque
   try {
     const result = Bun.spawnSync(['bash', targetScript, message, '--from', sender]);
     if (result.exitCode === 0) return true;
-    // Quiet during migration window — exit 127 (file not found) is expected
-    // for un-migrated Beasts. Only log non-127 unexpected failures.
-    // TODO(Phase 4b cleanup, Bertus DEN-PR55-bertus C-PR55-1): remove the
-    // `if (result.exitCode !== 127)` silence after all Beasts migrate to
-    // Blueprint v0.6.3+. Post-migration, exit 127 indicates a real failure
-    // (deleted script, broken symlink) and should always log.
-    if (result.exitCode !== 127) {
-      console.error(`[notify] Per-Beast notify failed for ${beastLower} (exit ${result.exitCode})`);
-    }
+    console.error(`[notify] Per-Beast notify failed for ${beastLower} (exit ${result.exitCode})`);
   } catch (err) {
     console.error(`[notify] Per-Beast notify error for ${beastLower}:`, err);
   }
 
-  // Tier 2: legacy server-side notify.sh (preserves queue+drain pipeline
-  // during Phase 4 canary migration window). Removed in Phase 4b cleanup.
-  try {
-    const stamp = formatUtc7Timestamp(opts?.sentAt ?? new Date());
-    const stamped = `${stamp} [from ${sender}] ${message}`;
-    const result = Bun.spawnSync(['bash', LEGACY_NOTIFY_SCRIPT, beastLower, stamped]);
-    if (result.exitCode === 0) return true;
-    console.error(`[notify] Legacy notify failed for ${beastLower} (exit ${result.exitCode})`);
-  } catch (err) {
-    console.error(`[notify] Legacy notify error for ${beastLower}:`, err);
-  }
-
-  // Tier 3: direct tmux send-keys with synthesized stamp. Final fallback.
+  // Tier 2: direct tmux send-keys with synthesized stamp. Final fallback.
   try {
     const sessionName = beastLower.charAt(0).toUpperCase() + beastLower.slice(1);
     const stamp = formatUtc7Timestamp(opts?.sentAt ?? new Date());
